@@ -284,6 +284,32 @@ export const updateBookmark = async (id: string, updates: { title: string; url: 
   };
 };
 
+export const updateFolder = async (id: string, newTitle: string): Promise<FolderItem> => {
+    if (!browser || !browser.bookmarks) {
+        const tree = getMockData();
+        let updatedFolder: FolderItem | null = null;
+        const updateNodeInTree = (nodes: BookmarkNode[]): BookmarkNode[] => {
+            return nodes.map(node => {
+                if (node.type === 'folder' && node.id === id) {
+                    const newFolder = { ...node, title: newTitle };
+                    updatedFolder = newFolder;
+                    return newFolder;
+                }
+                if (node.type === 'folder') {
+                    return { ...node, children: updateNodeInTree(node.children) };
+                }
+                return node;
+            });
+        };
+        updateMockData(updateNodeInTree(tree));
+        if (!updatedFolder) throw new Error("Folder not found in mock data");
+        return updatedFolder;
+    }
+
+    const updatedNode = await browser.bookmarks.update(id, { title: newTitle });
+    return transformBookmarkNode(updatedNode) as FolderItem;
+};
+
 export const deleteBookmark = async (id: string): Promise<void> => {
    if (!browser || !browser.bookmarks) {
     const tree = getMockData();

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { FolderItem, BookmarkNode, BookmarkItem } from '../types';
 import BookmarkList from './BookmarkList';
-import { FolderIcon, ChevronRightIcon, KebabMenuIcon, DeleteIcon } from './Icons';
+import { FolderIcon, ChevronRightIcon, KebabMenuIcon, DeleteIcon, EditIcon } from './Icons';
 
 type VisibleFields = {
   url: boolean;
@@ -27,6 +27,7 @@ interface BookmarkFolderProps {
   onEdit: (bookmark: BookmarkItem) => void;
   onDelete: (id: string) => void;
   onDeleteFolder: (folder: FolderItem) => void;
+  onRenameFolder: (folderId: string, newTitle: string) => void;
   onViewSafetyReport: (bookmark: BookmarkItem) => void;
   onHoverStart: (url: string, element: HTMLElement) => void;
   onHoverEnd: () => void;
@@ -41,7 +42,8 @@ interface BookmarkFolderProps {
 
 const FolderActionsMenu: React.FC<{
   onDelete: () => void;
-}> = ({ onDelete }) => {
+  onRename: () => void;
+}> = ({ onDelete, onRename }) => {
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -62,6 +64,13 @@ const FolderActionsMenu: React.FC<{
             </button>
             {isOpen && (
                 <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-2xl p-1 z-50">
+                     <button
+                        onClick={() => { onRename(); setIsOpen(false); }}
+                        className="flex items-center w-full px-3 py-2 text-sm rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                    >
+                        <EditIcon className="w-4 h-4 mr-3" />
+                        <span>Rename Folder</span>
+                    </button>
                     <button
                         onClick={() => { onDelete(); setIsOpen(false); }}
                         className="flex items-center w-full px-3 py-2 text-sm rounded-md text-red-600 dark:text-red-500 hover:bg-red-500/10"
@@ -77,10 +86,37 @@ const FolderActionsMenu: React.FC<{
 
 
 const BookmarkFolder: React.FC<BookmarkFolderProps> = (props) => {
-  const { folder, viewMode, depth, onDeleteFolder, draggedItem, dragOverInfo, partingDirection, onDragStart, onDragEnd, onDragOver, onDrop, isAncestor, expandedFolders, onToggleFolder } = props;
+  const { folder, viewMode, depth, onDeleteFolder, onRenameFolder, draggedItem, dragOverInfo, partingDirection, onDragStart, onDragEnd, onDragOver, onDrop, isAncestor, expandedFolders, onToggleFolder } = props;
   const folderRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const indentationStyle = { paddingLeft: `${depth * 1.5}rem` };
   
+  const [isEditing, setIsEditing] = useState(false);
+  const [newTitle, setNewTitle] = useState(folder.title);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.select();
+    }
+  }, [isEditing]);
+  
+  const handleRename = () => {
+    if (newTitle.trim() && newTitle.trim() !== folder.title) {
+        onRenameFolder(folder.id, newTitle.trim());
+    }
+    setIsEditing(false);
+  };
+  
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+        handleRename();
+    } else if (e.key === 'Escape') {
+        setNewTitle(folder.title);
+        setIsEditing(false);
+    }
+  };
+
   const isExpanded = expandedFolders.has(folder.id);
   const isBeingDragged = draggedItem?.id === folder.id;
   const isDropTargetIndicatorAbove = dragOverInfo?.parentId === folder.parentId && dragOverInfo?.index === folder.index;
@@ -117,7 +153,7 @@ const BookmarkFolder: React.FC<BookmarkFolderProps> = (props) => {
   const partingClass = partingDirection === 'up' ? '-translate-y-4' : partingDirection === 'down' ? 'translate-y-4' : '';
 
   const folderIconAndTitle = (
-    <div className="flex items-center flex-grow cursor-pointer min-w-0" onClick={() => onToggleFolder(folder.id)}>
+    <div className="flex items-center flex-grow cursor-pointer min-w-0" onClick={() => !isEditing && onToggleFolder(folder.id)}>
         <ChevronRightIcon className={`w-5 h-5 text-slate-500 dark:text-slate-400 mr-2 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
         <div className="relative mr-3 flex-shrink-0">
             <FolderIcon className="w-7 h-7 text-blue-500 dark:text-blue-400" />
@@ -129,7 +165,20 @@ const BookmarkFolder: React.FC<BookmarkFolderProps> = (props) => {
                 </span>
             )}
         </div>
-        <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-300 truncate">{folder.title}</h2>
+        {isEditing ? (
+            <input
+                ref={inputRef}
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onBlur={handleRename}
+                onKeyDown={handleKeyDown}
+                className="text-lg font-semibold bg-transparent text-slate-700 dark:text-slate-300 w-full border-b-2 border-blue-500 focus:outline-none"
+                onClick={(e) => e.stopPropagation()}
+            />
+        ) : (
+            <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-300 truncate">{folder.title}</h2>
+        )}
     </div>
   );
 
@@ -148,7 +197,7 @@ const BookmarkFolder: React.FC<BookmarkFolderProps> = (props) => {
                     {folderIconAndTitle}
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity ml-2">
                         {folder.parentId && folder.parentId !== 'root________' && (
-                            <FolderActionsMenu onDelete={() => onDeleteFolder(folder)} />
+                            <FolderActionsMenu onDelete={() => onDeleteFolder(folder)} onRename={() => setIsEditing(true)} />
                         )}
                     </div>
                 </div>
@@ -192,7 +241,7 @@ const BookmarkFolder: React.FC<BookmarkFolderProps> = (props) => {
             </div>
             <div className="opacity-0 group-hover:opacity-100 transition-opacity ml-2">
                 {folder.parentId && folder.parentId !== 'root________' && (
-                    <FolderActionsMenu onDelete={() => onDeleteFolder(folder)} />
+                    <FolderActionsMenu onDelete={() => onDeleteFolder(folder)} onRename={() => setIsEditing(true)} />
                 )}
             </div>
         </div>

@@ -32,7 +32,7 @@ const CreateBookmarkModal: React.FC<CreateBookmarkModalProps> = ({ onClose, onCr
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSaving) return;
+    if (isSaving || !title.trim() || !url.trim()) return;
     setIsSaving(true);
     
     // Auto-prepend protocol if missing
@@ -44,7 +44,7 @@ const CreateBookmarkModal: React.FC<CreateBookmarkModalProps> = ({ onClose, onCr
     const tagArray = tags.split(',').map(t => t.trim()).filter(Boolean);
     await onCreate({
         parentId,
-        title,
+        title: title.trim(),
         url: sanitizedUrl,
         tags: tagArray,
         keyword: keyword.trim()
@@ -105,4 +105,18 @@ const CreateBookmarkModal: React.FC<CreateBookmarkModalProps> = ({ onClose, onCr
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-md bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition" disabled={isSaving}>
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-500 transition disabled:bg-blue-400 dark:disabled:bg-blue-800 disabled:cursor-not-allowed flex
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-500 transition disabled:bg-blue-400 dark:disabled:bg-blue-800 disabled:cursor-not-allowed flex items-center"
+              disabled={isSaving || !title.trim() || !url.trim()}
+            >
+              {isSaving ? 'Creating...' : 'Create Bookmark'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default CreateBookmarkModal;

@@ -27,6 +27,7 @@ interface BookmarkListProps {
   onEdit: (bookmark: BookmarkItem) => void;
   onDelete: (id: string) => void;
   onDeleteFolder: (folder: FolderItem) => void;
+  onRenameFolder: (folderId: string, newTitle: string) => void;
   onViewSafetyReport: (bookmark: BookmarkItem) => void;
   onHoverStart: (url: string, element: HTMLElement) => void;
   onHoverEnd: () => void;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { BookmarkNode, BookmarkItem, FolderItem } from './types';
-import { getAllBookmarks, updateBookmark, deleteBookmark, checkLinkStatus, checkLinkSafety, createFolder, deleteFolder, moveBookmarkOrFolder, createBookmark } from './services/bookmarkService';
+import { getAllBookmarks, updateBookmark, deleteBookmark, checkLinkStatus, checkLinkSafety, createFolder, deleteFolder, moveBookmarkOrFolder, createBookmark, updateFolder } from './services/bookmarkService';
 import EditModal from './components/EditModal';
 import SitePreview from './components/SitePreview';
 import BookmarkList from './components/BookmarkList';
@@ -13,6 +13,7 @@ import DuplicateBookmarksModal from './components/DuplicateBookmarksModal';
 import DuplicateWarningModal from './components/DuplicateWarningModal';
 import FloatingUndoButton from './components/FloatingUndoButton';
 import { SearchIcon, LoaderIcon, GridIcon, ListIcon, ZoomInIcon, ZoomOutIcon, EnhancedListIcon, FilterIcon, CheckCircleIcon, XCircleIcon, ShieldCheckIcon, ShieldAlertIcon, XIcon, MenuIcon, SunIcon, MoonIcon, ColumnsIcon, CopyIcon, AlertTriangleIcon, FolderPlusIcon, BookmarkPlusIcon } from './components/Icons';
+import Logo from './components/Logo';
 
 
 const gridClassMap: { [key: number]: string } = {
@@ -40,11 +41,13 @@ type DragOverInfo = {
     index: number;
 } | null;
 
+type UndoableItem = BookmarkItem | FolderItem;
+
 type UndoAction =
-  | { type: 'delete'; payload: { items: (BookmarkItem | FolderItem)[], originalIndices: Map<string, number> } }
-  | { type: 'edit'; payload: { previousState: BookmarkItem; currentState: BookmarkItem } }
+  | { type: 'delete'; payload: { items: UndoableItem[], originalIndices: Map<string, number> } }
+  | { type: 'edit'; payload: { previousState: UndoableItem; currentState: UndoableItem } }
   | { type: 'move'; payload: { item: BookmarkNode; from: { parentId: string; index: number }; to: { parentId: string; index: number } } }
-  | { type: 'create'; payload: { item: FolderItem | BookmarkItem } };
+  | { type: 'create'; payload: { item: UndoableItem } };
 
 
 // --- Pure helper functions for immutable tree manipulation ---
@@ -453,6 +456,31 @@ export default function App() {
     }
   };
 
+  const handleRenameFolder = async (folderId: string, newTitle: string) => {
+    const originalFolder = findNodeById(bookmarkTree, folderId) as FolderItem;
+    if (!originalFolder || originalFolder.title === newTitle) {
+      return;
+    }
+    
+    const renamedFolder = { ...originalFolder, title: newTitle };
+
+    setBookmarkTree(currentTree => {
+        const newTree = findAndUpdateNode(currentTree, folderId, () => renamedFolder);
+        setFolderMap(buildFolderMap(newTree)); // Rebuild map after optimistic update
+        return newTree;
+    });
+
+    setUndoHistory(prev => [...prev, { type: 'edit', payload: { previousState: originalFolder, currentState: renamedFolder } }]);
+    
+    try {
+      await updateFolder(folderId, newTitle);
+    } catch (err) {
+      console.error("Error renaming folder:", err);
+      setError("Failed to rename folder. Please undo or reload.");
+      setBookmarkTree(currentTree => findAndUpdateNode(currentTree, folderId, () => originalFolder));
+    }
+  };
+
   const isAncestor = useCallback((draggedId: string, potentialParentId: string): boolean => {
     if (!draggedId || !potentialParentId) return false;
     let currentNode = findNodeById(bookmarkTree, potentialParentId);
@@ -505,11 +533,19 @@ export default function App() {
                     else await createBookmark({ parentId: item.parentId!, index: originalIndices.get(item.id), title: item.title, url: item.url, tags: item.tags, keyword: item.keyword });
                 }
                 break;
-            case 'edit':
+            case 'edit': {
                 const { previousState } = lastAction.payload;
-                setBookmarkTree(currentTree => findAndUpdateNode(currentTree, previousState.id, () => previousState));
-                await updateBookmark(previousState.id, { title: previousState.title, url: previousState.url, tags: previousState.tags, keyword: previousState.keyword });
+                const newTreeAfterUndo = findAndUpdateNode(bookmarkTree, previousState.id, () => previousState);
+                setBookmarkTree(newTreeAfterUndo);
+                setFolderMap(buildFolderMap(newTreeAfterUndo));
+
+                if (previousState.type === 'bookmark') {
+                    await updateBookmark(previousState.id, { title: previousState.title, url: previousState.url, tags: previousState.tags, keyword: previousState.keyword });
+                } else if (previousState.type === 'folder') {
+                    await updateFolder(previousState.id, previousState.title);
+                }
                 break;
+            }
             case 'move':
                 const { item, from } = lastAction.payload;
                 setBookmarkTree(currentTree => {
@@ -545,8 +581,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 dark:bg-slate-900 p-4 sm:p-6 lg:p-8 selection:bg-blue-500/30">
       <div className="max-w-7xl mx-auto">
         <header className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Bookmark Manager Zero</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2">A modern interface for your native Firefox bookmarks.</p>
+          <Logo />
         </header>
 
         <div className="sticky top-0 z-20 bg-slate-100/80 dark:bg-slate-900/80 backdrop-blur-sm py-4 mb-6">
@@ -670,6 +705,7 @@ export default function App() {
               if (node?.type === 'bookmark') setDeletingBookmark(node);
             }}
             onDeleteFolder={handleDeleteFolder}
+            onRenameFolder={handleRenameFolder}
             onViewSafetyReport={(bm) => setViewingSafetyReport(bm)}
             onHoverStart={(url, element) => setHoveredBookmark({ url, element })}
             onHoverEnd={() => setHoveredBookmark(null)}
