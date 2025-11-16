@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
+import type { BookmarkItem, FolderItem } from '../types';
 
 interface UndoToastProps {
-  bookmarkTitle: string;
+  item: BookmarkItem | FolderItem;
+  count: number;
   onUndo: () => void;
-  onTimeout: () => void;
+  onTimeout: (isImmediate?: boolean) => void;
 }
 
 const UNDO_TIMEOUT = 3000; // 3 seconds
 
-const UndoToast: React.FC<UndoToastProps> = ({ bookmarkTitle, onUndo, onTimeout }) => {
+const UndoToast: React.FC<UndoToastProps> = ({ item, count, onUndo, onTimeout }) => {
   const [visible, setVisible] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -22,7 +24,7 @@ const UndoToast: React.FC<UndoToastProps> = ({ bookmarkTitle, onUndo, onTimeout 
     timeoutRef.current = setTimeout(() => {
       setVisible(false);
       // Wait for fade-out animation before calling timeout
-      setTimeout(onTimeout, 300);
+      setTimeout(() => onTimeout(false), 300);
     }, UNDO_TIMEOUT);
 
     return () => {
@@ -42,15 +44,25 @@ const UndoToast: React.FC<UndoToastProps> = ({ bookmarkTitle, onUndo, onTimeout 
     setTimeout(onUndo, 300);
   };
 
+  const getMessage = () => {
+    if (count > 1) {
+      return <>Deleted <strong className="font-semibold text-slate-900 dark:text-slate-100">{count}</strong> items.</>;
+    }
+    if (item.type === 'folder') {
+      return <>Deleted folder "<strong className="font-semibold text-slate-900 dark:text-slate-100 truncate">{item.title}</strong>".</>;
+    }
+    return <>Deleted "<strong className="font-semibold text-slate-900 dark:text-slate-100 truncate">{item.title}</strong>".</>;
+  };
+
   return (
     <div 
-      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-md p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl flex items-center justify-between transition-all duration-300 ease-in-out ${visible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}
+      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] w-full max-w-md p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl flex items-center justify-between transition-all duration-300 ease-in-out ${visible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}
       role="alert"
       aria-live="assertive"
     >
       <div className="flex-grow pr-4 overflow-hidden">
         <p className="text-sm text-slate-700 dark:text-slate-300">
-          Deleted "<strong className="font-semibold text-slate-900 dark:text-slate-100 truncate">{bookmarkTitle}</strong>".
+          {getMessage()}
         </p>
         <div className="relative w-full h-1 bg-slate-200 dark:bg-slate-700/50 mt-2 rounded-full overflow-hidden">
             <div 

@@ -59,6 +59,31 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // Required to indicate an asynchronous response.
   }
+  
+  if (request.action === "getPageContent") {
+    fetch(request.url)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.text();
+      })
+      .then(text => sendResponse({ content: text }))
+      .catch(error => sendResponse({ error: error.message }));
+    return true; // Required for async response
+  }
+
+  if (request.action === "openReaderView") {
+    const readerUrl = browser.runtime.getURL(`reader.html?url=${encodeURIComponent(request.url)}`);
+    browser.tabs.create({ url: readerUrl });
+    // This message doesn't need a response.
+  }
+
+  if (request.action === "openPrintView") {
+    const printUrl = browser.runtime.getURL(`print.html?url=${encodeURIComponent(request.url)}`);
+    browser.tabs.create({ url: printUrl });
+    // This message doesn't need a response.
+  }
 });
 
 

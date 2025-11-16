@@ -25,8 +25,15 @@ const EditModal: React.FC<EditModalProps> = ({ bookmark, onClose, onSave }) => {
     e.preventDefault();
     if (isSaving) return;
     setIsSaving(true);
+    
+    // Auto-prepend protocol if missing
+    let sanitizedUrl = url.trim();
+    if (sanitizedUrl && !/^([a-z][a-z0-9+\-.]*:)?\/\//i.test(sanitizedUrl)) {
+      sanitizedUrl = 'https://' + sanitizedUrl;
+    }
+
     const tagArray = tags.split(',').map(t => t.trim()).filter(Boolean);
-    await onSave(bookmark.id, title, url, tagArray, keyword.trim());
+    await onSave(bookmark.id, title, sanitizedUrl, tagArray, keyword.trim());
     setIsSaving(false);
   };
 
@@ -62,10 +69,11 @@ const EditModal: React.FC<EditModalProps> = ({ bookmark, onClose, onSave }) => {
               URL
             </label>
             <input
-              type="url"
+              type="text"
               id="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              placeholder="e.g., example.com"
               className="w-full bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md py-2 px-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
               required
             />

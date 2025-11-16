@@ -34,10 +34,16 @@
     <script type="module" src="/index.tsx"></script>
 
     <!-- 
-      Tailwind CDN Safelist for dynamic classes.
-      This hidden div contains all possible grid column classes that can be dynamically
-      applied by React. This ensures the JIT compiler generates the necessary CSS.
+      Exhaustive Tailwind CDN Safelist for dynamic grid classes.
+      This hidden div contains all possible grid column classes to ensure the JIT compiler generates the necessary CSS.
     -->
-    <div class="hidden grid-cols-1 md:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 md:grid-cols-3 xl:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"></div>
+    <div class="hidden">
+      <span class="grid-cols-1 sm:grid-cols-1 md:grid-cols-1 lg:grid-cols-1 xl:grid-cols-1"></span>
+      <span class="grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2"></span>
+      <span class="grid-cols-3 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3"></span>
+      <span class="grid-cols-4 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4"></span>
+      <span class="grid-cols-5 sm:grid-cols-5 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-5"></span>
+      <span class="grid-cols-6 sm:grid-cols-6 md:grid-cols-6 lg:grid-cols-6 xl:grid-cols-6"></span>
+    </div>
   </body>
 </html>

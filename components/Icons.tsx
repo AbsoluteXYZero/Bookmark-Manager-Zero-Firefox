@@ -75,12 +75,12 @@ export const ListIcon: React.FC<IconProps> = ({ title, ...props }) => (
 export const EnhancedListIcon: React.FC<IconProps> = ({ title, ...props }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
         {title && <title>{title}</title>}
-        <line x1="3" y1="12" x2="3.01" y2="12" />
-        <line x1="3" y1="6" x2="3.01" y2="6" />
-        <line x1="3" y1="18" x2="3.01" y2="18" />
-        <line x1="7" y1="6" x2="21" y2="6" />
-        <line x1="7" y1="18" x2="15" y2="18" />
-        <line x1="7" y1="12" x2="17" y2="12" />
+        <line x1="8" y1="6" x2="21" y2="6"></line>
+        <line x1="8" y1="9" x2="17" y2="9"></line>
+        <line x1="8" y1="14" x2="21" y2="14"></line>
+        <line x1="8" y1="17" x2="17" y2="17"></line>
+        <line x1="3" y1="7.5" x2="3.01" y2="7.5"></line>
+        <line x1="3" y1="15.5" x2="3.01" y2="15.5"></line>
     </svg>
 );
 
@@ -114,6 +114,15 @@ export const FolderIcon: React.FC<IconProps> = ({ title, ...props }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
         {title && <title>{title}</title>}
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+    </svg>
+);
+
+export const FolderPlusIcon: React.FC<IconProps> = ({ title, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        {title && <title>{title}</title>}
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        <line x1="12" y1="11" x2="12" y2="17"></line>
+        <line x1="9" y1="14" x2="15" y2="14"></line>
     </svg>
 );
 
@@ -218,5 +227,71 @@ export const ColumnsIcon: React.FC<IconProps> = ({ title, ...props }) => (
         {title && <title>{title}</title>}
         <rect width="18" height="18" x="3" y="3" rx="2"></rect>
         <path d="M12 3v18"></path>
+    </svg>
+);
+
+export const CopyIcon: React.FC<IconProps> = ({ title, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        {title && <title>{title}</title>}
+        <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+    </svg>
+);
+
+export const AlertTriangleIcon: React.FC<IconProps> = ({ title, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        {title && <title>{title}</title>}
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+    </svg>
+);
+
+export const GripVerticalIcon: React.FC<IconProps> = ({ title, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        {title && <title>{title}</title>}
+        <circle cx="9" cy="12" r="1"></circle>
+        <circle cx="9" cy="5" r="1"></circle>
+        <circle cx="9" cy="19" r="1"></circle>
+        <circle cx="15" cy="12" r="1"></circle>
+        <circle cx="15" cy="5" r="1"></circle>
+        <circle cx="15" cy="19" r="1"></circle>
+    </svg>
+);
+
+export const UndoIcon: React.FC<IconProps> = ({ title, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        {title && <title>{title}</title>}
+        <path d="M3 7v6h6"></path>
+        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+    </svg>
+);
+
+export const TextOnlyIcon: React.FC<IconProps> = ({ title, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        {title && <title>{title}</title>}
+        <path d="M17 6.1H3" />
+        <path d="M21 12.1H3" />
+        <path d="M15.1 18.1H3" />
+    </svg>
+);
+
+export const PdfIcon: React.FC<IconProps> = ({ title, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        {title && <title>{title}</title>}
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <path d="M9 14h3a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H9v7" />
+        <path d="M12 11.5v-3" />
+        <path d="M16 14h-3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3v7" />
+    </svg>
+);
+
+export const BookmarkPlusIcon: React.FC<IconProps> = ({ title, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        {title && <title>{title}</title>}
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
+        <line x1="12" y1="7" x2="12" y2="13"></line>
+        <line x1="9" y1="10" x2="15" y2="10"></line>
     </svg>
 );

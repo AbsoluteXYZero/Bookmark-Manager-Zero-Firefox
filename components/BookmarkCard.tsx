@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import type { BookmarkItem, Bookmark } from '../types';
-import { EditIcon, DeleteIcon, LinkIcon, LoaderIcon, ShieldIcon, KebabMenuIcon } from './Icons';
+import type { BookmarkItem, Bookmark, BookmarkNode } from '../types';
+import { EditIcon, DeleteIcon, LinkIcon, LoaderIcon, ShieldIcon, KebabMenuIcon, TextOnlyIcon, PdfIcon } from './Icons';
 import Tooltip from './Tooltip';
 
 type VisibleFields = {
@@ -18,11 +18,18 @@ interface BookmarkCardProps {
   depth: number;
   parentTitle?: string;
   visibleFields: VisibleFields;
+  draggedItem: BookmarkNode | null;
+  dragOverInfo: { parentId: string; index: number } | null;
+  partingDirection: 'up' | 'down' | null;
   onEdit: () => void;
   onDelete: () => void;
   onViewSafetyReport: () => void;
   onHoverStart: (event: React.MouseEvent<HTMLDivElement>) => void;
   onHoverEnd: () => void;
+  onDragStart: (item: BookmarkNode) => void;
+  onDragEnd: () => void;
+  onDragOver: (info: { parentId: string, index: number }) => void;
+  onDrop: () => void;
 }
 
 const getStatusInfo = (status: Bookmark['status']) => {
@@ -95,7 +102,9 @@ const ActionsMenu: React.FC<{
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
-}> = ({ isOpen, onToggle, onClose, onEdit, onDelete }) => {
+  onOpenAsTextOnly: () => void;
+  onDownloadAsPdf: () => void;
+}> = ({ isOpen, onToggle, onClose, onEdit, onDelete, onOpenAsTextOnly, onDownloadAsPdf }) => {
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -115,6 +124,8 @@ const ActionsMenu: React.FC<{
 
     const menuItems = [
         { label: 'Edit', icon: EditIcon, action: onEdit },
+        { label: 'Open as Text-Only', icon: TextOnlyIcon, action: onOpenAsTextOnly },
+        { label: 'Download as PDF', icon: PdfIcon, action: onDownloadAsPdf },
         { label: 'Delete', icon: DeleteIcon, action: onDelete, isDestructive: true },
     ];
 
@@ -155,12 +166,25 @@ const ActionsMenu: React.FC<{
 };
 
 
-const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, viewMode, zoomIndex, depth, parentTitle, visibleFields, onEdit, onDelete, onViewSafetyReport, onHoverStart, onHoverEnd }) => {
+const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, viewMode, zoomIndex, depth, parentTitle, visibleFields, draggedItem, dragOverInfo, partingDirection, onEdit, onDelete, onViewSafetyReport, onHoverStart, onHoverEnd, onDragStart, onDragEnd, onDragOver, onDrop }) => {
   const domain = new URL(bookmark.url).hostname;
   const faviconUrl = `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${bookmark.url}&size=64`;
   const [isListHovered, setIsListHovered] = useState(false);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  
+  const isBeingDragged = draggedItem?.id === bookmark.id;
+  const isDropTargetAbove = dragOverInfo?.parentId === bookmark.parentId && dragOverInfo?.index === bookmark.index;
+
+  const handleDragOver = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (cardRef.current && !isBeingDragged) {
+        const rect = cardRef.current.getBoundingClientRect();
+        const isTopHalf = e.clientY < rect.top + rect.height / 2;
+        const newIndex = isTopHalf ? (bookmark.index ?? 0) : (bookmark.index ?? 0) + 1;
+        onDragOver({ parentId: bookmark.parentId || 'root-id', index: newIndex });
+    }
+  };
 
   useEffect(() => {
     if (cardRef.current) {
@@ -173,6 +197,34 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, viewMode, zoomInd
 
   const handleEditAction = () => { onEdit(); setIsActionsMenuOpen(false); };
   const handleDeleteAction = () => { onDelete(); setIsActionsMenuOpen(false); };
+  
+  const handleOpenAsTextOnly = () => {
+    const browser = (window as any).browser;
+    if (browser && browser.runtime && browser.runtime.sendMessage) {
+        browser.runtime.sendMessage({
+            action: "openReaderView",
+            url: bookmark.url
+        });
+    } else {
+        console.error("Browser APIs not available. Using fallback window.open(). Note: This will only work correctly inside a real extension environment.");
+        window.open(`reader.html?url=${encodeURIComponent(bookmark.url)}`, '_blank');
+    }
+    setIsActionsMenuOpen(false);
+  };
+
+  const handleDownloadAsPdf = () => {
+    const browser = (window as any).browser;
+    if (browser && browser.runtime && browser.runtime.sendMessage) {
+        browser.runtime.sendMessage({
+            action: "openPrintView",
+            url: bookmark.url
+        });
+    } else {
+        console.warn("Browser APIs not available. PDF download is only available in a real extension environment.");
+        alert("PDF download is only available when running as a real extension.");
+    }
+    setIsActionsMenuOpen(false);
+  };
 
   const handleHoverStart = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isActionsMenuOpen) {
@@ -183,7 +235,6 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, viewMode, zoomInd
   const toggleActionsMenu = () => {
     const willOpen = !isActionsMenuOpen;
     if (willOpen) {
-        // If the menu is about to open, hide the grid preview
         onHoverEnd();
     }
     setIsActionsMenuOpen(willOpen);
@@ -193,185 +244,215 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, viewMode, zoomInd
   if (viewMode === 'list' || viewMode === 'enhanced-list') {
     const isEnhanced = viewMode === 'enhanced-list';
     const listZoomStyles = [
-      { height: 'h-12', hoverHeight: 'h-40', title: 'text-xs', meta: 'text-xs' },
+      { height: 'h-9', hoverHeight: 'h-32', title: 'text-[11px]', meta: 'text-[10px]' },
+      { height: 'h-10', hoverHeight: 'h-36', title: 'text-xs', meta: 'text-[11px]' },
+      { height: 'h-12', hoverHeight: 'h-40', title: 'text-xs', meta: 'text-xs' }, 
       { height: 'h-14', hoverHeight: 'h-48', title: 'text-sm', meta: 'text-xs' },
-      { height: 'h-16', hoverHeight: 'h-56', title: 'text-base', meta: 'text-sm' },
+      { height: 'h-16', hoverHeight: 'h-56', title: 'text-base', meta: 'text-sm' }, 
       { height: 'h-20', hoverHeight: 'h-64', title: 'text-lg', meta: 'text-sm' },
     ];
     const enhancedListZoomStyles = [
+      { minHeight: 'min-h-20', hoverHeight: 'h-32', padding: 'p-2', title: 'text-[11px]', url: 'text-[10px]', meta: 'text-[9px]' },
+      { minHeight: 'min-h-24', hoverHeight: 'h-36', padding: 'p-2', title: 'text-xs', url: 'text-[11px]', meta: 'text-[10px]' },
       { minHeight: 'min-h-28', hoverHeight: 'h-40', padding: 'p-3', title: 'text-sm', url: 'text-xs', meta: 'text-xs' },
       { minHeight: 'min-h-32', hoverHeight: 'h-48', padding: 'p-4', title: 'text-base', url: 'text-xs', meta: 'text-xs' },
       { minHeight: 'min-h-36', hoverHeight: 'h-56', padding: 'p-4', title: 'text-lg', url: 'text-sm', meta: 'text-sm' },
       { minHeight: 'min-h-40', hoverHeight: 'h-64', padding: 'p-5', title: 'text-xl', url: 'text-base', meta: 'text-base' },
     ];
+    
     const currentStyle = isEnhanced ? enhancedListZoomStyles[zoomIndex] : listZoomStyles[zoomIndex];
-    // FIX: Cast `currentStyle` to the correct type to access the `height` property, as the union type doesn't guarantee its existence.
-    const heightClass = isEnhanced ? '' : (isListHovered ? currentStyle.hoverHeight : (currentStyle as { height: string }).height);
-    const minHeightStyle = isEnhanced ? { minHeight: (currentStyle as any).minHeight.replace('min-h-','') } : {};
-
+    const heightClass = isListHovered ? currentStyle.hoverHeight : ('minHeight' in currentStyle ? currentStyle.minHeight : currentStyle.height);
+    const partingClass = partingDirection === 'up' ? '-translate-y-4' : partingDirection === 'down' ? 'translate-y-4' : '';
 
     return (
-      <div 
-        ref={cardRef}
-        className="group relative flex items-center"
-        style={indentationStyle}
-        data-menu-open={isActionsMenuOpen}
-      >
-        <div
-          className={`flex-grow min-w-0 flex items-stretch bg-white dark:bg-slate-800 border border-transparent hover:border-blue-500/50 rounded-lg shadow-md dark:shadow-lg transition-all duration-300 ease-in-out overflow-hidden ${heightClass} ${isListHovered && isEnhanced ? (currentStyle as any).hoverHeight : ''}`}
-          style={minHeightStyle}
-          onMouseEnter={(e) => {
-            setIsListHovered(true);
-            if (isEnhanced && !isActionsMenuOpen) {
-              onHoverStart(e);
-            }
-          }}
-          onMouseLeave={() => {
-            setIsListHovered(false);
-            onHoverEnd();
-          }}
+        <div 
+          className="relative py-2 -my-2" // Expands the vertical drop zone
+          onDragOver={handleDragOver}
+          onDrop={onDrop}
         >
-          {isEnhanced ? (
-             <div className={`flex-grow min-w-0 flex items-center ${(currentStyle as any).padding}`}>
-              <div className="flex-grow min-w-0 flex items-start">
-                  <div className="flex items-center flex-shrink-0 pt-1.5 space-x-3">
+            {isDropTargetAbove && <div className="absolute top-0 left-0 w-full h-1 bg-blue-500 rounded-full z-20 -mt-0.5"></div>}
+            <div
+                draggable="true"
+                onDragStart={() => onDragStart(bookmark)}
+                onDragEnd={onDragEnd}
+                className={`group relative flex items-center transition-all duration-300 cursor-grab ${partingClass} ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
+                style={indentationStyle}
+                data-menu-open={isActionsMenuOpen}
+            >
+                <div
+                ref={cardRef}
+                className={`flex-grow min-w-0 flex items-stretch bg-white dark:bg-slate-800 border border-transparent hover:border-blue-500/50 rounded-lg shadow-md dark:shadow-lg transition-all duration-300 ease-in-out overflow-hidden ${heightClass}`}
+                onMouseEnter={(e) => {
+                    setIsListHovered(true);
+                    if (isEnhanced && !isActionsMenuOpen) {
+                        onHoverStart(e);
+                    }
+                }}
+                onMouseLeave={() => {
+                    setIsListHovered(false);
+                    onHoverEnd();
+                }}
+                >
+                {'minHeight' in currentStyle ? (
+                    <div className={`flex-grow min-w-0 flex items-center ${currentStyle.padding}`}>
+                    <div className="flex-grow min-w-0 flex items-start">
+                        <div className="flex items-center flex-shrink-0 pt-1.5 space-x-3">
+                            <Tooltip content={getStatusInfo(bookmark.status).text}>
+                            <StatusIndicator status={bookmark.status} />
+                            </Tooltip>
+                            <Tooltip content={getSafetyInfo(bookmark.safetyStatus).text}>
+                            <button onClick={onViewSafetyReport} className="cursor-pointer">
+                                <SafetyIndicator status={bookmark.safetyStatus} />
+                            </button>
+                            </Tooltip>
+                        </div>
+                        <div className="flex-grow min-w-0 ml-4">
+                            <a href={bookmark.url} target="_blank" rel="noopener noreferrer">
+                            <h3 className={`${currentStyle.title} font-semibold text-slate-800 dark:text-slate-100`} title={bookmark.title}>
+                                {bookmark.title}
+                            </h3>
+                            </a>
+                            {visibleFields.url && (
+                            <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className={`${currentStyle.url} text-slate-500 dark:text-slate-400 truncate block mt-1`} title={bookmark.url}>
+                                {bookmark.url}
+                            </a>
+                            )}
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+                            {visibleFields.dateAdded && formattedDate && ( <p className={`${currentStyle.meta} text-slate-600 dark:text-slate-500`} title="Date Added"><span className="font-semibold text-slate-700 dark:text-slate-400">Added:</span> {formattedDate}</p> )}
+                            {visibleFields.keyword && bookmark.keyword && ( <p className={`${currentStyle.meta} text-slate-600 dark:text-slate-500 flex items-center`} title="Keyword"><span className="font-semibold text-slate-700 dark:text-slate-400">Keyword:</span> <span className="ml-1.5 bg-slate-200 dark:bg-slate-700/50 px-2 py-0.5 rounded">{bookmark.keyword}</span></p> )}
+                            {visibleFields.folder && parentTitle && ( <p className={`${currentStyle.meta} text-slate-600 dark:text-slate-500`} title="Parent Folder"><span className="font-semibold text-slate-700 dark:text-slate-400">Folder:</span> <span className="truncate">{parentTitle}</span></p> )}
+                            </div>
+                            {visibleFields.tags && bookmark.tags.length > 0 && ( <div className="flex flex-wrap gap-1.5 mt-3">{bookmark.tags.map(tag => ( <span key={tag} className="px-2 py-0.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full">{tag}</span>))}</div> )}
+                        </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-3 flex-grow min-w-0 p-3 pr-0 transition-all duration-300">
                     <Tooltip content={getStatusInfo(bookmark.status).text}>
-                      <StatusIndicator status={bookmark.status} />
+                        <StatusIndicator status={bookmark.status} />
                     </Tooltip>
                     <Tooltip content={getSafetyInfo(bookmark.safetyStatus).text}>
-                      <button onClick={onViewSafetyReport} className="cursor-pointer">
+                        <button onClick={onViewSafetyReport} className="cursor-pointer">
                         <SafetyIndicator status={bookmark.safetyStatus} />
-                      </button>
+                        </button>
                     </Tooltip>
-                  </div>
-                  <div className="flex-grow min-w-0 ml-4">
-                    <a href={bookmark.url} target="_blank" rel="noopener noreferrer">
-                      <h3 className={`${currentStyle.title} font-semibold text-slate-800 dark:text-slate-100`} title={bookmark.title}>
+                    <img src={faviconUrl} alt="" className="w-5 h-5 rounded-sm object-contain flex-shrink-0" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                    <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="truncate flex-grow">
+                        <h3 className={`${currentStyle.title} font-semibold text-slate-800 dark:text-slate-100 truncate`} title={bookmark.title}>
                         {bookmark.title}
-                      </h3>
+                        </h3>
                     </a>
-                    {visibleFields.url && (
-                      <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className={`${(currentStyle as any).url} text-slate-500 dark:text-slate-400 truncate block mt-1`} title={bookmark.url}>
-                        {bookmark.url}
-                      </a>
-                    )}
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
-                       {visibleFields.dateAdded && formattedDate && ( <p className={`${currentStyle.meta} text-slate-600 dark:text-slate-500`} title="Date Added"><span className="font-semibold text-slate-700 dark:text-slate-400">Added:</span> {formattedDate}</p> )}
-                       {visibleFields.keyword && bookmark.keyword && ( <p className={`${currentStyle.meta} text-slate-600 dark:text-slate-500 flex items-center`} title="Keyword"><span className="font-semibold text-slate-700 dark:text-slate-400">Keyword:</span> <span className="ml-1.5 bg-slate-200 dark:bg-slate-700/50 px-2 py-0.5 rounded">{bookmark.keyword}</span></p> )}
-                       {visibleFields.folder && parentTitle && ( <p className={`${currentStyle.meta} text-slate-600 dark:text-slate-500`} title="Parent Folder"><span className="font-semibold text-slate-700 dark:text-slate-400">Folder:</span> <span className="truncate">{parentTitle}</span></p> )}
+                    {visibleFields.tags && bookmark.tags.length > 0 && ( <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">{bookmark.tags.slice(0, 1).map(tag => ( <span key={tag} className="px-2 py-0.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full">{tag}</span>))}</div>)}
+                    <div className="flex-shrink-0 hidden md:flex items-center gap-3 ml-4">
+                        {visibleFields.dateAdded && formattedDate && <span className={`${currentStyle.meta} text-slate-500 dark:text-slate-500`}>{formattedDate}</span>}
+                        {visibleFields.url && ( <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className={`${currentStyle.meta} text-slate-500 dark:text-slate-400 truncate`} title={bookmark.url}>{domain}</a> )}
                     </div>
-                    {visibleFields.tags && bookmark.tags.length > 0 && ( <div className="flex flex-wrap gap-1.5 mt-3">{bookmark.tags.map(tag => ( <span key={tag} className="px-2 py-0.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full">{tag}</span>))}</div> )}
-                  </div>
+                    </div>
+                )}
+                <div className={`flex-shrink-0 transition-all duration-300 ease-in-out ${isListHovered ? 'w-56' : 'w-0'}`}>
+                    {(isListHovered && (viewMode === 'list' || (isEnhanced && !isActionsMenuOpen))) && <InlineSitePreview url={bookmark.url} />}
+                </div>
+                </div>
+                <div className="flex-shrink-0 flex items-center p-2">
+                    <ActionsMenu 
+                        isOpen={isActionsMenuOpen}
+                        onToggle={toggleActionsMenu}
+                        onClose={() => setIsActionsMenuOpen(false)}
+                        onEdit={handleEditAction}
+                        onDelete={handleDeleteAction}
+                        onOpenAsTextOnly={handleOpenAsTextOnly}
+                        onDownloadAsPdf={handleDownloadAsPdf}
+                    />
                 </div>
             </div>
-          ) : (
-            <div className="flex items-center gap-3 flex-grow min-w-0 p-3 pr-0 transition-all duration-300">
-              <Tooltip content={getStatusInfo(bookmark.status).text}>
-                <StatusIndicator status={bookmark.status} />
-              </Tooltip>
-              <Tooltip content={getSafetyInfo(bookmark.safetyStatus).text}>
-                <button onClick={onViewSafetyReport} className="cursor-pointer">
-                  <SafetyIndicator status={bookmark.safetyStatus} />
-                </button>
-              </Tooltip>
-              <img src={faviconUrl} alt="" className="w-5 h-5 rounded-sm object-contain flex-shrink-0" onError={(e) => (e.currentTarget.style.display = 'none')} />
-              <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="truncate flex-grow">
-                <h3 className={`${currentStyle.title} font-semibold text-slate-800 dark:text-slate-100 truncate`} title={bookmark.title}>
-                  {bookmark.title}
-                </h3>
-              </a>
-              {visibleFields.tags && bookmark.tags.length > 0 && ( <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">{bookmark.tags.slice(0, 1).map(tag => ( <span key={tag} className="px-2 py-0.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full">{tag}</span>))}</div>)}
-              <div className="flex-shrink-0 hidden md:flex items-center gap-3 ml-4">
-                  {visibleFields.dateAdded && formattedDate && <span className={`${currentStyle.meta} text-slate-500 dark:text-slate-500`}>{formattedDate}</span>}
-                  {visibleFields.url && ( <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className={`${currentStyle.meta} text-slate-500 dark:text-slate-400 truncate`} title={bookmark.url}>{domain}</a> )}
-              </div>
-            </div>
-          )}
-          <div className={`flex-shrink-0 transition-all duration-300 ease-in-out ${isListHovered ? 'w-56' : 'w-0'}`}>
-            {(isListHovered && (viewMode === 'list' || (isEnhanced && !isActionsMenuOpen))) && <InlineSitePreview url={bookmark.url} />}
-          </div>
         </div>
-        <div className="flex-shrink-0 flex items-center p-2">
-            <ActionsMenu 
-                isOpen={isActionsMenuOpen}
-                onToggle={toggleActionsMenu}
-                onClose={() => setIsActionsMenuOpen(false)}
-                onEdit={handleEditAction}
-                onDelete={handleDeleteAction}
-            />
-        </div>
-      </div>
     );
   }
 
   // Grid View
   return (
-    <div 
-      ref={cardRef}
-      className={`group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-md dark:shadow-lg transition-all duration-300 hover:shadow-blue-500/10 dark:hover:shadow-blue-500/20 hover:border-blue-500/50 flex flex-col ${isActionsMenuOpen ? 'z-20 overflow-visible' : 'overflow-hidden'}`}
-      onMouseEnter={handleHoverStart}
-      onMouseLeave={onHoverEnd}
-    >
-      <div className="p-4 flex-grow flex flex-col">
-        <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="block flex-grow">
-          <div className="flex items-start mb-3">
-             <img 
-              src={faviconUrl} 
-              alt=""
-              className="w-6 h-6 mr-3 mt-0.5 rounded-sm object-contain flex-shrink-0"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-            <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-tight" title={bookmark.title}>
-              {bookmark.title}
-            </h3>
+    <div className="relative">
+      {isDropTargetAbove && <div className="absolute top-0 left-0 w-full h-1 bg-blue-500 rounded-full z-10 -mt-0.5"></div>}
+      <div 
+        ref={cardRef}
+        draggable="true"
+        onDragStart={() => onDragStart(bookmark)}
+        onDragEnd={onDragEnd}
+        onDrop={onDrop}
+        onDragOver={(e) => e.preventDefault()}
+        className={`group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-md dark:shadow-lg transition-all duration-300 hover:shadow-blue-500/10 dark:hover:shadow-blue-500/20 hover:border-blue-500/50 flex flex-col ${isActionsMenuOpen ? 'z-20 overflow-visible' : 'overflow-hidden'} ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
+        onMouseLeave={onHoverEnd}
+        data-menu-open={isActionsMenuOpen}
+      >
+        <div 
+          className="p-4 flex-grow flex flex-col"
+          onMouseEnter={handleHoverStart}
+        >
+          <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="block flex-grow">
+            <div className="flex items-start mb-3">
+              <img 
+                src={faviconUrl} 
+                alt=""
+                className="w-6 h-6 mr-3 mt-0.5 rounded-sm object-contain flex-shrink-0"
+                onError={(e) => (e.currentTarget.style.display = 'none')}
+              />
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-tight" title={bookmark.title}>
+                {bookmark.title}
+              </h3>
+            </div>
+          </a>
+          
+          {visibleFields.tags && bookmark.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2 mb-1">
+              {bookmark.tags.slice(0, 3).map(tag => (
+                <span key={tag} className="px-2 py-0.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div 
+            className="mt-auto pt-2 space-y-2"
+          >
+              <div className="flex items-center gap-2">
+                <Tooltip content={getStatusInfo(bookmark.status).text}>
+                  <StatusIndicator status={bookmark.status} />
+                </Tooltip>
+                <Tooltip content={getSafetyInfo(bookmark.safetyStatus).text}>
+                  <button onClick={onViewSafetyReport} className="cursor-pointer">
+                    <SafetyIndicator status={bookmark.safetyStatus} />
+                  </button>
+                </Tooltip>
+                {visibleFields.url && (
+                  <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="flex items-center text-xs text-slate-500 dark:text-slate-400 min-w-0">
+                    <LinkIcon className="h-3 w-3 mr-1.5 flex-shrink-0" />
+                    <span className="truncate" title={bookmark.url}>{domain}</span>
+                  </a>
+                )}
+              </div>
+              {visibleFields.dateAdded && formattedDate && (
+                  <p className="text-xs text-slate-500 dark:text-slate-500">
+                      Added: {formattedDate}
+                  </p>
+              )}
           </div>
-        </a>
-        
-        {visibleFields.tags && bookmark.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2 mb-1">
-            {bookmark.tags.slice(0, 3).map(tag => (
-              <span key={tag} className="px-2 py-0.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full">
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
+        </div>
 
         <div 
-          className="mt-auto pt-2 space-y-2"
+          className="absolute top-2 right-2"
+          onMouseEnter={onHoverEnd}
         >
-            <div className="flex items-center gap-2">
-               <Tooltip content={getStatusInfo(bookmark.status).text}>
-                 <StatusIndicator status={bookmark.status} />
-               </Tooltip>
-               <Tooltip content={getSafetyInfo(bookmark.safetyStatus).text}>
-                 <button onClick={onViewSafetyReport} className="cursor-pointer">
-                   <SafetyIndicator status={bookmark.safetyStatus} />
-                 </button>
-               </Tooltip>
-               {visibleFields.url && (
-                <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="flex items-center text-xs text-slate-500 dark:text-slate-400 min-w-0">
-                  <LinkIcon className="h-3 w-3 mr-1.5 flex-shrink-0" />
-                  <span className="truncate" title={bookmark.url}>{domain}</span>
-                </a>
-               )}
-            </div>
-            {visibleFields.dateAdded && formattedDate && (
-                <p className="text-xs text-slate-500 dark:text-slate-500">
-                    Added: {formattedDate}
-                </p>
-            )}
+          <ActionsMenu
+              isOpen={isActionsMenuOpen}
+              onToggle={toggleActionsMenu}
+              onClose={() => setIsActionsMenuOpen(false)}
+              onEdit={handleEditAction}
+              onDelete={handleDeleteAction}
+              onOpenAsTextOnly={handleOpenAsTextOnly}
+              onDownloadAsPdf={handleDownloadAsPdf}
+          />
         </div>
-      </div>
-
-      <div className="absolute top-2 right-2">
-        <ActionsMenu
-            isOpen={isActionsMenuOpen}
-            onToggle={toggleActionsMenu}
-            onClose={() => setIsActionsMenuOpen(false)}
-            onEdit={handleEditAction}
-            onDelete={handleDeleteAction}
-        />
       </div>
     </div>
   );

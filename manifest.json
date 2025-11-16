@@ -23,5 +23,14 @@
   "icons": {
     "48": "icons/bookmark-48.png",
     "96": "icons/bookmark-96.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [ "reader.html", "vendor/Readability.js", "reader.tsx", "print.html", "print.tsx" ],
+      "matches": [ "<all_urls>" ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' https://cdn.tailwindcss.com https://aistudiocdn.com; object-src 'self'; img-src 'self' data: https://s.wordpress.com https://t1.gstatic.com;"
   }
 }
