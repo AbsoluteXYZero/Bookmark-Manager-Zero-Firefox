@@ -1715,7 +1715,7 @@ async function recheckBookmarkStatus(bookmarkId) {
   if (!bookmark || !bookmark.url) return;
 
   if (isPreviewMode) {
-    alert('🔄 Rechecking bookmark status...\n\nIn the real extension, this would check:\n• Link status (live/dead/parked)\n• VirusTotal safety scan');
+    alert('🔄 Rechecking bookmark status...\n\nIn the real extension, this would check:\n• Link status (live/dead/parked)\n• Security analysis (heuristic-based threat detection)');
   }
 
   // Update bookmark to show checking status
