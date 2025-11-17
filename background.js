@@ -402,21 +402,7 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const hostname = urlObj.hostname.toLowerCase();
 
         console.log(`[VT TEST] Manual test for ${hostname}`);
-
-        // WORKAROUND: Open VT homepage in background tab to establish cookies
-        console.log(`[VT TEST] Opening VT homepage to establish cookies...`);
-        const tab = await browser.tabs.create({
-          url: 'https://www.virustotal.com/',
-          active: false
-        });
-
-        // Wait 3 seconds for page to load and cookies to be set
-        console.log(`[VT TEST] Waiting 3 seconds for cookies...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        // Close the tab
-        await browser.tabs.remove(tab.id);
-        console.log(`[VT TEST] Cookies established, calling checkURLSafety...`);
+        console.log(`[VT TEST] Calling checkURLSafety...`);
 
         // Call the actual safety check function
         const result = await checkURLSafety(testUrl);
