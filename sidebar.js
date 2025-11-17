@@ -1437,11 +1437,9 @@ async function handleBookmarkAction(action, bookmark) {
         // In preview mode, just open normally
         window.open(bookmark.url, '_blank');
       } else {
-        // Use the built-in reader view from background.js
-        browser.runtime.sendMessage({
-          action: 'openReaderView',
-          url: bookmark.url
-        });
+        // Open the reader view directly
+        const readerUrl = browser.runtime.getURL(`reader.html?url=${encodeURIComponent(bookmark.url)}`);
+        browser.tabs.create({ url: readerUrl });
       }
       break;
 
