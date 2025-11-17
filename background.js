@@ -233,37 +233,51 @@ const checkURLSafety = async (url) => {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname.toLowerCase();
 
-    console.log(`[Safety Check] Checking ${hostname} via VirusTotal (no whitelisting)`);
+    console.log(`[Safety Check] Checking ${hostname} via VirusTotal UI API`);
 
-    // Try calling VirusTotal's internal API directly
+    // Use ONLY the /ui/domains/ endpoint (the one that returns 429, not 401/403)
+    // Implement retry logic with exponential backoff for rate limiting
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const apiUrl = `https://www.virustotal.com/ui/domains/${encodeURIComponent(hostname)}`;
 
-      // Try multiple API endpoint patterns
-      const apiEndpoints = [
-        `https://www.virustotal.com/api/v3/domains/${encodeURIComponent(hostname)}`,
-        `https://www.virustotal.com/vtapi/v2/domain/report?domain=${encodeURIComponent(hostname)}`,
-        `https://www.virustotal.com/ui/domains/${encodeURIComponent(hostname)}`,
-        `https://www.virustotal.com/api-proxy/domains/${encodeURIComponent(hostname)}`
-      ];
+      console.log(`[VT API] Attempting: ${apiUrl}`);
+      console.log(`[VT API] Using slow, polite requests with retry logic...`);
 
-      console.log(`[VT API] Trying ${apiEndpoints.length} API endpoints for ${hostname}`);
+      // Try up to 3 times with exponential backoff
+      const maxRetries = 3;
+      let lastError = null;
 
-      for (const apiUrl of apiEndpoints) {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          console.log(`[VT API] Attempting: ${apiUrl}`);
+          // Wait before each attempt (except first)
+          if (attempt > 1) {
+            const waitTime = Math.pow(2, attempt - 1) * 1000; // 2s, 4s, 8s
+            console.log(`[VT API] Retry ${attempt}/${maxRetries} - waiting ${waitTime}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          }
+
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
           const response = await fetch(apiUrl, {
             signal: controller.signal,
-            credentials: 'include', // Include cookies for auth
+            credentials: 'include', // Include cookies if user is logged into VT
             headers: {
               'Accept': 'application/json',
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
             }
           });
 
-          console.log(`[VT API] Response status: ${response.status} for ${apiUrl}`);
+          clearTimeout(timeout);
+
+          console.log(`[VT API] Response status: ${response.status} (attempt ${attempt}/${maxRetries})`);
+
+          // Handle rate limiting
+          if (response.status === 429) {
+            console.log(`[VT API] Rate limited (429) - will retry...`);
+            lastError = new Error('Rate limited');
+            continue; // Retry with backoff
+          }
 
           if (response.ok || response.status === 200) {
             const contentType = response.headers.get('content-type');
@@ -313,21 +327,23 @@ const checkURLSafety = async (url) => {
               }
 
               console.log(`[VT API] Final result for ${hostname}: ${result}`);
-              clearTimeout(timeout);
               await setCachedResult(url, result, 'safetyStatusCache');
               return result;
+            } else {
+              console.log(`[VT API] Response not JSON, got: ${contentType}`);
             }
+          } else {
+            console.log(`[VT API] Non-OK status: ${response.status}`);
+            lastError = new Error(`HTTP ${response.status}`);
           }
-        } catch (endpointError) {
-          console.log(`[VT API] Endpoint ${apiUrl} failed:`, endpointError.message);
-          // Continue to next endpoint
+        } catch (attemptError) {
+          console.log(`[VT API] Attempt ${attempt} failed:`, attemptError.message);
+          lastError = attemptError;
         }
       }
 
-      clearTimeout(timeout);
-
-      // If all API endpoints failed, fall back to unknown
-      console.warn(`[VT API] All API endpoints failed for ${hostname}`);
+      // If all retries failed, return unknown
+      console.warn(`[VT API] All ${maxRetries} attempts failed for ${hostname}. Last error: ${lastError?.message}`);
       result = 'unknown';
       await setCachedResult(url, result, 'safetyStatusCache');
       return result;

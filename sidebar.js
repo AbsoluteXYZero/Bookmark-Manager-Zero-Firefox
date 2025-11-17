@@ -256,23 +256,21 @@ async function autoCheckBookmarkStatuses() {
 
     const batch = bookmarksToCheck.slice(i, i + BATCH_SIZE);
 
-    // Set batch to checking status
+    // Set batch to checking status (ONLY link status, safety is manual)
     batch.forEach(item => {
       updateBookmarkInTree(item.id, {
         linkStatus: 'checking',
-        safetyStatus: 'checking'
+        safetyStatus: 'unknown' // Keep safety as unknown for manual testing
       });
     });
     renderBookmarks();
 
-    // Check this batch in parallel
+    // Check this batch - ONLY link status (safety disabled for manual testing)
     const checkPromises = batch.map(async (item) => {
       try {
-        const [linkStatus, safetyStatus] = await Promise.all([
-          checkLinkStatus(item.url),
-          checkSafetyStatus(item.url)
-        ]);
-        return { id: item.id, linkStatus, safetyStatus };
+        const linkStatus = await checkLinkStatus(item.url);
+        // Safety check disabled - use Test VT button in settings for manual testing
+        return { id: item.id, linkStatus, safetyStatus: 'unknown' };
       } catch (error) {
         console.error(`Error checking bookmark ${item.id} (${item.url}):`, error);
         return { id: item.id, linkStatus: 'dead', safetyStatus: 'unknown' };
@@ -298,7 +296,7 @@ async function autoCheckBookmarkStatuses() {
     }
   }
 
-  console.log(`Finished checking all ${bookmarksToCheck.length} bookmarks`);
+  console.log(`Finished checking link status for ${bookmarksToCheck.length} bookmarks (safety checks disabled - use Test VT button)`);
 }
 
 // Mock bookmark data for preview mode
