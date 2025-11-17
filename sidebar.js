@@ -582,44 +582,44 @@ function getShieldHtml(safetyStatus, url) {
   const encodedUrl = encodeURIComponent(url);
   const shieldSvgs = {
     'safe': `
-      <span class="shield-indicator shield-safe shield-clickable" data-url="${encodedUrl}" title="VirusTotal URL Scan:
-Safe - No threats detected by VirusTotal
-Click to view full report">
+      <span class="shield-indicator shield-safe shield-clickable" data-url="${encodedUrl}" title="Security Check:
+Safe - HTTPS enabled, known trusted domain
+Click to check on VirusTotal">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.18L16.59,7.59L18,9L10,17Z"/>
         </svg>
       </span>
     `,
     'warning': `
-      <span class="shield-indicator shield-warning shield-clickable" data-url="${encodedUrl}" title="VirusTotal URL Scan:
-Suspicious - Some security vendors flagged this URL
-Click to view full report">
+      <span class="shield-indicator shield-warning shield-clickable" data-url="${encodedUrl}" title="Security Check:
+Warning - No HTTPS, URL shortener, or suspicious pattern detected
+Click to check on VirusTotal">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M13,7H11V13H13V7M13,17H11V15H13V17Z"/>
         </svg>
       </span>
     `,
     'unsafe': `
-      <span class="shield-indicator shield-unsafe shield-clickable" data-url="${encodedUrl}" title="VirusTotal URL Scan:
-Malicious - Multiple threats detected! DO NOT VISIT
-Click to view full report">
+      <span class="shield-indicator shield-unsafe shield-clickable" data-url="${encodedUrl}" title="Security Check:
+Potentially Unsafe - Exercise extreme caution!
+Click to verify on VirusTotal">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.1,7 14,7.9 14,9V10.5L15.5,10.5C16.3,10.5 17,11.2 17,12V16C17,16.8 16.3,17.5 15.5,17.5H8.5C7.7,17.5 7,16.8 7,16V12C7,11.2 7.7,10.5 8.5,10.5H10V9C10,7.9 10.9,7 12,7M12,8.2C11.2,8.2 10.8,8.7 10.8,9V10.5H13.2V9C13.2,8.7 12.8,8.2 12,8.2Z"/>
         </svg>
       </span>
     `,
     'checking': `
-      <span class="shield-indicator shield-scanning shield-clickable" data-url="${encodedUrl}" title="VirusTotal URL Scan:
-Scanning with VirusTotal...
-Click to view report">
+      <span class="shield-indicator shield-scanning shield-clickable" data-url="${encodedUrl}" title="Security Check:
+Analyzing URL security...
+Click to check on VirusTotal">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z"/>
         </svg>
       </span>
     `,
     'unknown': `
-      <span class="shield-indicator shield-unknown shield-clickable" data-url="${encodedUrl}" title="VirusTotal URL Scan:
-Unable to scan - Link unreachable or not yet checked
+      <span class="shield-indicator shield-unknown shield-clickable" data-url="${encodedUrl}" title="Security Check:
+Unknown - Unable to determine safety status
 Click to check on VirusTotal">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12.5,7V12.5H11V7H12.5M12.5,14V15.5H11V14H12.5Z"/>
@@ -1679,11 +1679,9 @@ async function checkLinkStatus(url) {
   }
 }
 
-// Check URL safety with VirusTotal
-// NOTE: This feature requires a VirusTotal API key to function.
-// Without an API key, shields will show as "unknown" but remain clickable
-// to open VirusTotal.com for manual checking.
-// To enable: Add VirusTotal API integration to background.js
+// Check URL safety with heuristic-based security check
+// Uses pattern matching and domain reputation checks
+// Checks for: HTTPS, suspicious patterns, URL shorteners, known safe domains
 async function checkSafetyStatus(url) {
   if (isPreviewMode) {
     // Simulate checking in preview mode
@@ -1696,9 +1694,16 @@ async function checkSafetyStatus(url) {
     });
   }
 
-  // Returns 'unknown' until VirusTotal API is integrated
-  // Users can still click the shield icon to check URLs manually on VirusTotal.com
-  return 'unknown';
+  try {
+    const response = await browser.runtime.sendMessage({
+      action: 'checkURLSafety',
+      url: url
+    });
+    return response.status || 'unknown';
+  } catch (error) {
+    console.error('Error checking URL safety:', error);
+    return 'unknown';
+  }
 }
 
 // Recheck bookmark status (link + safety)

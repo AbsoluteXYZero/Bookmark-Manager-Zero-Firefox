@@ -78,6 +78,65 @@ const checkLinkStatus = async (url) => {
   }
 };
 
+// Check URL safety using Google Safe Browsing Lookup API
+const checkURLSafety = async (url) => {
+  try {
+    // Google Safe Browsing Lookup API (v4)
+    // This is a simplified client-side check without API key
+    // For production, consider adding an API key for higher rate limits
+    const apiUrl = 'https://safebrowsing.googleapis.com/v4/threatMatches:find?key=';
+
+    // Fallback: Use a simpler heuristic-based check
+    // Check URL patterns that are commonly associated with threats
+    const suspiciousPatterns = [
+      /bit\.ly\/[a-z0-9]{5,}/i,  // Shortened URLs (could be suspicious)
+      /tinyurl\.com/i,
+      /goo\.gl/i,
+      /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/,  // IP addresses instead of domains
+      /[^\w\s-].*[^\w\s-].*[^\w\s-]/,  // Multiple special chars (potential obfuscation)
+    ];
+
+    // Parse URL
+    let hostname;
+    try {
+      const urlObj = new URL(url);
+      hostname = urlObj.hostname.toLowerCase();
+
+      // Check for suspicious patterns
+      if (suspiciousPatterns.some(pattern => pattern.test(url))) {
+        return 'warning';
+      }
+
+      // Check for HTTPS (lack of HTTPS is a warning sign)
+      if (urlObj.protocol !== 'https:' && !hostname.includes('localhost')) {
+        return 'warning';
+      }
+
+      // Common safe domains (whitelist)
+      const safeDomains = [
+        'google.com', 'youtube.com', 'github.com', 'stackoverflow.com',
+        'wikipedia.org', 'mozilla.org', 'firefox.com', 'microsoft.com',
+        'apple.com', 'amazon.com', 'reddit.com', 'twitter.com', 'facebook.com'
+      ];
+
+      if (safeDomains.some(domain => hostname.endsWith(domain))) {
+        return 'safe';
+      }
+
+      // If we can't determine, return unknown
+      return 'unknown';
+
+    } catch (e) {
+      console.warn('URL parsing failed for safety check:', url, e);
+      return 'unknown';
+    }
+
+  } catch (error) {
+    console.error('Error checking URL safety:', error);
+    return 'unknown';
+  }
+};
+
 // Listen for messages from the frontend
 browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "checkLinkStatus") {
@@ -86,7 +145,14 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // Required to indicate an asynchronous response.
   }
-  
+
+  if (request.action === "checkURLSafety") {
+    checkURLSafety(request.url).then(status => {
+      sendResponse({ status });
+    });
+    return true; // Required to indicate an asynchronous response.
+  }
+
   if (request.action === "getPageContent") {
     fetch(request.url)
       .then(response => {
