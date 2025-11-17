@@ -1253,17 +1253,83 @@ async function handleFolderAction(action, folder) {
       break;
 
     case 'delete':
-      if (confirm(`Delete folder "${folder.title}" and all its contents?`)) {
+      // SAFETY: Enhanced confirmation showing number of items to be deleted
+      const itemCount = await countFolderItems(folder.id);
+      const warningMessage = itemCount > 0
+        ? `⚠ Delete folder "${folder.title}" and ALL ${itemCount} item(s) inside?\n\nThis action cannot be undone!`
+        : `Delete empty folder "${folder.title}"?`;
+
+      if (confirm(warningMessage)) {
         await deleteFolder(folder.id);
       }
       break;
   }
 }
 
+// SAFETY: Count total items in a folder (recursive)
+async function countFolderItems(folderId) {
+  if (isPreviewMode) {
+    // Count items in mock data
+    const folder = findFolderById(folderId, bookmarkTree);
+    if (!folder || !folder.children) return 0;
+
+    let count = 0;
+    const countRecursive = (items) => {
+      for (const item of items) {
+        count++;
+        if (item.children) {
+          countRecursive(item.children);
+        }
+      }
+    };
+    countRecursive(folder.children);
+    return count;
+  }
+
+  try {
+    const subtree = await browser.bookmarks.getSubTree(folderId);
+    if (!subtree[0] || !subtree[0].children) return 0;
+
+    let count = 0;
+    const countRecursive = (items) => {
+      for (const item of items) {
+        count++;
+        if (item.children) {
+          countRecursive(item.children);
+        }
+      }
+    };
+    countRecursive(subtree[0].children);
+    return count;
+  } catch (error) {
+    console.error('Error counting folder items:', error);
+    return 0;
+  }
+}
+
+// Helper to find folder by ID in mock data
+function findFolderById(id, items) {
+  for (const item of items) {
+    if (item.id === id) return item;
+    if (item.children) {
+      const found = findFolderById(id, item.children);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 // Delete folder
 async function deleteFolder(id) {
   if (isPreviewMode) {
     alert('✓ In preview mode. In the real extension, this would delete the folder.');
+    return;
+  }
+
+  // SAFETY: Prevent deletion of Firefox's built-in bookmark folders
+  const protectedFolderIds = ['menu________', 'toolbar_____', 'unfiled_____', 'mobile______'];
+  if (protectedFolderIds.includes(id)) {
+    alert('⚠ Cannot delete built-in Firefox bookmark folders (Bookmarks Menu, Bookmarks Toolbar, Other Bookmarks, Mobile Bookmarks).\n\nThis is a safety feature to protect your bookmark structure.');
     return;
   }
 
@@ -1675,6 +1741,19 @@ async function saveNewBookmark() {
   }
 
   try {
+    // SAFETY: Check for duplicate bookmarks to prevent accidental duplication
+    const existingBookmarks = await browser.bookmarks.search({ url });
+    if (existingBookmarks.length > 0) {
+      const duplicateInfo = existingBookmarks.map(b => `  • "${b.title}" in folder ${b.parentId}`).join('\n');
+      const confirmed = confirm(
+        `⚠ Warning: This URL already exists in your bookmarks:\n\n${duplicateInfo}\n\nDo you want to create a duplicate bookmark anyway?`
+      );
+      if (!confirmed) {
+        closeAddBookmarkModal();
+        return;
+      }
+    }
+
     await browser.bookmarks.create({
       title: title || url,
       url,
@@ -1890,6 +1969,45 @@ async function switchSidebarSide() {
   }
 }
 
+// SAFETY: Export bookmarks as JSON backup
+async function exportBookmarks() {
+  try {
+    let data;
+
+    if (isPreviewMode) {
+      // Export mock data in preview mode
+      data = bookmarkTree;
+    } else {
+      // Export actual bookmarks
+      const tree = await browser.bookmarks.getTree();
+      data = tree;
+    }
+
+    // Create JSON file
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    // Generate filename with timestamp
+    const date = new Date().toISOString().split('T')[0];
+    const filename = `bookmarks-backup-${date}.json`;
+
+    // Create download link and trigger download
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert(`✓ Bookmarks exported successfully!\n\nFile: ${filename}\n\nThis backup can be imported back into Firefox via:\nBookmarks → Manage Bookmarks → Import and Backup → Restore → Choose File`);
+  } catch (error) {
+    console.error('Error exporting bookmarks:', error);
+    alert('Failed to export bookmarks. Please try again.');
+  }
+}
+
 // Close extension
 async function closeExtension() {
   if (isPreviewMode) {
@@ -2076,6 +2194,12 @@ function setupEventListeners() {
   // Switch sidebar side
   switchSideBtn.addEventListener('click', () => {
     switchSidebarSide();
+    closeAllMenus();
+  });
+
+  // Export bookmarks (backup)
+  exportBookmarksBtn.addEventListener('click', () => {
+    exportBookmarks();
     closeAllMenus();
   });
 
