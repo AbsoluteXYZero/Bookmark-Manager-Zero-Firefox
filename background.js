@@ -315,16 +315,24 @@ const updateURLhausDatabase = async () => {
 
     // Parse lines (skip comments starting with #)
     let count = 0;
+    const sampleUrls = []; // Collect first 10 for debugging
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed && !trimmed.startsWith('#')) {
-        maliciousUrlsSet.add(trimmed.toLowerCase());
+        const normalized = trimmed.toLowerCase();
+        maliciousUrlsSet.add(normalized);
         count++;
+
+        // Collect first 10 URLs for debugging
+        if (sampleUrls.length < 10) {
+          sampleUrls.push(normalized);
+        }
       }
     }
 
     urlhausLastUpdate = Date.now();
     console.log(`[URLhaus] Database updated: ${count} malicious URLs loaded`);
+    console.log(`[URLhaus] Sample URLs from database:`, sampleUrls);
 
     // Store update timestamp
     await browser.storage.local.set({
