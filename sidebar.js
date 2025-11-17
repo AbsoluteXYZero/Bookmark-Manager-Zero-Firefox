@@ -582,45 +582,47 @@ function getShieldHtml(safetyStatus, url) {
   const encodedUrl = encodeURIComponent(url);
   const shieldSvgs = {
     'safe': `
-      <span class="shield-indicator shield-safe shield-clickable" data-url="${encodedUrl}" title="Security Check:
-Safe - HTTPS enabled, known trusted domain
-Click to check on VirusTotal">
+      <span class="shield-indicator shield-safe" title="Security Check: Safe
+✓ HTTPS enabled
+✓ Known trusted domain
+Based on heuristic analysis">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.18L16.59,7.59L18,9L10,17Z"/>
         </svg>
       </span>
     `,
     'warning': `
-      <span class="shield-indicator shield-warning shield-clickable" data-url="${encodedUrl}" title="Security Check:
-Warning - No HTTPS, URL shortener, or suspicious pattern detected
-Click to check on VirusTotal">
+      <span class="shield-indicator shield-warning" title="Security Check: Warning
+⚠ HTTP only (no encryption)
+⚠ URL shortener or suspicious pattern
+Based on heuristic analysis">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M13,7H11V13H13V7M13,17H11V15H13V17Z"/>
         </svg>
       </span>
     `,
     'unsafe': `
-      <span class="shield-indicator shield-unsafe shield-clickable" data-url="${encodedUrl}" title="Security Check:
-Potentially Unsafe - Exercise extreme caution!
-Click to verify on VirusTotal">
+      <span class="shield-indicator shield-unsafe" title="Security Check: UNSAFE
+⛔ Potentially malicious domain
+⛔ Known phishing pattern detected
+⛔ DO NOT VISIT - Exercise extreme caution!">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.1,7 14,7.9 14,9V10.5L15.5,10.5C16.3,10.5 17,11.2 17,12V16C17,16.8 16.3,17.5 15.5,17.5H8.5C7.7,17.5 7,16.8 7,16V12C7,11.2 7.7,10.5 8.5,10.5H10V9C10,7.9 10.9,7 12,7M12,8.2C11.2,8.2 10.8,8.7 10.8,9V10.5H13.2V9C13.2,8.7 12.8,8.2 12,8.2Z"/>
         </svg>
       </span>
     `,
     'checking': `
-      <span class="shield-indicator shield-scanning shield-clickable" data-url="${encodedUrl}" title="Security Check:
-Analyzing URL security...
-Click to check on VirusTotal">
+      <span class="shield-indicator shield-scanning" title="Security Check: Analyzing
+Checking URL security patterns...">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z"/>
         </svg>
       </span>
     `,
     'unknown': `
-      <span class="shield-indicator shield-unknown shield-clickable" data-url="${encodedUrl}" title="Security Check:
-Unknown - Unable to determine safety status
-Click to check on VirusTotal">
+      <span class="shield-indicator shield-unknown" title="Security Check: Unknown
+Unable to determine safety status
+Not in whitelist or blacklist">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12.5,7V12.5H11V7H12.5M12.5,14V15.5H11V14H12.5Z"/>
         </svg>
@@ -836,7 +838,7 @@ function createBookmarkElement(bookmark) {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
           </svg>
         </span>
-        <span>Recheck with VirusTotal</span>
+        <span>Recheck Security Status</span>
       </button>
       <button class="action-btn danger" data-action="delete">
         <span class="icon">
@@ -2568,35 +2570,6 @@ async function closeExtension() {
   }
 }
 
-// Open VirusTotal report in new tab
-async function openVirusTotalReport(url) {
-  try {
-    // Extract domain from URL for VirusTotal lookup
-    let domain;
-    try {
-      const urlObj = new URL(url);
-      domain = urlObj.hostname;
-    } catch (e) {
-      // If URL parsing fails, try using the URL as-is
-      domain = url.replace(/^https?:\/\//, '').split('/')[0];
-    }
-
-    // Create VirusTotal domain lookup URL
-    const vtUrl = `https://www.virustotal.com/gui/domain/${domain}/detection`;
-
-    if (isPreviewMode) {
-      // In preview mode, use window.open since browser.tabs is not available
-      window.open(vtUrl, '_blank');
-    } else {
-      // In extension mode, use browser.tabs.create for proper tab management
-      await browser.tabs.create({ url: vtUrl });
-    }
-  } catch (error) {
-    console.error('Error opening VirusTotal report:', error);
-    alert('Failed to open VirusTotal report');
-  }
-}
-
 // Setup event listeners
 function setupEventListeners() {
   // Search
@@ -2750,16 +2723,6 @@ function setupEventListeners() {
     if (!e.target.closest('.bookmark-actions') && !e.target.closest('.bookmark-menu-btn') &&
         !e.target.closest('.settings-menu') && !e.target.closest('#settingsBtn')) {
       closeAllMenus();
-    }
-  });
-
-  // Shield indicator click handler (open VirusTotal report)
-  document.addEventListener('click', (e) => {
-    const shield = e.target.closest('.shield-clickable');
-    if (shield) {
-      e.stopPropagation();
-      const url = decodeURIComponent(shield.dataset.url);
-      openVirusTotalReport(url);
     }
   });
 
