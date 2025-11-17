@@ -55,6 +55,54 @@ const checkLinkStatus = async (url) => {
 
     // Check for successful status codes
     if (response.ok || (response.status >= 300 && response.status < 400)) {
+      // Try lightweight content check for parking indicators (with robust error handling)
+      try {
+        const contentController = new AbortController();
+        const contentTimeout = setTimeout(() => contentController.abort(), 3000); // Short 3s timeout
+
+        const contentResponse = await fetch(url, {
+          method: 'GET',
+          signal: contentController.signal,
+          mode: 'cors',
+          credentials: 'omit',
+          redirect: 'follow'
+        });
+        clearTimeout(contentTimeout);
+
+        // Only check if we got a successful response
+        if (contentResponse.ok) {
+          const html = await contentResponse.text();
+          const htmlLower = html.toLowerCase();
+
+          // Check for parking page indicators
+          const parkingIndicators = [
+            'domain for sale',
+            'buy this domain',
+            'domain is for sale',
+            'this domain may be for sale',
+            'parked free',
+            'domain parking',
+            'buy now',
+            'make an offer',
+            'expired domain',
+            'domain expired',
+            'register this domain',
+            'sedo domain parking',
+            'afternic.com/forsale',
+            'bodis.com',
+            'parkingcrew'
+          ];
+
+          if (parkingIndicators.some(indicator => htmlLower.includes(indicator))) {
+            return 'parked';
+          }
+        }
+      } catch (contentError) {
+        // Silently ignore all content check errors (CORS, timeout, etc.)
+        // This prevents content analysis failures from breaking link checking
+      }
+
+      // If content check didn't find parking indicators (or failed), return live
       return 'live';
     }
 
