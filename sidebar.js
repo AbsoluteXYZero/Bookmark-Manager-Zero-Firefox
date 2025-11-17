@@ -924,6 +924,14 @@ function createBookmarkElement(bookmark) {
         </span>
         <span>Recheck Security Status</span>
       </button>
+      <button class="action-btn" data-action="virustotal">
+        <span class="icon">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,5A3,3 0 0,1 15,8A3,3 0 0,1 12,11A3,3 0 0,1 9,8A3,3 0 0,1 12,5M17.13,17C15.92,18.85 14.11,20.24 12,20.92C9.89,20.24 8.08,18.85 6.87,17C6.53,16.5 6.24,16 6,15.47C6,13.82 8.71,12.47 12,12.47C15.29,12.47 18,13.79 18,15.47C17.76,16 17.47,16.5 17.13,17Z"/>
+          </svg>
+        </span>
+        <span>Check on VirusTotal</span>
+      </button>
       <button class="action-btn danger" data-action="delete">
         <span class="icon">
           <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
@@ -1932,6 +1940,22 @@ async function handleBookmarkAction(action, bookmark) {
 
     case 'recheck':
       await recheckBookmarkStatus(bookmark.id);
+      break;
+
+    case 'virustotal':
+      // Extract domain from URL and open VirusTotal search
+      try {
+        const domain = new URL(bookmark.url).hostname;
+        const vtUrl = `https://www.virustotal.com/gui/search/${domain}`;
+        if (isPreviewMode) {
+          window.open(vtUrl, '_blank');
+        } else {
+          browser.tabs.create({ url: vtUrl });
+        }
+      } catch (error) {
+        console.error('Error opening VirusTotal:', error);
+        alert('Failed to open VirusTotal. Invalid URL.');
+      }
       break;
 
     case 'delete':
