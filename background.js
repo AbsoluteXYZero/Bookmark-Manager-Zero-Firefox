@@ -235,113 +235,100 @@ const checkURLSafety = async (url) => {
 
     console.log(`[Safety Check] Checking ${hostname} via VirusTotal (no whitelisting)`);
 
-    // Send EVERYTHING to VirusTotal - no whitelisting or pre-filtering
-    // Scrape VirusTotal for threat analysis
+    // Try calling VirusTotal's internal API directly
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-      const vtUrl = `https://www.virustotal.com/gui/search/${encodeURIComponent(hostname)}`;
-      console.log(`[VT Check] Fetching ${vtUrl}`);
+      // Try multiple API endpoint patterns
+      const apiEndpoints = [
+        `https://www.virustotal.com/api/v3/domains/${encodeURIComponent(hostname)}`,
+        `https://www.virustotal.com/vtapi/v2/domain/report?domain=${encodeURIComponent(hostname)}`,
+        `https://www.virustotal.com/ui/domains/${encodeURIComponent(hostname)}`,
+        `https://www.virustotal.com/api-proxy/domains/${encodeURIComponent(hostname)}`
+      ];
 
-      const response = await fetch(vtUrl, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
+      console.log(`[VT API] Trying ${apiEndpoints.length} API endpoints for ${hostname}`);
+
+      for (const apiUrl of apiEndpoints) {
+        try {
+          console.log(`[VT API] Attempting: ${apiUrl}`);
+
+          const response = await fetch(apiUrl, {
+            signal: controller.signal,
+            credentials: 'include', // Include cookies for auth
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
+            }
+          });
+
+          console.log(`[VT API] Response status: ${response.status} for ${apiUrl}`);
+
+          if (response.ok || response.status === 200) {
+            const contentType = response.headers.get('content-type');
+            console.log(`[VT API] Content-Type: ${contentType}`);
+
+            if (contentType && contentType.includes('application/json')) {
+              const data = await response.json();
+              console.log(`[VT API] SUCCESS! Got JSON data for ${hostname}:`, data);
+
+              // Parse the response based on structure
+              let malicious = 0;
+              let suspicious = 0;
+
+              // Try different JSON structures
+              if (data.data && data.data.attributes) {
+                const attrs = data.data.attributes;
+
+                // v3 API structure
+                if (attrs.last_analysis_stats) {
+                  malicious = attrs.last_analysis_stats.malicious || 0;
+                  suspicious = attrs.last_analysis_stats.suspicious || 0;
+                  console.log(`[VT API] Parsed v3 stats - Malicious: ${malicious}, Suspicious: ${suspicious}`);
+                }
+
+                // Also check reputation score
+                if (attrs.reputation !== undefined) {
+                  console.log(`[VT API] Reputation score: ${attrs.reputation}`);
+                  if (attrs.reputation < -50) malicious = Math.max(malicious, 5);
+                  else if (attrs.reputation < 0) suspicious = Math.max(suspicious, 3);
+                }
+              }
+
+              // v2 API structure
+              if (data.detected_urls) {
+                const detectedCount = data.detected_urls.filter(u => u.positives > 0).length;
+                malicious = Math.min(detectedCount, 10);
+                console.log(`[VT API] Parsed v2 detected_urls - Count: ${detectedCount}`);
+              }
+
+              // Determine safety based on detections
+              if (malicious > 3) {
+                result = 'unsafe';
+              } else if (malicious > 0 || suspicious > 5) {
+                result = 'warning';
+              } else {
+                result = 'safe';
+              }
+
+              console.log(`[VT API] Final result for ${hostname}: ${result}`);
+              clearTimeout(timeout);
+              await setCachedResult(url, result, 'safetyStatusCache');
+              return result;
+            }
+          }
+        } catch (endpointError) {
+          console.log(`[VT API] Endpoint ${apiUrl} failed:`, endpointError.message);
+          // Continue to next endpoint
         }
-      });
+      }
+
       clearTimeout(timeout);
 
-      if (!response.ok) {
-        console.log(`[VT Check] Failed to fetch VT for ${hostname}: ${response.status}`);
-        result = 'safe'; // Default to safe if VT unavailable
-        await setCachedResult(url, result, 'safetyStatusCache');
-        return result;
-      }
-
-      const html = await response.text();
-      console.log(`[VT Check] Received HTML for ${hostname}, length: ${html.length}`);
-
-      // Log larger sample to find embedded JSON state
-      console.log(`[VT Check] First 1000 chars:`, html.substring(0, 1000));
-      console.log(`[VT Check] Middle section:`, html.substring(3000, 4000));
-      console.log(`[VT Check] End section:`, html.substring(html.length - 1000));
-
-      // Look for common SPA state patterns
-      const statePatterns = [
-        /__INITIAL_STATE__/,
-        /__NUXT__/,
-        /window\.__data/,
-        /"last_analysis_stats"/,
-        /"last_analysis_results"/,
-        /data-vue-meta/
-      ];
-
-      console.log('[VT Check] Searching for embedded state patterns:');
-      statePatterns.forEach(pattern => {
-        if (pattern.test(html)) {
-          console.log(`  ✓ Found: ${pattern.source}`);
-          // Extract the data around this pattern
-          const index = html.search(pattern);
-          if (index !== -1) {
-            const context = html.substring(index, index + 500);
-            console.log(`  Context:`, context);
-          }
-        }
-      });
-
-      // Try to extract script tag contents
-      const scriptMatches = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi);
-      if (scriptMatches) {
-        console.log(`[VT Check] Found ${scriptMatches.length} script tags`);
-        scriptMatches.slice(0, 5).forEach((script, i) => {
-          if (script.length > 200 && script.length < 10000) {
-            console.log(`  Script ${i + 1} (${script.length} chars):`, script.substring(0, 300));
-          }
-        });
-      }
-
-      // Look for detection indicators in the HTML
-      // VT embeds data in script tags and meta tags
-      const detectionPatterns = [
-        /"malicious":\s*(\d+)/i,
-        /"suspicious":\s*(\d+)/i,
-        /"harmless":\s*(\d+)/i,
-        /"undetected":\s*(\d+)/i,
-        /positives['":\s]+(\d+)/i,
-        /detection.*ratio['":\s]+(\d+)/i
-      ];
-
-      let malicious = 0;
-      let suspicious = 0;
-      let foundPatterns = [];
-
-      for (const pattern of detectionPatterns) {
-        const match = html.match(pattern);
-        if (match) {
-          const count = parseInt(match[1]);
-          foundPatterns.push(`${pattern.source}: ${count}`);
-          if (pattern.source.includes('malicious')) malicious = count;
-          if (pattern.source.includes('suspicious')) suspicious = count;
-          if (pattern.source.includes('positives')) malicious = Math.max(malicious, count);
-        }
-      }
-
-      console.log(`[VT Check] ${hostname} - Found patterns: ${foundPatterns.join(', ')}`);
-      console.log(`[VT Check] ${hostname} - Malicious: ${malicious}, Suspicious: ${suspicious}`);
-
-      // Determine safety based on detections
-      if (foundPatterns.length === 0) {
-        console.warn(`[VT Check] No patterns matched for ${hostname} - VT scraping may be broken!`);
-        result = 'unknown'; // Can't parse VT response
-      } else if (malicious > 3) {
-        result = 'unsafe'; // Multiple vendors flagged as malicious
-      } else if (malicious > 0 || suspicious > 5) {
-        result = 'warning'; // Some detections or many suspicious
-      } else {
-        result = 'safe'; // Clean or minimal detections
-      }
-
+      // If all API endpoints failed, fall back to unknown
+      console.warn(`[VT API] All API endpoints failed for ${hostname}`);
+      result = 'unknown';
       await setCachedResult(url, result, 'safetyStatusCache');
       return result;
 
