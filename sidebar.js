@@ -1397,7 +1397,42 @@ function findFolderById(id, items) {
 // Delete folder
 async function deleteFolder(id) {
   if (isPreviewMode) {
-    alert('✓ In preview mode. In the real extension, this would delete the folder.');
+    // Find folder in mock data
+    const findAndRemove = (items, parentArray = null, parentIndex = -1) => {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        if (item.id === id) {
+          // Found it! Store data for undo (deep copy to preserve children)
+          const folderData = JSON.parse(JSON.stringify(item));
+          folderData.parentArray = parentArray;
+          folderData.parentIndex = i;
+
+          // Remove from array
+          items.splice(i, 1);
+
+          // Show undo toast
+          showUndoToast({
+            type: 'folder',
+            data: folderData,
+            message: `Folder "${item.title || 'Untitled'}" deleted`,
+            isPreview: true
+          });
+
+          renderBookmarks();
+          return true;
+        }
+
+        if (item.children) {
+          if (findAndRemove(item.children, item.children, i)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    findAndRemove(bookmarkTree);
     return;
   }
 
@@ -1486,28 +1521,55 @@ function hideUndoToast() {
 async function performUndo() {
   if (!undoData) return;
 
-  const { type, data } = undoData;
+  const { type, data, isPreview } = undoData;
 
   try {
-    if (type === 'bookmark') {
-      // Restore bookmark
-      await browser.bookmarks.create({
-        title: data.title,
-        url: data.url,
-        parentId: data.parentId,
-        index: data.index
-      });
-    } else if (type === 'folder') {
-      // Restore folder and its contents recursively
-      await restoreFolderRecursive(data, data.parentId, data.index);
+    if (isPreview) {
+      // Preview mode: restore to mock data
+      if (type === 'bookmark') {
+        // Restore bookmark to its parent array
+        if (data.parentArray) {
+          data.parentArray.splice(data.parentIndex, 0, {
+            id: data.id,
+            title: data.title,
+            url: data.url
+          });
+        }
+      } else if (type === 'folder') {
+        // Restore folder with all children
+        if (data.parentArray) {
+          const folderToRestore = JSON.parse(JSON.stringify(data));
+          delete folderToRestore.parentArray;
+          delete folderToRestore.parentIndex;
+          data.parentArray.splice(data.parentIndex, 0, folderToRestore);
+        }
+      }
+
+      renderBookmarks();
+      hideUndoToast();
+      console.log(`Undo successful (preview): ${type} restored`);
+    } else {
+      // Real extension mode
+      if (type === 'bookmark') {
+        // Restore bookmark
+        await browser.bookmarks.create({
+          title: data.title,
+          url: data.url,
+          parentId: data.parentId,
+          index: data.index
+        });
+      } else if (type === 'folder') {
+        // Restore folder and its contents recursively
+        await restoreFolderRecursive(data, data.parentId, data.index);
+      }
+
+      // Reload and hide toast
+      await loadBookmarks();
+      renderBookmarks();
+      hideUndoToast();
+
+      console.log(`Undo successful: ${type} restored`);
     }
-
-    // Reload and hide toast
-    await loadBookmarks();
-    renderBookmarks();
-    hideUndoToast();
-
-    console.log(`Undo successful: ${type} restored`);
   } catch (error) {
     console.error('Error during undo:', error);
     alert('Failed to undo deletion');
@@ -1836,7 +1898,40 @@ async function editBookmark(bookmark) {
 // Delete bookmark
 async function deleteBookmark(id) {
   if (isPreviewMode) {
-    alert('✓ In preview mode. In the real extension, this would delete the bookmark.');
+    // Find bookmark in mock data
+    const findAndRemove = (items, parentArray = null, parentIndex = -1) => {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        if (item.id === id) {
+          // Found it! Store data for undo
+          const bookmarkData = { ...item, parentArray, parentIndex: i };
+
+          // Remove from array
+          items.splice(i, 1);
+
+          // Show undo toast
+          showUndoToast({
+            type: 'bookmark',
+            data: bookmarkData,
+            message: `Bookmark "${item.title || 'Untitled'}" deleted`,
+            isPreview: true
+          });
+
+          renderBookmarks();
+          return true;
+        }
+
+        if (item.children) {
+          if (findAndRemove(item.children, item.children, i)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    findAndRemove(bookmarkTree);
     return;
   }
 
