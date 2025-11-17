@@ -368,29 +368,24 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Manual VT test for debugging
     (async () => {
       try {
-        const urlObj = new URL(request.url);
+        // Add protocol if missing
+        let testUrl = request.url;
+        if (!testUrl.startsWith('http://') && !testUrl.startsWith('https://')) {
+          testUrl = 'https://' + testUrl;
+        }
+
+        const urlObj = new URL(testUrl);
         const hostname = urlObj.hostname.toLowerCase();
-        const vtUrl = `https://www.virustotal.com/gui/search/${encodeURIComponent(hostname)}`;
 
         console.log(`[VT TEST] Manual test for ${hostname}`);
-        console.log(`[VT TEST] Fetching ${vtUrl}`);
+        console.log(`[VT TEST] Calling checkURLSafety...`);
 
-        const response = await fetch(vtUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
-          }
-        });
+        // Call the actual safety check function
+        const result = await checkURLSafety(testUrl);
 
-        console.log(`[VT TEST] Response status: ${response.status}`);
-        console.log(`[VT TEST] Response headers:`, [...response.headers.entries()]);
+        console.log(`[VT TEST] Final result: ${result}`);
 
-        const html = await response.text();
-        console.log(`[VT TEST] HTML length: ${html.length}`);
-        console.log(`[VT TEST] First 1000 chars:`, html.substring(0, 1000));
-        console.log(`[VT TEST] Search for "malicious":`, html.includes('malicious'));
-        console.log(`[VT TEST] Search for "suspicious":`, html.includes('suspicious'));
-
-        sendResponse({ success: true, htmlLength: html.length, status: response.status });
+        sendResponse({ success: true, result, hostname });
       } catch (error) {
         console.error(`[VT TEST] Error:`, error);
         sendResponse({ success: false, error: error.message });

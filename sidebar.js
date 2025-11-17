@@ -2931,14 +2931,19 @@ function setupEventListeners() {
 
   // Test VirusTotal (Debug)
   testVTBtn.addEventListener('click', async () => {
-    const testUrl = prompt('Enter a URL to test with VirusTotal:\n\n(Open browser console F12, then click Inspect on extension in about:debugging to see results)', 'https://example.com');
+    const testUrl = prompt('Enter a URL or domain to test with VirusTotal:\n\n(You can enter just "netfilm.app" or a full URL)', 'netfilm.app');
     if (testUrl) {
       try {
         const response = await browser.runtime.sendMessage({
           action: 'testVirusTotal',
           url: testUrl
         });
-        alert(`VirusTotal Test:\n\nStatus: ${response.status || response.error}\nHTML Length: ${response.htmlLength || 'N/A'}\n\nCheck the extension console for detailed logs.\n\nTo see logs: about:debugging -> This Firefox -> Bookmark Manager Zero -> Inspect`);
+        if (response.success) {
+          const resultEmoji = response.result === 'safe' ? '🟢' : response.result === 'warning' ? '🟡' : response.result === 'unsafe' ? '🔴' : '⚪';
+          alert(`VirusTotal API Test:\n\n${resultEmoji} Domain: ${response.hostname}\nResult: ${response.result}\n\nCheck the extension console for detailed API logs.\n\nTo see logs:\nabout:debugging → This Firefox → Bookmark Manager Zero → Inspect`);
+        } else {
+          alert(`Test failed: ${response.error}\n\nCheck the extension console for details.`);
+        }
       } catch (error) {
         alert(`Test failed: ${error.message}`);
       }
