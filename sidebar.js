@@ -2150,10 +2150,16 @@ function getAllBookmarksFlat(tree, parentPath = '') {
   return bookmarks;
 }
 
+// Global storage for current duplicates data
+let currentDuplicates = [];
+
 // Show duplicates modal
 function showDuplicatesModal(duplicates) {
   const modal = document.getElementById('duplicatesModal');
   const content = document.getElementById('duplicatesContent');
+
+  // Store duplicates for later use in deletion check
+  currentDuplicates = duplicates;
 
   // Build HTML for duplicates
   let html = `
@@ -2179,6 +2185,7 @@ function showDuplicatesModal(duplicates) {
           <input type="checkbox"
                  id="dup-${bookmark.id}"
                  data-bookmark-id="${bookmark.id}"
+                 data-url="${duplicate.url}"
                  class="duplicate-checkbox"
                  style="cursor: pointer;">
           <label for="dup-${bookmark.id}" style="cursor: pointer; flex: 1;">
@@ -2216,6 +2223,29 @@ async function deleteSelectedDuplicates() {
 
   const confirmed = confirm(`⚠ Delete ${checkboxes.length} selected bookmark(s)?\n\nThis action cannot be undone!`);
   if (!confirmed) return;
+
+  // Check if user is deleting ALL copies of any URL
+  const selectedIds = new Set(Array.from(checkboxes).map(cb => cb.dataset.bookmarkId));
+  const urlsWithAllCopiesSelected = [];
+
+  for (const duplicate of currentDuplicates) {
+    const allIdsForThisUrl = duplicate.bookmarks.map(b => b.id);
+    const allSelected = allIdsForThisUrl.every(id => selectedIds.has(id));
+
+    if (allSelected) {
+      urlsWithAllCopiesSelected.push(duplicate.url);
+    }
+  }
+
+  // Second warning if deleting all copies of any URL
+  if (urlsWithAllCopiesSelected.length > 0) {
+    const urlList = urlsWithAllCopiesSelected.map(url => `  • ${url}`).join('\n');
+    const finalWarning = confirm(
+      `⚠️ WARNING! YOU ARE ABOUT TO DELETE ALL COPIES OF THE FOLLOWING BOOKMARK(S):\n\n${urlList}\n\nTHERE WILL BE NO REMAINING COPIES OF THESE BOOKMARKS!\n\nARE YOU ABSOLUTELY SURE YOU WANT TO CONTINUE?`
+    );
+
+    if (!finalWarning) return;
+  }
 
   if (isPreviewMode) {
     // Get IDs to delete
