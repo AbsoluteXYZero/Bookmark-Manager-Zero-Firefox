@@ -18,7 +18,7 @@ A modern, feature-rich interface for managing Firefox bookmarks with enhanced sa
   - Shows folder paths for each duplicate
   - Selective batch deletion with checkboxes
   - Safety warning when deleting all copies of a URL
-- **Link Checking** - Verify if bookmarks are still accessible
+- **Link Checking** - Verify if bookmarks are still accessible and scan for security threats using VirusTotal
 - **Export/Backup** - Save all bookmarks to JSON format for backup
 - **Text-Only View** - Open bookmarks with Textise for clean, ad-free reading
 - **Save as PDF** - Quick access to save pages as PDF
@@ -148,8 +148,10 @@ This extension:
 - **Does NOT** send your bookmarks to any server
 - **Does NOT** track your browsing history
 - **Does NOT** collect personal data
-- Only uses third-party services (Textise) when you explicitly request it
-- All data stays local to your Firefox profile
+- Only uses third-party services when you explicitly request them:
+  - **VirusTotal** - When checking link security (requires user action)
+  - **Textise** - When opening text-only view (requires user action)
+- All bookmark data stays local to your Firefox profile
 
 ## Development
 
@@ -202,10 +204,11 @@ This project is open source. License details to be determined.
 
 ## Acknowledgments
 
-- Material Design icons from Google
-- Readability library for text extraction
-- Textise.net for text-only view functionality
-- Firefox WebExtension API documentation
+- **VirusTotal** - URL security scanning and threat detection API
+- **Textise.net** - Text-only view and ad-free reading functionality
+- **Material Design** - Modern icon system from Google
+- **Readability** - Mozilla's article extraction library
+- **Firefox WebExtension API** - Comprehensive documentation and support
 
 ## Version History
 

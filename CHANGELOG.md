@@ -45,12 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Open bookmark in new tab
   - Edit bookmark details
   - Delete bookmark
-  - Check link validity
+  - Check link validity and security (VirusTotal integration)
   - Open with Textise (text-only view)
   - Save page as PDF
 
 - **Advanced Features**
-  - Link checking to verify bookmark accessibility
+  - Link checking with VirusTotal security scanning
   - Export all bookmarks to JSON
   - Text-only page view via Textise integration
   - PDF save functionality with browser print dialog
@@ -85,8 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Known Issues
 - Large bookmark collections (1000+) may experience performance impacts
 - Preview mode has limitations compared to full extension
-- Link checking requires active internet connection
-- Textise integration depends on third-party service availability
+- Link checking requires active internet connection and VirusTotal API availability
+- VirusTotal and Textise integrations depend on third-party service availability
 
 ### Browser Support
 - Firefox 109 or later
