@@ -81,47 +81,83 @@
     function drawIcon(canvas) {
       const ctx = canvas.getContext('2d');
       const size = canvas.width;
+      const scale = size / 48; // Scale factor based on 48px base
 
-      // Create gradient background
-      const gradient = ctx.createLinearGradient(0, 0, size, size);
-      gradient.addColorStop(0, '#6366f1');
-      gradient.addColorStop(1, '#818cf8');
+      // Dark background
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, size, size);
 
-      // Draw rounded rectangle background
-      const radius = size * 0.2;
-      ctx.fillStyle = gradient;
+      // Draw shield shape with glow
+      const cx = size / 2;
+      const cy = size / 2;
+
+      // Glow effect
+      ctx.shadowColor = 'rgba(34, 197, 94, 0.6)';
+      ctx.shadowBlur = 8 * scale;
+
+      // Shield path
       ctx.beginPath();
-      ctx.moveTo(radius, 0);
-      ctx.lineTo(size - radius, 0);
-      ctx.quadraticCurveTo(size, 0, size, radius);
-      ctx.lineTo(size, size - radius);
-      ctx.quadraticCurveTo(size, size, size - radius, size);
-      ctx.lineTo(radius, size);
-      ctx.quadraticCurveTo(0, size, 0, size - radius);
-      ctx.lineTo(0, radius);
-      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.moveTo(cx, 4 * scale);
+      ctx.lineTo(8 * scale, 10 * scale);
+      ctx.lineTo(8 * scale, 20 * scale);
+      ctx.bezierCurveTo(8 * scale, 30 * scale, 15 * scale, 39 * scale, cx, 44 * scale);
+      ctx.bezierCurveTo(size - 15 * scale, 39 * scale, size - 8 * scale, 30 * scale, size - 8 * scale, 20 * scale);
+      ctx.lineTo(size - 8 * scale, 10 * scale);
       ctx.closePath();
+
+      // Fill shield
+      ctx.fillStyle = '#2d2d2d';
       ctx.fill();
 
-      // Draw bookmark icon
-      ctx.fillStyle = 'white';
-      ctx.strokeStyle = 'white';
-      ctx.lineWidth = size * 0.04;
-
-      const bookmarkWidth = size * 0.35;
-      const bookmarkHeight = size * 0.6;
-      const x = (size - bookmarkWidth) / 2;
-      const y = size * 0.2;
-
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + bookmarkWidth, y);
-      ctx.lineTo(x + bookmarkWidth, y + bookmarkHeight);
-      ctx.lineTo(x + bookmarkWidth / 2, y + bookmarkHeight * 0.8);
-      ctx.lineTo(x, y + bookmarkHeight);
-      ctx.closePath();
-      ctx.fill();
+      // Stroke shield with green
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 2 * scale;
       ctx.stroke();
+
+      // Reset shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+
+      // Inner shield accent
+      ctx.beginPath();
+      ctx.moveTo(cx, 8 * scale);
+      ctx.lineTo(12 * scale, 12.5 * scale);
+      ctx.lineTo(12 * scale, 21 * scale);
+      ctx.bezierCurveTo(12 * scale, 29 * scale, 17.5 * scale, 35 * scale, cx, 38.5 * scale);
+      ctx.bezierCurveTo(size - 17.5 * scale, 35 * scale, size - 12 * scale, 29 * scale, size - 12 * scale, 21 * scale);
+      ctx.lineTo(size - 12 * scale, 12.5 * scale);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(45, 45, 45, 0.8)';
+      ctx.fill();
+
+      // Draw bookmark icon with glow
+      ctx.shadowColor = 'rgba(74, 222, 128, 0.4)';
+      ctx.shadowBlur = 6 * scale;
+
+      const bx = cx - 8 * scale;
+      const by = 16 * scale;
+      const bw = 16 * scale;
+      const bh = 16 * scale;
+
+      // Bookmark fill
+      ctx.fillStyle = '#4ade80';
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + bw, by);
+      ctx.lineTo(bx + bw, by + bh);
+      ctx.lineTo(cx, by + bh - 3 * scale);
+      ctx.lineTo(bx, by + bh);
+      ctx.closePath();
+      ctx.fill();
+
+      // Bookmark stroke
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 1.5 * scale;
+      ctx.stroke();
+
+      // Reset shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
     }
 
     function downloadCanvas(canvas, filename) {
