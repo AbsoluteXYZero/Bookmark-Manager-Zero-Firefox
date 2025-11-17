@@ -233,124 +233,128 @@ const checkURLSafety = async (url) => {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname.toLowerCase();
 
-    console.log(`[Safety Check] Checking ${hostname} via VirusTotal UI API`);
+    console.log(`[Safety Check] Checking ${url} via VirusTotal UI Search API`);
 
-    // Use ONLY the /ui/domains/ endpoint (the one that returns 429, not 401/403)
-    // Implement retry logic with exponential backoff for rate limiting
+    // Use the WORKING endpoint discovered from Firefox Network tab!
+    // Two-step process:
+    // 1. Search: /ui/search?query={url} -> get URL ID
+    // 2. Fetch: /ui/urls/{id} -> get threat data
     try {
-      const apiUrl = `https://www.virustotal.com/ui/domains/${encodeURIComponent(hostname)}`;
+      // Step 1: Search for the URL to get its ID
+      const searchUrl = `https://www.virustotal.com/ui/search?limit=1&query=${encodeURIComponent(url)}`;
+      console.log(`[VT Search] Step 1: Searching for URL: ${searchUrl}`);
 
-      console.log(`[VT API] Attempting: ${apiUrl}`);
-      console.log(`[VT API] Using slow, polite requests with retry logic...`);
+      const searchController = new AbortController();
+      const searchTimeout = setTimeout(() => searchController.abort(), 15000);
 
-      // Try up to 3 times with exponential backoff
-      const maxRetries = 3;
-      let lastError = null;
+      const searchResponse = await fetch(searchUrl, {
+        signal: searchController.signal,
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
+        }
+      });
 
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          // Wait before each attempt (except first)
-          if (attempt > 1) {
-            const waitTime = Math.pow(2, attempt - 1) * 1000; // 2s, 4s, 8s
-            console.log(`[VT API] Retry ${attempt}/${maxRetries} - waiting ${waitTime}ms...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-          }
+      clearTimeout(searchTimeout);
 
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      console.log(`[VT Search] Response status: ${searchResponse.status}`);
 
-          const response = await fetch(apiUrl, {
-            signal: controller.signal,
-            credentials: 'include', // Include cookies if user is logged into VT
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
-            }
-          });
+      if (!searchResponse.ok) {
+        console.log(`[VT Search] Search failed with status ${searchResponse.status}`);
+        result = 'unknown';
+        await setCachedResult(url, result, 'safetyStatusCache');
+        return result;
+      }
 
-          clearTimeout(timeout);
+      const searchData = await searchResponse.json();
+      console.log(`[VT Search] Search results:`, searchData);
 
-          console.log(`[VT API] Response status: ${response.status} (attempt ${attempt}/${maxRetries})`);
+      // Extract URL ID from search results
+      let urlId = null;
+      if (searchData.data && searchData.data.length > 0) {
+        // The ID is in the first result
+        urlId = searchData.data[0].id;
+        console.log(`[VT Search] Found URL ID: ${urlId}`);
+      } else {
+        console.log(`[VT Search] No results found for ${url}`);
+        // No VT data = assume safe (not in VT database)
+        result = 'safe';
+        await setCachedResult(url, result, 'safetyStatusCache');
+        return result;
+      }
 
-          // Handle rate limiting
-          if (response.status === 429) {
-            console.log(`[VT API] Rate limited (429) - will retry...`);
-            lastError = new Error('Rate limited');
-            continue; // Retry with backoff
-          }
+      // Step 2: Fetch detailed threat data for the URL
+      const urlDetailsUrl = `https://www.virustotal.com/ui/urls/${urlId}`;
+      console.log(`[VT Fetch] Step 2: Fetching URL details: ${urlDetailsUrl}`);
 
-          if (response.ok || response.status === 200) {
-            const contentType = response.headers.get('content-type');
-            console.log(`[VT API] Content-Type: ${contentType}`);
+      const detailsController = new AbortController();
+      const detailsTimeout = setTimeout(() => detailsController.abort(), 15000);
 
-            if (contentType && contentType.includes('application/json')) {
-              const data = await response.json();
-              console.log(`[VT API] SUCCESS! Got JSON data for ${hostname}:`, data);
+      const detailsResponse = await fetch(urlDetailsUrl, {
+        signal: detailsController.signal,
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
+        }
+      });
 
-              // Parse the response based on structure
-              let malicious = 0;
-              let suspicious = 0;
+      clearTimeout(detailsTimeout);
 
-              // Try different JSON structures
-              if (data.data && data.data.attributes) {
-                const attrs = data.data.attributes;
+      console.log(`[VT Fetch] Response status: ${detailsResponse.status}`);
 
-                // v3 API structure
-                if (attrs.last_analysis_stats) {
-                  malicious = attrs.last_analysis_stats.malicious || 0;
-                  suspicious = attrs.last_analysis_stats.suspicious || 0;
-                  console.log(`[VT API] Parsed v3 stats - Malicious: ${malicious}, Suspicious: ${suspicious}`);
-                }
+      if (!detailsResponse.ok) {
+        console.log(`[VT Fetch] Details fetch failed with status ${detailsResponse.status}`);
+        result = 'unknown';
+        await setCachedResult(url, result, 'safetyStatusCache');
+        return result;
+      }
 
-                // Also check reputation score
-                if (attrs.reputation !== undefined) {
-                  console.log(`[VT API] Reputation score: ${attrs.reputation}`);
-                  if (attrs.reputation < -50) malicious = Math.max(malicious, 5);
-                  else if (attrs.reputation < 0) suspicious = Math.max(suspicious, 3);
-                }
-              }
+      const detailsData = await detailsResponse.json();
+      console.log(`[VT Fetch] URL details:`, detailsData);
 
-              // v2 API structure
-              if (data.detected_urls) {
-                const detectedCount = data.detected_urls.filter(u => u.positives > 0).length;
-                malicious = Math.min(detectedCount, 10);
-                console.log(`[VT API] Parsed v2 detected_urls - Count: ${detectedCount}`);
-              }
+      // Parse threat data
+      let malicious = 0;
+      let suspicious = 0;
 
-              // Determine safety based on detections
-              if (malicious > 3) {
-                result = 'unsafe';
-              } else if (malicious > 0 || suspicious > 5) {
-                result = 'warning';
-              } else {
-                result = 'safe';
-              }
+      if (detailsData.data && detailsData.data.attributes) {
+        const attrs = detailsData.data.attributes;
 
-              console.log(`[VT API] Final result for ${hostname}: ${result}`);
-              await setCachedResult(url, result, 'safetyStatusCache');
-              return result;
-            } else {
-              console.log(`[VT API] Response not JSON, got: ${contentType}`);
-            }
-          } else {
-            console.log(`[VT API] Non-OK status: ${response.status}`);
-            lastError = new Error(`HTTP ${response.status}`);
-          }
-        } catch (attemptError) {
-          console.log(`[VT API] Attempt ${attempt} failed:`, attemptError.message);
-          lastError = attemptError;
+        // Get last_analysis_stats
+        if (attrs.last_analysis_stats) {
+          malicious = attrs.last_analysis_stats.malicious || 0;
+          suspicious = attrs.last_analysis_stats.suspicious || 0;
+          console.log(`[VT Fetch] Analysis stats - Malicious: ${malicious}, Suspicious: ${suspicious}`);
+        }
+
+        // Also log reputation if available
+        if (attrs.reputation !== undefined) {
+          console.log(`[VT Fetch] Reputation score: ${attrs.reputation}`);
+        }
+
+        // Log categories if available
+        if (attrs.categories) {
+          console.log(`[VT Fetch] Categories:`, attrs.categories);
         }
       }
 
-      // If all retries failed, return unknown
-      console.warn(`[VT API] All ${maxRetries} attempts failed for ${hostname}. Last error: ${lastError?.message}`);
-      result = 'unknown';
+      // Determine safety based on detections
+      if (malicious > 3) {
+        result = 'unsafe';
+      } else if (malicious > 0 || suspicious > 5) {
+        result = 'warning';
+      } else {
+        result = 'safe';
+      }
+
+      console.log(`[VT Fetch] Final result for ${url}: ${result}`);
       await setCachedResult(url, result, 'safetyStatusCache');
       return result;
 
     } catch (vtError) {
-      console.error(`[VT Check] Error scraping VT for ${hostname}:`, vtError.message);
-      // Fall back to unknown on error - something is broken
+      console.error(`[VT Check] Error checking VT for ${url}:`, vtError.message);
+      // Fall back to unknown on error
       result = 'unknown';
       await setCachedResult(url, result, 'safetyStatusCache');
       return result;
