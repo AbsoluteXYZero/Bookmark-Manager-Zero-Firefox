@@ -319,7 +319,11 @@ const updateURLhausDatabase = async () => {
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed && !trimmed.startsWith('#')) {
-        const normalized = trimmed.toLowerCase();
+        // Normalize: lowercase and remove protocol for consistent matching
+        const normalized = trimmed.toLowerCase()
+          .replace(/^https?:\/\//, '')
+          .replace(/\/$/, '');
+
         maliciousUrlsSet.add(normalized);
         count++;
 
