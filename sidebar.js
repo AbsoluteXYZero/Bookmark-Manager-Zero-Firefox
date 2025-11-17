@@ -269,7 +269,7 @@ async function autoCheckBookmarkStatuses() {
     const checkPromises = batch.map(async (item) => {
       try {
         const linkStatus = await checkLinkStatus(item.url);
-        const safetyStatus = await checkURLSafety(item.url);
+        const safetyStatus = await checkSafetyStatus(item.url);
         return { id: item.id, linkStatus, safetyStatus };
       } catch (error) {
         console.error(`Error checking bookmark ${item.id} (${item.url}):`, error);
