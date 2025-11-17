@@ -45,53 +45,7 @@ const checkLinkStatus = async (url) => {
 
     // Check for successful status codes
     if (response.ok || (response.status >= 300 && response.status < 400)) {
-      // Do a lightweight content check for parking page indicators
-      try {
-        const contentController = new AbortController();
-        const contentTimeout = setTimeout(() => contentController.abort(), 5000);
-
-        const contentResponse = await fetch(url, {
-          method: 'GET',
-          signal: contentController.signal,
-          mode: 'cors',
-          credentials: 'omit',
-          redirect: 'follow'
-        });
-        clearTimeout(contentTimeout);
-
-        const html = await contentResponse.text();
-        const htmlLower = html.toLowerCase();
-
-        // Check for parking page indicators in content
-        const parkingIndicators = [
-          'domain for sale',
-          'buy this domain',
-          'domain is for sale',
-          'this domain may be for sale',
-          'parked free',
-          'domain parking',
-          'buy now',
-          'make an offer',
-          'expired domain',
-          'domain expired',
-          'register this domain',
-          'sedo domain parking',
-          'afternic.com/forsale',
-          'hugedomains.com',
-          'bodis.com',
-          'parkingcrew'
-        ];
-
-        if (parkingIndicators.some(indicator => htmlLower.includes(indicator))) {
-          return 'parked';
-        }
-
-        // If no parking indicators, it's live
-        return 'live';
-      } catch (contentError) {
-        // If content check fails, assume live (since HEAD succeeded)
-        return 'live';
-      }
+      return 'live';
     }
 
     // 4xx or 5xx error means the link is dead
