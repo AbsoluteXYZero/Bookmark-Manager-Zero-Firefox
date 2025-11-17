@@ -11,6 +11,15 @@
   "host_permissions": [
     "<all_urls>"
   ],
+  "action": {
+    "default_title": "Bookmark Manager Zero",
+    "default_icon": {
+      "16": "icons/bookmark-48.png",
+      "32": "icons/bookmark-48.png",
+      "48": "icons/bookmark-48.png",
+      "96": "icons/bookmark-96.png"
+    }
+  },
   "sidebar_action": {
     "default_title": "Bookmark Manager Zero",
     "default_panel": "sidebar.html",

@@ -88,11 +88,10 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 
 // Handles the browser action (clicking the toolbar icon)
+// When clicked, toggle the sidebar
 try {
   browser.action.onClicked.addListener(() => {
-    browser.tabs.create({
-      url: browser.runtime.getURL("index.html")
-    });
+    browser.sidebarAction.toggle();
   });
 } catch (error) {
   console.error("Error setting up browser action listener:", error);
