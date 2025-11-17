@@ -41,7 +41,6 @@ const zoomValue = document.getElementById('zoomValue');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsMenu = document.getElementById('settingsMenu');
 const openInTabBtn = document.getElementById('openInTabBtn');
-const switchSideBtn = document.getElementById('switchSideBtn');
 const closeExtensionBtn = document.getElementById('closeExtensionBtn');
 
 // Undo toast DOM elements
@@ -2251,33 +2250,6 @@ async function openInNewTab() {
   }
 }
 
-// Switch sidebar side
-async function switchSidebarSide() {
-  if (isPreviewMode) {
-    alert('📍 In the Firefox extension, you can move the sidebar:\n\n1. Right-click the sidebar\n2. Select "Move Sidebar to Right/Left"\n\nOr use: View → Sidebar → Move Sidebar');
-    return;
-  }
-
-  try {
-    // Get current window
-    const currentWindow = await browser.windows.getCurrent();
-
-    // Firefox doesn't have a direct API to switch sidebar sides
-    // We'll store a preference and inform the user
-    const result = await browser.storage.local.get('sidebarSide');
-    const currentSide = result.sidebarSide || 'left';
-    const newSide = currentSide === 'left' ? 'right' : 'left';
-
-    await browser.storage.local.set({ sidebarSide: newSide });
-
-    alert(`Sidebar side preference saved!\n\nTo change the sidebar position in Firefox:\n1. Right-click the sidebar\n2. Select "Move Sidebar to ${newSide === 'right' ? 'Right' : 'Left'}"\n\nOr use View > Sidebar > Move Sidebar`);
-
-  } catch (error) {
-    console.error('Error switching sidebar:', error);
-    alert('To move the sidebar:\n1. Right-click the sidebar\n2. Select "Move Sidebar to Right/Left"\n\nOr use: View > Sidebar > Move Sidebar');
-  }
-}
-
 // SAFETY: Export bookmarks as JSON backup
 async function exportBookmarks() {
   try {
@@ -2740,12 +2712,6 @@ function setupEventListeners() {
   // Open in new tab
   openInTabBtn.addEventListener('click', () => {
     openInNewTab();
-    closeAllMenus();
-  });
-
-  // Switch sidebar side
-  switchSideBtn.addEventListener('click', () => {
-    switchSidebarSide();
     closeAllMenus();
   });
 
