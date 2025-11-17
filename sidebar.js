@@ -1434,8 +1434,20 @@ async function handleBookmarkAction(action, bookmark) {
     case 'reader-view':
       // Open in text-only reader view
       if (isPreviewMode) {
-        // In preview mode, use relative URL to reader.html
-        const readerUrl = `reader.html?url=${encodeURIComponent(bookmark.url)}`;
+        // In preview mode, construct proper URL for htmlpreview or local file
+        let readerUrl;
+        if (window.location.href.includes('htmlpreview.github.io')) {
+          // Parse the htmlpreview URL structure
+          // Current: https://htmlpreview.github.io/?https://github.com/USER/REPO/blob/BRANCH/sidebar.html
+          // Target: https://htmlpreview.github.io/?https://github.com/USER/REPO/blob/BRANCH/reader.html?url=...
+          const currentUrl = window.location.href;
+          const githubUrl = currentUrl.split('htmlpreview.github.io/?')[1];
+          const readerGithubUrl = githubUrl.replace('sidebar.html', `reader.html?url=${encodeURIComponent(bookmark.url)}`);
+          readerUrl = `https://htmlpreview.github.io/?${readerGithubUrl}`;
+        } else {
+          // For local files, use simple relative URL
+          readerUrl = `reader.html?url=${encodeURIComponent(bookmark.url)}`;
+        }
         window.open(readerUrl, '_blank');
       } else {
         // Open the reader view directly
