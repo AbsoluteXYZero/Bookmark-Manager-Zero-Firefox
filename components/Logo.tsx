@@ -29,7 +29,7 @@ export const Logo: React.FC = () => (
         </span>
       </div>
       <p className="text-slate-500 dark:text-slate-400 mt-1">
-        A modern interface for your native Firefox bookmarks.
+        A modern interface for your native Firefox bookmarks • v0.3
       </p>
     </div>
   </div>
