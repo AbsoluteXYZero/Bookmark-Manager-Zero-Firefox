@@ -17,6 +17,7 @@ let displayOptions = {
 };
 let currentEditItem = null;
 let zoomLevel = 100;
+let checkedBookmarks = new Set(); // Track which bookmarks have been checked to prevent infinite loops
 
 // Undo system state
 let undoData = null;
@@ -75,6 +76,9 @@ async function init() {
   await loadBookmarks();
   setupEventListeners();
   renderBookmarks();
+
+  // Automatically check bookmark statuses after initial render
+  autoCheckBookmarkStatuses();
 }
 
 // Load theme preference
@@ -201,10 +205,74 @@ async function loadBookmarks() {
     // Firefox returns root with children, we want the actual bookmark folders
     bookmarkTree = tree[0].children || [];
     console.log('Loaded bookmarks:', bookmarkTree);
+    // Clear checked bookmarks when loading fresh data
+    checkedBookmarks.clear();
   } catch (error) {
     console.error('Error loading bookmarks:', error);
     showError('Failed to load bookmarks');
   }
+}
+
+// Automatically check bookmark statuses for unchecked bookmarks
+async function autoCheckBookmarkStatuses() {
+  const bookmarksToCheck = [];
+
+  // Traverse tree to find unchecked bookmarks
+  function traverse(nodes) {
+    nodes.forEach(node => {
+      if (node.type === 'bookmark' && node.url && !node.linkStatus && !checkedBookmarks.has(node.id)) {
+        bookmarksToCheck.push(node);
+      }
+      if (node.type === 'folder' && node.children) {
+        traverse(node.children);
+      }
+    });
+  }
+
+  traverse(bookmarkTree);
+
+  if (bookmarksToCheck.length === 0) return;
+
+  console.log(`Auto-checking ${bookmarksToCheck.length} bookmarks...`);
+
+  // Mark these bookmarks as being checked to prevent re-checking
+  bookmarksToCheck.forEach(item => checkedBookmarks.add(item.id));
+
+  // Set all to checking status
+  bookmarksToCheck.forEach(item => {
+    updateBookmarkInTree(item.id, {
+      linkStatus: 'checking',
+      safetyStatus: 'checking'
+    });
+  });
+  renderBookmarks();
+
+  // Check all bookmarks in parallel
+  const checkPromises = bookmarksToCheck.map(async (item) => {
+    try {
+      const [linkStatus, safetyStatus] = await Promise.all([
+        checkLinkStatus(item.url),
+        checkSafetyStatus(item.url)
+      ]);
+      return { id: item.id, linkStatus, safetyStatus };
+    } catch (error) {
+      console.error(`Error checking bookmark ${item.id} (${item.url}):`, error);
+      return { id: item.id, linkStatus: 'dead', safetyStatus: 'unknown' };
+    }
+  });
+
+  const results = await Promise.all(checkPromises);
+
+  // Batch update all results
+  results.forEach(result => {
+    updateBookmarkInTree(result.id, {
+      linkStatus: result.linkStatus,
+      safetyStatus: result.safetyStatus
+    });
+  });
+  renderBookmarks();
+
+  console.log(`Finished checking ${results.length} bookmarks`);
 }
 
 // Mock bookmark data for preview mode
@@ -551,7 +619,7 @@ Redirects to domain parking service">
           <g fill="currentColor">
             <path d="M3.9,12C3.9,10.29 5.29,8.9 7,8.9H11V7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H11V15.1H7C5.29,15.1 3.9,13.71 3.9,12M8,13H16V11H8V13M17,7H13V8.9H17C18.71,8.9 20.1,10.29 20.1,12C20.1,13.71 18.71,15.1 17,15.1H13V17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7Z"/>
           </g>
-          <g fill="#ef4444">
+          <g fill="#eab308">
             <circle cx="18" cy="6" r="5"/>
             <text x="18" y="9.5" text-anchor="middle" font-size="10" font-weight="bold" fill="white">!</text>
           </g>
