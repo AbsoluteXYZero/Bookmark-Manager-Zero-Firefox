@@ -437,6 +437,7 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "checkURLSafety") {
+    console.log(`[DEBUG] Received checkURLSafety request with URL: "${request.url}"`);
     checkURLSafety(request.url).then(status => {
       sendResponse({ status });
     });
