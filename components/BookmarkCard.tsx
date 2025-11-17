@@ -39,7 +39,7 @@ const getStatusInfo = (status: Bookmark['status']) => {
     case 'dead':
       return { className: 'bg-red-500', text: 'Link is dead or unreachable', pulse: false };
     case 'parked':
-      return { className: 'bg-red-500', text: 'Domain may be for sale', pulse: false };
+      return { className: 'bg-yellow-500', text: 'Domain may be for sale', pulse: false };
     case 'checking':
       return { className: 'bg-slate-500', text: 'Checking link status...', pulse: true };
     default:
