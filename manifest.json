@@ -14,26 +14,28 @@
   "action": {
     "default_title": "Bookmark Manager Zero",
     "default_icon": {
-      "16": "icons/bookmark-48.png",
-      "32": "icons/bookmark-48.png",
-      "48": "icons/bookmark-48.png",
-      "96": "icons/bookmark-96.png"
+      "16": "icons/bookmark-16.svg",
+      "32": "icons/bookmark-32.svg",
+      "48": "icons/bookmark-48.svg",
+      "96": "icons/bookmark-96.svg"
     }
   },
   "sidebar_action": {
     "default_title": "Bookmark Manager Zero",
     "default_panel": "sidebar.html",
     "default_icon": {
-      "48": "icons/bookmark-48.png",
-      "96": "icons/bookmark-96.png"
+      "48": "icons/bookmark-48.svg",
+      "96": "icons/bookmark-96.svg"
     }
   },
   "background": {
     "scripts": ["background.js"]
   },
   "icons": {
-    "48": "icons/bookmark-48.png",
-    "96": "icons/bookmark-96.png"
+    "16": "icons/bookmark-16.svg",
+    "32": "icons/bookmark-32.svg",
+    "48": "icons/bookmark-48.svg",
+    "96": "icons/bookmark-96.svg"
   },
   "commands": {
     "_execute_sidebar_action": {
