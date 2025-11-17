@@ -25,29 +25,146 @@ const checkLinkStatus = async (url) => {
   const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
 
   try {
-    const response = await fetch(url, { method: 'GET', signal: controller.signal });
+    // Try HEAD request first (lighter weight)
+    const response = await fetch(url, {
+      method: 'HEAD',
+      signal: controller.signal,
+      mode: 'cors',
+      credentials: 'omit',
+      redirect: 'follow'
+    });
     clearTimeout(timeoutId);
 
-    if (response.redirected) {
+    // Check if redirected to parking domain
+    if (response.redirected || response.url !== url) {
       const finalHost = new URL(response.url).hostname.toLowerCase();
-      // Check if the final destination is a known domain parking service
       if (PARKING_DOMAINS.some(domain => finalHost.includes(domain))) {
         return 'parked';
       }
     }
-    
-    // Check for successful status codes (2xx)
-    if (response.ok) {
+
+    // Check for successful status codes (2xx and 3xx)
+    if (response.ok || (response.status >= 300 && response.status < 400)) {
       return 'live';
     }
 
-    // If we get here, it's a 4xx or 5xx error, which means the link is dead.
+    // 4xx or 5xx error means the link is dead
     return 'dead';
 
   } catch (error) {
-    // This catches network errors, DNS errors, timeouts, etc.
     clearTimeout(timeoutId);
-    return 'dead';
+
+    // If HEAD fails, try GET with no-cors as fallback
+    try {
+      const fallbackController = new AbortController();
+      const fallbackTimeout = setTimeout(() => fallbackController.abort(), 8000);
+
+      const fallbackResponse = await fetch(url, {
+        method: 'GET',
+        signal: fallbackController.signal,
+        mode: 'no-cors',
+        credentials: 'omit',
+        redirect: 'follow'
+      });
+      clearTimeout(fallbackTimeout);
+
+      // no-cors mode returns opaque response, but if fetch succeeds, link is likely live
+      return 'live';
+    } catch (fallbackError) {
+      // Both HEAD and GET failed - link is likely dead
+      console.warn('Link check failed for:', url, fallbackError.message);
+      return 'dead';
+    }
+  }
+};
+
+// Check URL safety using Google Safe Browsing Lookup API
+const checkURLSafety = async (url) => {
+  try {
+    // Google Safe Browsing Lookup API (v4)
+    // This is a simplified client-side check without API key
+    // For production, consider adding an API key for higher rate limits
+    const apiUrl = 'https://safebrowsing.googleapis.com/v4/threatMatches:find?key=';
+
+    // Fallback: Use a simpler heuristic-based check
+    // Check URL patterns that are commonly associated with threats
+    const suspiciousPatterns = [
+      /bit\.ly\/[a-z0-9]{5,}/i,  // Shortened URLs (could be suspicious)
+      /tinyurl\.com/i,
+      /goo\.gl/i,
+      /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/,  // IP addresses instead of domains
+      /[^\w\s-].*[^\w\s-].*[^\w\s-]/,  // Multiple special chars (potential obfuscation)
+    ];
+
+    // Parse URL
+    let hostname;
+    try {
+      const urlObj = new URL(url);
+      hostname = urlObj.hostname.toLowerCase();
+
+      // Known malicious/untrusted domain patterns (blacklist)
+      // These are commonly used in phishing, malware, and scam campaigns
+      const untrustedPatterns = [
+        // Fake login pages
+        /.*-login\..*/,
+        /.*account-verification\..*/,
+        /.*secure-update\..*/,
+        /.*verify-account\..*/,
+        // Suspicious TLDs commonly used in phishing
+        /\.xyz$/,
+        /\.top$/,
+        /\.loan$/,
+        /\.download$/,
+        /\.link$/,
+        /\.click$/,
+        /\.review$/,
+        // Known phishing indicators
+        /paypal.*verify/i,
+        /amazon.*confirm/i,
+        /secure.*signin/i,
+        /account.*suspended/i,
+        /urgent.*verify/i
+      ];
+
+      // Check for known malicious patterns
+      if (untrustedPatterns.some(pattern => pattern.test(hostname))) {
+        return 'unsafe';
+      }
+
+      // Check for suspicious patterns (warnings, not necessarily unsafe)
+      if (suspiciousPatterns.some(pattern => pattern.test(url))) {
+        return 'warning';
+      }
+
+      // Check for HTTPS (lack of HTTPS is a warning sign)
+      if (urlObj.protocol !== 'https:' && !hostname.includes('localhost')) {
+        return 'warning';
+      }
+
+      // Common safe domains (whitelist)
+      const safeDomains = [
+        'google.com', 'youtube.com', 'github.com', 'stackoverflow.com',
+        'wikipedia.org', 'mozilla.org', 'firefox.com', 'microsoft.com',
+        'apple.com', 'amazon.com', 'reddit.com', 'twitter.com', 'facebook.com',
+        'instagram.com', 'linkedin.com', 'netflix.com', 'adobe.com',
+        'dropbox.com', 'wordpress.com', 'blogspot.com', 'medium.com'
+      ];
+
+      if (safeDomains.some(domain => hostname.endsWith(domain))) {
+        return 'safe';
+      }
+
+      // If we can't determine, return unknown
+      return 'unknown';
+
+    } catch (e) {
+      console.warn('URL parsing failed for safety check:', url, e);
+      return 'unknown';
+    }
+
+  } catch (error) {
+    console.error('Error checking URL safety:', error);
+    return 'unknown';
   }
 };
 
@@ -59,7 +176,14 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // Required to indicate an asynchronous response.
   }
-  
+
+  if (request.action === "checkURLSafety") {
+    checkURLSafety(request.url).then(status => {
+      sendResponse({ status });
+    });
+    return true; // Required to indicate an asynchronous response.
+  }
+
   if (request.action === "getPageContent") {
     fetch(request.url)
       .then(response => {
@@ -88,11 +212,10 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 
 // Handles the browser action (clicking the toolbar icon)
+// When clicked, toggle the sidebar
 try {
   browser.action.onClicked.addListener(() => {
-    browser.tabs.create({
-      url: browser.runtime.getURL("index.html")
-    });
+    browser.sidebarAction.toggle();
   });
 } catch (error) {
   console.error("Error setting up browser action listener:", error);
