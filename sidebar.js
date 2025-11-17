@@ -1432,31 +1432,14 @@ async function handleBookmarkAction(action, bookmark) {
       break;
 
     case 'reader-view':
-      // Open in Firefox Reader View mode using tabs API
+      // Open in Firefox Reader View mode
       if (isPreviewMode) {
         // In preview mode, just open normally
         window.open(bookmark.url, '_blank');
       } else {
-        try {
-          // Create tab and wait for it to load before toggling reader mode
-          const tab = await browser.tabs.create({ url: bookmark.url });
-
-          // Listen for the tab to finish loading
-          const listener = (tabId, changeInfo) => {
-            if (tabId === tab.id && changeInfo.status === 'complete') {
-              browser.tabs.toggleReaderMode(tab.id).catch(err => {
-                console.log('Reader mode not available for this page:', err);
-              });
-              browser.tabs.onUpdated.removeListener(listener);
-            }
-          };
-
-          browser.tabs.onUpdated.addListener(listener);
-        } catch (error) {
-          console.error('Error opening reader mode:', error);
-          // Fallback to normal tab
-          window.open(bookmark.url, '_blank');
-        }
+        // Use about:reader URL format with tabs API
+        const readerUrl = `about:reader?url=${encodeURIComponent(bookmark.url)}`;
+        browser.tabs.create({ url: readerUrl });
       }
       break;
 
