@@ -2218,8 +2218,35 @@ async function deleteSelectedDuplicates() {
   if (!confirmed) return;
 
   if (isPreviewMode) {
-    alert(`✓ In preview mode. In the real extension, this would delete ${checkboxes.length} bookmarks.`);
+    // Get IDs to delete
+    const idsToDelete = Array.from(checkboxes).map(cb => cb.dataset.bookmarkId);
+
+    // Remove bookmarks from the mock data tree
+    const removeBookmarkFromTree = (tree, idToRemove) => {
+      for (let i = 0; i < tree.length; i++) {
+        const node = tree[i];
+
+        // Check if this is a folder with children
+        if (node.children) {
+          // Filter out the bookmark if it's in this folder's children
+          node.children = node.children.filter(child => child.id !== idToRemove);
+          // Recursively check nested folders
+          removeBookmarkFromTree(node.children, idToRemove);
+        }
+      }
+    };
+
+    // Remove each selected bookmark
+    for (const id of idsToDelete) {
+      removeBookmarkFromTree(bookmarkTree, id);
+    }
+
+    // Re-render the UI
+    renderBookmarks();
+
+    // Close modal and show success
     closeDuplicatesModal();
+    alert(`✓ Successfully deleted ${checkboxes.length} bookmark(s) from preview!`);
     return;
   }
 
