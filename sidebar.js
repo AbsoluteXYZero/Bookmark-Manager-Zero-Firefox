@@ -2982,6 +2982,12 @@ async function saveNewBookmark() {
     url = 'https://' + url;
   }
 
+  // Check if trying to create bookmark at root level
+  if (!parentId) {
+    alert('Firefox does not allow creating bookmarks at the root level. Please select a parent folder (Bookmarks Menu, Bookmarks Toolbar, Other Bookmarks, or any existing folder/subfolder) to create your bookmark in.');
+    return;
+  }
+
   if (isPreviewMode) {
     alert('✓ In preview mode. In the real extension, this would create a new bookmark.');
     closeAddBookmarkModal();
@@ -3057,6 +3063,12 @@ async function saveNewFolder() {
 
   if (!title) {
     alert('Please enter a folder name');
+    return;
+  }
+
+  // Check if trying to create folder at root level
+  if (!parentId) {
+    alert('Firefox does not allow creating folders at the root level. Please select a parent folder (Bookmarks Menu, Bookmarks Toolbar, Other Bookmarks, or any existing folder/subfolder) to create your folder in.');
     return;
   }
 
