@@ -658,9 +658,43 @@ async function loadBookmarks() {
   }
 
   try {
+    // Save current status data before reloading
+    const statusMap = new Map();
+    const saveStatuses = (nodes) => {
+      nodes.forEach(node => {
+        if (node.id && (node.linkStatus || node.safetyStatus)) {
+          statusMap.set(node.id, {
+            linkStatus: node.linkStatus,
+            safetyStatus: node.safetyStatus,
+            safetySources: node.safetySources
+          });
+        }
+        if (node.children) {
+          saveStatuses(node.children);
+        }
+      });
+    };
+    saveStatuses(bookmarkTree);
+
     const tree = await browser.bookmarks.getTree();
     // Firefox returns root with children, we want the actual bookmark folders
     bookmarkTree = tree[0].children || [];
+
+    // Restore status data to reloaded bookmarks
+    const restoreStatuses = (nodes) => {
+      return nodes.map(node => {
+        const savedStatus = statusMap.get(node.id);
+        if (savedStatus) {
+          node = { ...node, ...savedStatus };
+        }
+        if (node.children) {
+          node.children = restoreStatuses(node.children);
+        }
+        return node;
+      });
+    };
+    bookmarkTree = restoreStatuses(bookmarkTree);
+
     console.log('Loaded bookmarks:', bookmarkTree);
     // Clear checked bookmarks when loading fresh data
     checkedBookmarks.clear();
