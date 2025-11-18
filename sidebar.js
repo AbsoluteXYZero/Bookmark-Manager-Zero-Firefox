@@ -606,20 +606,16 @@ function loadZoom() {
 function loadCheckingSettings() {
   const savedLinkChecking = localStorage.getItem('linkCheckingEnabled');
   const savedSafetyChecking = localStorage.getItem('safetyCheckingEnabled');
-  const savedDoH = localStorage.getItem('dohEnabled');
 
-  // Default to true if not set (except DoH which defaults to false)
+  // Default to true if not set
   linkCheckingEnabled = savedLinkChecking !== null ? savedLinkChecking === 'true' : true;
   safetyCheckingEnabled = savedSafetyChecking !== null ? savedSafetyChecking === 'true' : true;
-  const dohEnabled = savedDoH === 'true';
 
   // Update checkbox states
   const linkCheckbox = document.getElementById('enableLinkChecking');
   const safetyCheckbox = document.getElementById('enableSafetyChecking');
-  const dohCheckbox = document.getElementById('enableDoH');
   if (linkCheckbox) linkCheckbox.checked = linkCheckingEnabled;
   if (safetyCheckbox) safetyCheckbox.checked = safetyCheckingEnabled;
-  if (dohCheckbox) dohCheckbox.checked = dohEnabled;
 }
 
 // Apply zoom
@@ -4020,29 +4016,6 @@ function setupEventListeners() {
     safetyCheckingEnabled = e.target.checked;
     localStorage.setItem('safetyCheckingEnabled', safetyCheckingEnabled);
     console.log(`Safety checking ${safetyCheckingEnabled ? 'enabled' : 'disabled'}`);
-  });
-
-  // DNS-over-HTTPS toggle
-  const enableDoHToggle = document.getElementById('enableDoH');
-  enableDoHToggle.addEventListener('change', async (e) => {
-    const enabled = e.target.checked;
-    localStorage.setItem('dohEnabled', enabled);
-
-    // Configure Firefox to use DoH
-    if (!isPreviewMode && browser.dns && browser.dns.setResolveMode) {
-      try {
-        if (enabled) {
-          await browser.dns.setResolveMode('TRR_ONLY'); // Trusted Recursive Resolver only
-          console.log('DNS-over-HTTPS enabled');
-        } else {
-          await browser.dns.setResolveMode('TRR_OFF'); // Use system DNS
-          console.log('DNS-over-HTTPS disabled');
-        }
-      } catch (error) {
-        console.error('Failed to set DNS mode:', error);
-        alert('Note: DNS-over-HTTPS setting requires Firefox 60+ and may need browser restart.');
-      }
-    }
   });
 
   // Rescan all bookmarks
