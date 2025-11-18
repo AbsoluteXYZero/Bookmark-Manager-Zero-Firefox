@@ -3592,6 +3592,56 @@ function setupEventListeners() {
         highlightSelectedItem(allElements);
         break;
 
+      case 'ArrowRight':
+        e.preventDefault();
+        // Expand folder if selected item is a folder
+        if (selectedBookmarkIndex >= 0 && selectedBookmarkIndex < allElements.length) {
+          const selectedElement = allElements[selectedBookmarkIndex];
+          if (selectedElement.classList.contains('folder-header')) {
+            const folderItem = selectedElement.closest('.folder-item');
+            const folderId = folderItem.dataset.id;
+            const toggle = selectedElement.querySelector('.folder-toggle');
+            // Only expand if not already expanded
+            if (!toggle.classList.contains('expanded')) {
+              selectedElement.click();
+              // After expanding, rebuild the list and maintain selection
+              setTimeout(() => {
+                const updatedFolders = Array.from(bookmarkList.querySelectorAll('.folder-item .folder-header'));
+                const updatedBookmarks = Array.from(bookmarkList.querySelectorAll('.bookmark-item'));
+                const updatedElements = [...updatedFolders, ...updatedBookmarks].sort((a, b) => {
+                  return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+                });
+                highlightSelectedItem(updatedElements);
+              }, 50);
+            }
+          }
+        }
+        break;
+
+      case 'ArrowLeft':
+        e.preventDefault();
+        // Collapse folder if selected item is a folder
+        if (selectedBookmarkIndex >= 0 && selectedBookmarkIndex < allElements.length) {
+          const selectedElement = allElements[selectedBookmarkIndex];
+          if (selectedElement.classList.contains('folder-header')) {
+            const toggle = selectedElement.querySelector('.folder-toggle');
+            // Only collapse if currently expanded
+            if (toggle.classList.contains('expanded')) {
+              selectedElement.click();
+              // After collapsing, rebuild the list and maintain selection
+              setTimeout(() => {
+                const updatedFolders = Array.from(bookmarkList.querySelectorAll('.folder-item .folder-header'));
+                const updatedBookmarks = Array.from(bookmarkList.querySelectorAll('.bookmark-item'));
+                const updatedElements = [...updatedFolders, ...updatedBookmarks].sort((a, b) => {
+                  return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+                });
+                highlightSelectedItem(updatedElements);
+              }, 50);
+            }
+          }
+        }
+        break;
+
       case 'Enter':
         e.preventDefault();
         if (selectedBookmarkIndex >= 0 && selectedBookmarkIndex < allElements.length) {
