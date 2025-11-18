@@ -102,6 +102,8 @@ let whitelistedUrls = new Set(); // URLs whitelisted by user
 let safetyHistory = {}; // Track safety status changes over time {url: [{timestamp, status, sources}]}
 let selectedBookmarkIndex = -1; // Currently selected bookmark for keyboard navigation
 let visibleBookmarks = []; // Flat list of visible bookmarks for keyboard navigation
+let multiSelectMode = false; // Toggle for multi-select mode
+let selectedItems = new Set(); // IDs of selected bookmarks/folders
 
 // Track open menus to preserve state across re-renders
 let openMenuBookmarkId = null;
@@ -895,6 +897,7 @@ function createFolderElement(folder) {
 
   folderDiv.innerHTML = `
     <div class="folder-header" draggable="true">
+      ${multiSelectMode ? `<input type="checkbox" class="item-checkbox" data-id="${folder.id}" ${selectedItems.has(folder.id) ? 'checked' : ''}>` : ''}
       <div class="folder-toggle ${isExpanded ? 'expanded' : ''}">▶</div>
       <div class="folder-icon-container">
         <svg class="folder-icon-outline" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -1042,6 +1045,7 @@ function createBookmarkElement(bookmark) {
   }
 
   bookmarkDiv.innerHTML = `
+    ${multiSelectMode ? `<input type="checkbox" class="item-checkbox" data-id="${bookmark.id}" ${selectedItems.has(bookmark.id) ? 'checked' : ''}>` : ''}
     <div class="status-indicators">
       ${statusIndicatorsHtml}
     </div>
@@ -3128,6 +3132,166 @@ async function rescanAllBookmarks() {
   }
 }
 
+// Update selected items count
+function updateSelectedCount() {
+  const selectedCount = document.getElementById('selectedCount');
+  if (selectedCount) {
+    selectedCount.textContent = selectedItems.size;
+  }
+}
+
+// Bulk recheck selected items
+async function bulkRecheckItems() {
+  if (selectedItems.size === 0) {
+    alert('No items selected. Please select items to recheck.');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to recheck ${selectedItems.size} selected item(s)?`)) {
+    return;
+  }
+
+  const itemsToRecheck = Array.from(selectedItems);
+
+  // Find all bookmarks in selected items (including bookmarks in selected folders)
+  const bookmarksToRecheck = [];
+
+  for (const itemId of itemsToRecheck) {
+    const item = findBookmarkById(allBookmarks, itemId);
+    if (item) {
+      if (item.type === 'bookmark') {
+        bookmarksToRecheck.push(item);
+      } else if (item.type === 'folder') {
+        // Get all bookmarks in folder recursively
+        const folderBookmarks = getAllBookmarksInFolder(item);
+        bookmarksToRecheck.push(...folderBookmarks);
+      }
+    }
+  }
+
+  // Remove from checked set to force recheck
+  bookmarksToRecheck.forEach(b => checkedBookmarks.delete(b.id));
+
+  // Recheck
+  await autoCheckBookmarkStatuses();
+
+  alert(`Rechecked ${bookmarksToRecheck.length} bookmark(s).`);
+}
+
+// Bulk move selected items
+async function bulkMoveItems() {
+  if (selectedItems.size === 0) {
+    alert('No items selected. Please select items to move.');
+    return;
+  }
+
+  // Get all folders for selection
+  const folders = getAllFolders(allBookmarks);
+
+  // Create folder selection prompt
+  let folderList = 'Select destination folder by number:\n\n';
+  folders.forEach((folder, index) => {
+    const indent = '  '.repeat(folder.depth || 0);
+    folderList += `${index + 1}. ${indent}${folder.title || 'Unnamed Folder'}\n`;
+  });
+
+  const selection = prompt(folderList + '\nEnter folder number:');
+  if (!selection) return;
+
+  const folderIndex = parseInt(selection) - 1;
+  if (isNaN(folderIndex) || folderIndex < 0 || folderIndex >= folders.length) {
+    alert('Invalid folder selection.');
+    return;
+  }
+
+  const destinationFolder = folders[folderIndex];
+
+  if (!confirm(`Move ${selectedItems.size} item(s) to "${destinationFolder.title}"?`)) {
+    return;
+  }
+
+  try {
+    // Move each selected item
+    for (const itemId of selectedItems) {
+      await browser.bookmarks.move(itemId, { parentId: destinationFolder.id });
+    }
+
+    selectedItems.clear();
+    await loadBookmarks();
+    renderBookmarks();
+    updateSelectedCount();
+
+    alert(`Successfully moved items to "${destinationFolder.title}".`);
+  } catch (error) {
+    console.error('Error moving items:', error);
+    alert('Failed to move some items. Please try again.');
+  }
+}
+
+// Bulk delete selected items
+async function bulkDeleteItems() {
+  if (selectedItems.size === 0) {
+    alert('No items selected. Please select items to delete.');
+    return;
+  }
+
+  if (!confirm(`⚠️ WARNING: This will permanently delete ${selectedItems.size} selected item(s) and all their contents.\n\nThis action cannot be undone. Are you sure?`)) {
+    return;
+  }
+
+  try {
+    // Delete each selected item
+    for (const itemId of selectedItems) {
+      await browser.bookmarks.removeTree(itemId);
+    }
+
+    selectedItems.clear();
+    await loadBookmarks();
+    renderBookmarks();
+    updateSelectedCount();
+
+    alert('Selected items deleted successfully.');
+  } catch (error) {
+    console.error('Error deleting items:', error);
+    alert('Failed to delete some items. Please try again.');
+  }
+}
+
+// Get all bookmarks in a folder recursively
+function getAllBookmarksInFolder(folder) {
+  const bookmarks = [];
+
+  function traverse(node) {
+    if (node.type === 'bookmark') {
+      bookmarks.push(node);
+    } else if (node.type === 'folder' && node.children) {
+      node.children.forEach(child => traverse(child));
+    }
+  }
+
+  if (folder.children) {
+    folder.children.forEach(child => traverse(child));
+  }
+
+  return bookmarks;
+}
+
+// Get all folders from bookmark tree
+function getAllFolders(nodes, depth = 0) {
+  const folders = [];
+
+  nodes.forEach(node => {
+    if (node.type === 'folder') {
+      folders.push({ ...node, depth });
+      if (node.children) {
+        folders.push(...getAllFolders(node.children, depth + 1));
+      }
+    }
+  });
+
+  return folders;
+}
+
 // Setup event listeners
 function setupEventListeners() {
   // Search
@@ -3552,6 +3716,75 @@ function setupEventListeners() {
 
     console.log('[Bookmark Sync] ✓ Real-time bidirectional sync enabled');
   }
+
+  // Multi-select toggle button
+  const multiSelectToggle = document.getElementById('multiSelectToggle');
+  multiSelectToggle.addEventListener('click', () => {
+    multiSelectMode = !multiSelectMode;
+
+    // Toggle button appearance
+    if (multiSelectMode) {
+      multiSelectToggle.style.background = 'var(--md-sys-color-primary)';
+      multiSelectToggle.style.color = 'var(--md-sys-color-on-primary)';
+    } else {
+      multiSelectToggle.style.background = '';
+      multiSelectToggle.style.color = '';
+      selectedItems.clear();
+    }
+
+    // Show/hide bulk actions bar
+    const bulkActionsBar = document.getElementById('bulkActionsBar');
+    bulkActionsBar.classList.toggle('hidden', !multiSelectMode);
+
+    // Re-render to show/hide checkboxes
+    renderBookmarks();
+  });
+
+  // Bulk actions event delegation
+  bookmarkList.addEventListener('change', (e) => {
+    if (e.target.classList.contains('item-checkbox')) {
+      const itemId = e.target.dataset.id;
+      if (e.target.checked) {
+        selectedItems.add(itemId);
+      } else {
+        selectedItems.delete(itemId);
+      }
+      updateSelectedCount();
+    }
+  });
+
+  // Bulk action buttons
+  document.getElementById('bulkSelectAll').addEventListener('click', () => {
+    // Select all visible items
+    const checkboxes = bookmarkList.querySelectorAll('.item-checkbox');
+    checkboxes.forEach(cb => {
+      cb.checked = true;
+      selectedItems.add(cb.dataset.id);
+    });
+    updateSelectedCount();
+  });
+
+  document.getElementById('bulkDeselectAll').addEventListener('click', () => {
+    // Deselect all
+    const checkboxes = bookmarkList.querySelectorAll('.item-checkbox');
+    checkboxes.forEach(cb => {
+      cb.checked = false;
+    });
+    selectedItems.clear();
+    updateSelectedCount();
+  });
+
+  document.getElementById('bulkRecheck').addEventListener('click', async () => {
+    await bulkRecheckItems();
+  });
+
+  document.getElementById('bulkMove').addEventListener('click', async () => {
+    await bulkMoveItems();
+  });
+
+  document.getElementById('bulkDelete').addEventListener('click', async () => {
+    await bulkDeleteItems();
+  });
 
   // Keyboard navigation
   document.addEventListener('keydown', (e) => {
