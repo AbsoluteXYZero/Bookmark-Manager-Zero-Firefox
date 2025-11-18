@@ -1573,7 +1573,8 @@ function createBookmarkElement(bookmark) {
     const previewLoading = bookmarkDiv.querySelector('.preview-loading');
 
     // Check if preview was already loaded using global state
-    const previewKey = bookmark.id || bookmark.url;
+    // Always use URL as the key for consistency
+    const previewKey = bookmark.url;
     const previewAlreadyLoaded = loadedPreviews.has(previewKey);
 
     // If preview was already loaded, set the image src immediately
@@ -1581,6 +1582,7 @@ function createBookmarkElement(bookmark) {
       const previewUrl = getPreviewUrl(bookmark.url);
       if (previewUrl) {
         previewImage.src = previewUrl;
+        previewImage.classList.add('loaded');
         previewLoading.style.display = 'none';
       }
     }
