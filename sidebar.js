@@ -1828,6 +1828,10 @@ function adjustDropdownPosition(dropdown) {
   dropdown.style.left = '';
   dropdown.style.right = '';
   dropdown.style.transform = '';
+  dropdown.style.top = '';
+  dropdown.style.bottom = '';
+  dropdown.style.marginTop = '';
+  dropdown.style.marginBottom = '';
 
   // Wait for next frame to ensure menu is visible and has dimensions
   requestAnimationFrame(() => {
