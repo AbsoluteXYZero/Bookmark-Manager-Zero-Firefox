@@ -1,6 +1,143 @@
 // Bookmark Manager Zero - Sidebar Script
 // Connects to Firefox native bookmarks API
 
+// ============================================================================
+// GLOBAL ERROR BOUNDARY
+// ============================================================================
+
+// Error toast DOM elements
+let errorToast;
+let errorTitle;
+let errorMessage;
+let errorReload;
+let errorDismiss;
+
+// Error log storage (keep last 50 errors)
+const MAX_ERROR_LOGS = 50;
+
+// Initialize error toast elements after DOM loads
+function initErrorToast() {
+  errorToast = document.getElementById('errorToast');
+  errorTitle = document.getElementById('errorTitle');
+  errorMessage = document.getElementById('errorMessage');
+  errorReload = document.getElementById('errorReload');
+  errorDismiss = document.getElementById('errorDismiss');
+
+  if (errorReload) {
+    errorReload.addEventListener('click', () => {
+      location.reload();
+    });
+  }
+
+  if (errorDismiss) {
+    errorDismiss.addEventListener('click', () => {
+      hideErrorToast();
+    });
+  }
+}
+
+// Show error toast notification
+function showErrorToast(title, message) {
+  if (!errorToast) return;
+
+  errorTitle.textContent = title;
+  errorMessage.textContent = message;
+  errorToast.classList.remove('hidden');
+
+  // Auto-hide after 10 seconds
+  setTimeout(() => {
+    hideErrorToast();
+  }, 10000);
+}
+
+// Hide error toast
+function hideErrorToast() {
+  if (errorToast) {
+    errorToast.classList.add('hidden');
+  }
+}
+
+// Log error to browser storage
+async function logError(error, context = '') {
+  try {
+    const errorLog = {
+      timestamp: Date.now(),
+      message: error.message || String(error),
+      stack: error.stack || '',
+      context: context,
+      userAgent: navigator.userAgent,
+      url: window.location.href
+    };
+
+    // Get existing error logs
+    const result = await browser.storage.local.get('errorLogs');
+    let errorLogs = result.errorLogs || [];
+
+    // Add new error
+    errorLogs.unshift(errorLog);
+
+    // Keep only last 50 errors
+    if (errorLogs.length > MAX_ERROR_LOGS) {
+      errorLogs = errorLogs.slice(0, MAX_ERROR_LOGS);
+    }
+
+    // Save to storage
+    await browser.storage.local.set({ errorLogs });
+    console.error(`[Error Logged] ${context}:`, error);
+  } catch (storageError) {
+    console.error('Failed to log error to storage:', storageError);
+  }
+}
+
+// Global error handler for synchronous errors
+window.addEventListener('error', async (event) => {
+  const error = event.error || new Error(event.message);
+
+  console.error('Global error caught:', error);
+
+  // Log error to storage
+  await logError(error, 'Global Error');
+
+  // Show user-friendly error message
+  showErrorToast(
+    'Unexpected Error',
+    error.message || 'An unexpected error occurred. The extension will continue to work, but some features may not function correctly.'
+  );
+
+  // Prevent default browser error handling
+  event.preventDefault();
+});
+
+// Global handler for unhandled promise rejections
+window.addEventListener('unhandledrejection', async (event) => {
+  const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+
+  console.error('Unhandled promise rejection:', error);
+
+  // Log error to storage
+  await logError(error, 'Unhandled Promise Rejection');
+
+  // Show user-friendly error message
+  showErrorToast(
+    'Promise Error',
+    error.message || 'An operation failed unexpectedly. Please try again.'
+  );
+
+  // Prevent default browser error handling
+  event.preventDefault();
+});
+
+// Initialize error toast when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initErrorToast);
+} else {
+  initErrorToast();
+}
+
+// ============================================================================
+// ENCRYPTION UTILITIES
+// ============================================================================
+
 // Encryption utilities inlined to avoid module loading issues
 async function getDerivedKey() {
   const browserInfo = `${navigator.userAgent}-${navigator.language}-${screen.width}x${screen.height}`;
@@ -3164,6 +3301,55 @@ async function deleteSelectedDuplicates() {
   }
 }
 
+// View error logs
+async function viewErrorLogs() {
+  try {
+    const result = await browser.storage.local.get('errorLogs');
+    const errorLogs = result.errorLogs || [];
+
+    if (errorLogs.length === 0) {
+      alert('No error logs found. The extension is working smoothly!');
+      return;
+    }
+
+    // Format error logs for display
+    let logText = `ERROR LOGS (${errorLogs.length} total)\n`;
+    logText += '='.repeat(60) + '\n\n';
+
+    errorLogs.forEach((log, index) => {
+      const date = new Date(log.timestamp);
+      logText += `#${index + 1} - ${date.toLocaleString()}\n`;
+      logText += `Context: ${log.context}\n`;
+      logText += `Message: ${log.message}\n`;
+      if (log.stack) {
+        logText += `Stack: ${log.stack.split('\n')[0]}\n`;
+      }
+      logText += '-'.repeat(60) + '\n\n';
+    });
+
+    // Show in a prompt to allow copying
+    const action = confirm(
+      `Found ${errorLogs.length} error log(s).\n\n` +
+      `Click OK to view in console, or Cancel to clear logs.`
+    );
+
+    if (action) {
+      console.log(logText);
+      alert('Error logs have been printed to the browser console. Press F12 to view.');
+    } else {
+      // Clear logs
+      const confirmClear = confirm('Are you sure you want to clear all error logs?');
+      if (confirmClear) {
+        await browser.storage.local.remove('errorLogs');
+        alert('Error logs cleared successfully.');
+      }
+    }
+  } catch (error) {
+    console.error('Error viewing logs:', error);
+    alert('Failed to load error logs.');
+  }
+}
+
 // Close extension
 async function closeExtension() {
   if (isPreviewMode) {
@@ -3811,6 +3997,13 @@ function setupEventListeners() {
         alert('VirusTotal API key saved securely!\n\nSafety checking will now include VirusTotal scans.');
       }
     }
+    closeAllMenus();
+  });
+
+  // View error logs
+  const viewErrorLogsBtn = document.getElementById('viewErrorLogsBtn');
+  viewErrorLogsBtn.addEventListener('click', async () => {
+    await viewErrorLogs();
     closeAllMenus();
   });
 
