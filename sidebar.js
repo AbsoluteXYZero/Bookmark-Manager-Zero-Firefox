@@ -22,6 +22,8 @@ let currentEditItem = null;
 let zoomLevel = 100;
 let checkedBookmarks = new Set(); // Track which bookmarks have been checked to prevent infinite loops
 let scanCancelled = false; // Flag to cancel ongoing scans
+let linkCheckingEnabled = true; // Toggle for link checking
+let safetyCheckingEnabled = true; // Toggle for safety checking
 
 // Track open menus to preserve state across re-renders
 let openMenuBookmarkId = null;
@@ -88,6 +90,7 @@ async function init() {
   loadTheme();
   loadView();
   loadZoom();
+  loadCheckingSettings();
   await loadBookmarks();
   setupEventListeners();
   renderBookmarks();
@@ -177,6 +180,22 @@ function loadZoom() {
   });
 }
 
+// Load checking settings from localStorage
+function loadCheckingSettings() {
+  const savedLinkChecking = localStorage.getItem('linkCheckingEnabled');
+  const savedSafetyChecking = localStorage.getItem('safetyCheckingEnabled');
+
+  // Default to true if not set
+  linkCheckingEnabled = savedLinkChecking !== null ? savedLinkChecking === 'true' : true;
+  safetyCheckingEnabled = savedSafetyChecking !== null ? savedSafetyChecking === 'true' : true;
+
+  // Update checkbox states
+  const linkCheckbox = document.getElementById('enableLinkChecking');
+  const safetyCheckbox = document.getElementById('enableSafetyChecking');
+  if (linkCheckbox) linkCheckbox.checked = linkCheckingEnabled;
+  if (safetyCheckbox) safetyCheckbox.checked = safetyCheckingEnabled;
+}
+
 // Apply zoom
 function applyZoom() {
   const zoomFactor = zoomLevel / 100;
@@ -231,6 +250,12 @@ async function loadBookmarks() {
 // Automatically check bookmark statuses for unchecked bookmarks
 // Uses rate limiting to prevent browser overload
 async function autoCheckBookmarkStatuses() {
+  // Skip if both checking types are disabled
+  if (!linkCheckingEnabled && !safetyCheckingEnabled) {
+    console.log('Link and safety checking are both disabled, skipping...');
+    return;
+  }
+
   const bookmarksToCheck = [];
 
   // Traverse tree to find unchecked bookmarks
@@ -269,26 +294,37 @@ async function autoCheckBookmarkStatuses() {
 
     // Set batch to checking status (update data only, don't render yet)
     batch.forEach(item => {
-      updateBookmarkInTree(item.id, {
-        linkStatus: 'checking',
-        safetyStatus: 'checking'
-      });
+      const updates = {};
+      if (linkCheckingEnabled) updates.linkStatus = 'checking';
+      if (safetyCheckingEnabled) updates.safetyStatus = 'checking';
+      updateBookmarkInTree(item.id, updates);
     });
 
-    // Check this batch - both link status and safety
+    // Check this batch - conditionally check link status and/or safety based on settings
     const checkPromises = batch.map(async (item) => {
       try {
-        const linkStatus = await checkLinkStatus(item.url);
-        const safetyResult = await checkSafetyStatus(item.url);
-        return {
-          id: item.id,
-          linkStatus,
-          safetyStatus: safetyResult.status,
-          safetySources: safetyResult.sources
-        };
+        const result = { id: item.id };
+
+        if (linkCheckingEnabled) {
+          result.linkStatus = await checkLinkStatus(item.url);
+        }
+
+        if (safetyCheckingEnabled) {
+          const safetyResult = await checkSafetyStatus(item.url);
+          result.safetyStatus = safetyResult.status;
+          result.safetySources = safetyResult.sources;
+        }
+
+        return result;
       } catch (error) {
         console.error(`Error checking bookmark ${item.id} (${item.url}):`, error);
-        return { id: item.id, linkStatus: 'dead', safetyStatus: 'unknown', safetySources: [] };
+        const errorResult = { id: item.id };
+        if (linkCheckingEnabled) errorResult.linkStatus = 'dead';
+        if (safetyCheckingEnabled) {
+          errorResult.safetyStatus = 'unknown';
+          errorResult.safetySources = [];
+        }
+        return errorResult;
       }
     });
 
@@ -3009,6 +3045,22 @@ function setupEventListeners() {
   clearCacheBtn.addEventListener('click', async () => {
     await clearCache();
     closeAllMenus();
+  });
+
+  // Link checking toggle
+  const enableLinkCheckingToggle = document.getElementById('enableLinkChecking');
+  enableLinkCheckingToggle.addEventListener('change', (e) => {
+    linkCheckingEnabled = e.target.checked;
+    localStorage.setItem('linkCheckingEnabled', linkCheckingEnabled);
+    console.log(`Link checking ${linkCheckingEnabled ? 'enabled' : 'disabled'}`);
+  });
+
+  // Safety checking toggle
+  const enableSafetyCheckingToggle = document.getElementById('enableSafetyChecking');
+  enableSafetyCheckingToggle.addEventListener('change', (e) => {
+    safetyCheckingEnabled = e.target.checked;
+    localStorage.setItem('safetyCheckingEnabled', safetyCheckingEnabled);
+    console.log(`Safety checking ${safetyCheckingEnabled ? 'enabled' : 'disabled'}`);
   });
 
   // Rescan all bookmarks
