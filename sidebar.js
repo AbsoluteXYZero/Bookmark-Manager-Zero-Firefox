@@ -439,6 +439,7 @@ const zoomValue = document.getElementById('zoomValue');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsMenu = document.getElementById('settingsMenu');
 const openInTabBtn = document.getElementById('openInTabBtn');
+const exportBookmarksBtn = document.getElementById('exportBookmarksBtn');
 const closeExtensionBtn = document.getElementById('closeExtensionBtn');
 const clearCacheBtn = document.getElementById('clearCacheBtn');
 const autoClearCacheSelect = document.getElementById('autoClearCache');
