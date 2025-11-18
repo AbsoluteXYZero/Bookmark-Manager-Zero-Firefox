@@ -30,8 +30,8 @@ Other bookmark tools make you choose between organization OR security. Bookmark 
 | Multi-source malware scanning | ✅ | ❌ | ❌ | ✅ |
 | Safety indicators on bookmarks | ✅ | ❌ | ❌ | ❌ |
 | Suspicious pattern detection | ✅ | ❌ | ❌ | ❌ |
-| Whitelist management | ✅ | ❌ | ❌ | ❌ |
-| Firefox support | ✅ | ✅ | ✅ | ❌ (Chrome only) |
+| No tracking/analytics | ✅ | ✅ | ✅ | ❌ |
+| Website previews | ✅ | ❌ | ❌ | ❌ |
 
 Stop blindly clicking old bookmarks. Know which links are dead, parked, or potentially dangerous before you visit them.
 
