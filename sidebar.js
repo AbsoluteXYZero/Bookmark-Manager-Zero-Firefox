@@ -4349,6 +4349,18 @@ function setupEventListeners() {
     closeAllMenus();
   });
 
+  // Help & Documentation
+  const helpDocsBtn = document.getElementById('helpDocsBtn');
+  helpDocsBtn.addEventListener('click', () => {
+    const readmeUrl = 'https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero/blob/main/README.md';
+    if (isPreviewMode) {
+      window.open(readmeUrl, '_blank');
+    } else {
+      browser.tabs.create({ url: readmeUrl });
+    }
+    closeAllMenus();
+  });
+
   // Close extension
   closeExtensionBtn.addEventListener('click', () => {
     closeExtension();
