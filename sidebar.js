@@ -3076,7 +3076,10 @@ function setupEventListeners() {
         !e.target.closest('.bookmark-menu-btn') &&
         !e.target.closest('.bookmark-preview-container') &&
         !e.target.closest('.settings-menu') &&
-        !e.target.closest('#settingsBtn')) {
+        !e.target.closest('#settingsBtn') &&
+        !e.target.closest('.theme-btn-wrapper') &&
+        !e.target.closest('.view-btn-wrapper') &&
+        !e.target.closest('.zoom-btn-wrapper')) {
       closeAllMenus();
     }
   });
