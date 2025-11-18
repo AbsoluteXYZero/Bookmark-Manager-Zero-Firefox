@@ -11,6 +11,7 @@
   "host_permissions": [
     "<all_urls>"
   ],
+  "incognito": "split",
   "action": {
     "default_title": "Bookmark Manager Zero",
     "default_icon": {

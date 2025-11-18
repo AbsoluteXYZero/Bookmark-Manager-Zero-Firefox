@@ -135,6 +135,104 @@ if (document.readyState === 'loading') {
 }
 
 // ============================================================================
+// PRIVATE BROWSING MODE DETECTION & HANDLING
+// ============================================================================
+
+// Detect if we're in private/incognito mode
+const isPrivateMode = browser.extension.inIncognitoContext;
+
+// Session-only storage for private mode (cleared when window closes)
+const privateSessionStorage = new Map();
+
+// Privacy-respecting storage wrapper
+const safeStorage = {
+  async get(keys) {
+    if (isPrivateMode) {
+      // In private mode, use session storage only
+      if (typeof keys === 'string') {
+        return { [keys]: privateSessionStorage.get(keys) };
+      } else if (Array.isArray(keys)) {
+        const result = {};
+        keys.forEach(key => {
+          result[key] = privateSessionStorage.get(key);
+        });
+        return result;
+      }
+      return {};
+    }
+    // Normal mode: use browser.storage.local
+    return await browser.storage.local.get(keys);
+  },
+
+  async set(items) {
+    if (isPrivateMode) {
+      // In private mode, store in session storage only (memory)
+      Object.entries(items).forEach(([key, value]) => {
+        privateSessionStorage.set(key, value);
+      });
+      console.log('[Private Mode] Data stored in session memory only (will not persist)');
+      return;
+    }
+    // Normal mode: use browser.storage.local
+    return await browser.storage.local.set(items);
+  },
+
+  async remove(keys) {
+    if (isPrivateMode) {
+      const keysArray = Array.isArray(keys) ? keys : [keys];
+      keysArray.forEach(key => privateSessionStorage.delete(key));
+      return;
+    }
+    return await browser.storage.local.remove(keys);
+  }
+};
+
+// Show private mode indicator in UI
+function showPrivateModeIndicator() {
+  if (!isPrivateMode) return;
+
+  const header = document.querySelector('.header');
+  if (!header) return;
+
+  const indicator = document.createElement('div');
+  indicator.className = 'private-mode-indicator';
+  indicator.innerHTML = `
+    <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 4px;">
+      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+    </svg>
+    <span style="font-size: 11px; font-weight: 500;">Private Mode</span>
+  `;
+  indicator.style.cssText = `
+    display: flex;
+    align-items: center;
+    padding: 4px 12px;
+    background: var(--md-sys-color-secondary-container, rgba(208, 188, 255, 0.2));
+    color: var(--md-sys-color-on-secondary-container, #d0bcff);
+    border-radius: 12px;
+    font-size: 11px;
+    margin-left: 8px;
+  `;
+  indicator.title = 'Private browsing mode: No data will be saved to disk';
+
+  // Insert after logo
+  const logo = header.querySelector('.logo');
+  if (logo && logo.parentElement) {
+    logo.parentElement.insertBefore(indicator, logo.nextSibling);
+  }
+}
+
+// Override error logging in private mode
+const originalLogError = logError;
+async function logError(error, context = '') {
+  if (isPrivateMode) {
+    // In private mode, only log to console, don't persist to storage
+    console.error(`[Private Mode - Error Not Persisted] ${context}:`, error);
+    return;
+  }
+  return await originalLogError(error, context);
+}
+
+// ============================================================================
 // ENCRYPTION UTILITIES
 // ============================================================================
 
@@ -198,14 +296,14 @@ async function decryptApiKey(encrypted) {
 async function storeEncryptedApiKey(keyName, apiKey) {
   const encrypted = await encryptApiKey(apiKey);
   if (encrypted) {
-    await browser.storage.local.set({ [keyName]: encrypted });
+    await safeStorage.set({ [keyName]: encrypted });
     return true;
   }
   return false;
 }
 
 async function getDecryptedApiKey(keyName) {
-  const result = await browser.storage.local.get(keyName);
+  const result = await safeStorage.get(keyName);
   if (result[keyName]) {
     return await decryptApiKey(result[keyName]);
   }
@@ -373,6 +471,9 @@ async function init() {
     filterToggle.title = 'Filters';
   }
 
+  // Show private mode indicator if in incognito/private browsing
+  showPrivateModeIndicator();
+
   loadTheme();
   loadView();
   loadZoom();
@@ -395,7 +496,7 @@ async function loadAutoClearSetting() {
   }
 
   try {
-    const result = await browser.storage.local.get('autoClearCacheDays');
+    const result = await safeStorage.get('autoClearCacheDays');
     const autoClearDays = result.autoClearCacheDays || '7';
 
     // Set the select value
@@ -405,7 +506,7 @@ async function loadAutoClearSetting() {
 
     // Check if we need to run auto-clear
     if (autoClearDays !== 'never') {
-      const lastClearResult = await browser.storage.local.get('lastCacheClear');
+      const lastClearResult = await safeStorage.get('lastCacheClear');
       const lastClear = lastClearResult.lastCacheClear || 0;
       const timeSinceLastClear = Date.now() - lastClear;
       const clearInterval = 24 * 60 * 60 * 1000; // Check once per day
@@ -428,7 +529,7 @@ function loadTheme() {
     return;
   }
 
-  browser.storage.local.get('theme').then(result => {
+  safeStorage.get('theme').then(result => {
     theme = result.theme || 'blue-dark';
     applyTheme();
   });
@@ -448,7 +549,7 @@ function setTheme(newTheme) {
   theme = newTheme;
   applyTheme();
   if (!isPreviewMode) {
-    browser.storage.local.set({ theme });
+    safeStorage.set({ theme });
   }
 }
 
@@ -460,7 +561,7 @@ function loadView() {
     return;
   }
 
-  browser.storage.local.get('viewMode').then(result => {
+  safeStorage.get('viewMode').then(result => {
     viewMode = result.viewMode || 'list';
     applyView();
   });
@@ -482,7 +583,7 @@ function setView(newView) {
   viewMode = newView;
   applyView();
   if (!isPreviewMode) {
-    browser.storage.local.set({ viewMode });
+    safeStorage.set({ viewMode });
   }
 }
 
@@ -494,7 +595,7 @@ function loadZoom() {
     return;
   }
 
-  browser.storage.local.get('zoomLevel').then(result => {
+  safeStorage.get('zoomLevel').then(result => {
     zoomLevel = result.zoomLevel || 100;
     applyZoom();
     updateZoomDisplay();
@@ -540,7 +641,7 @@ function setZoom(newZoom) {
   applyZoom();
   updateZoomDisplay();
   if (!isPreviewMode) {
-    browser.storage.local.set({ zoomLevel });
+    safeStorage.set({ zoomLevel });
   }
 }
 
@@ -2394,7 +2495,7 @@ async function whitelistBookmark(bookmark) {
 async function saveWhitelist() {
   if (isPreviewMode) return;
   try {
-    await browser.storage.local.set({
+    await safeStorage.set({
       whitelistedUrls: Array.from(whitelistedUrls)
     });
   } catch (error) {
@@ -2406,7 +2507,7 @@ async function saveWhitelist() {
 async function loadWhitelist() {
   if (isPreviewMode) return;
   try {
-    const result = await browser.storage.local.get('whitelistedUrls');
+    const result = await safeStorage.get('whitelistedUrls');
     if (result.whitelistedUrls && Array.isArray(result.whitelistedUrls)) {
       whitelistedUrls = new Set(result.whitelistedUrls);
       console.log(`Loaded ${whitelistedUrls.size} whitelisted URLs`);
@@ -2420,7 +2521,7 @@ async function loadWhitelist() {
 async function saveSafetyHistory() {
   if (isPreviewMode) return;
   try {
-    await browser.storage.local.set({ safetyHistory });
+    await safeStorage.set({ safetyHistory });
   } catch (error) {
     console.error('Failed to save safety history:', error);
   }
@@ -2430,7 +2531,7 @@ async function saveSafetyHistory() {
 async function loadSafetyHistory() {
   if (isPreviewMode) return;
   try {
-    const result = await browser.storage.local.get('safetyHistory');
+    const result = await safeStorage.get('safetyHistory');
     if (result.safetyHistory) {
       safetyHistory = result.safetyHistory;
       console.log(`Loaded safety history for ${Object.keys(safetyHistory).length} URLs`);
@@ -3304,7 +3405,7 @@ async function deleteSelectedDuplicates() {
 // View error logs
 async function viewErrorLogs() {
   try {
-    const result = await browser.storage.local.get('errorLogs');
+    const result = await safeStorage.get('errorLogs');
     const errorLogs = result.errorLogs || [];
 
     if (errorLogs.length === 0) {
@@ -3340,7 +3441,7 @@ async function viewErrorLogs() {
       // Clear logs
       const confirmClear = confirm('Are you sure you want to clear all error logs?');
       if (confirmClear) {
-        await browser.storage.local.remove('errorLogs');
+        await safeStorage.remove('errorLogs');
         alert('Error logs cleared successfully.');
       }
     }
@@ -3385,7 +3486,7 @@ async function calculateCacheSize() {
   }
 
   try {
-    const result = await browser.storage.local.get(['linkStatusCache', 'safetyStatusCache', 'whitelistedUrls', 'safetyHistory']);
+    const result = await safeStorage.get(['linkStatusCache', 'safetyStatusCache', 'whitelistedUrls', 'safetyHistory']);
 
     // Calculate size by stringifying the data
     let totalSize = 0;
@@ -3439,7 +3540,7 @@ async function clearOldCacheEntries(maxAgeDays) {
     const maxAgeMs = parseInt(maxAgeDays) * 24 * 60 * 60 * 1000;
     const cutoffTime = Date.now() - maxAgeMs;
 
-    const result = await browser.storage.local.get(['linkStatusCache', 'safetyStatusCache', 'safetyHistory', 'lastCacheClear']);
+    const result = await safeStorage.get(['linkStatusCache', 'safetyStatusCache', 'safetyHistory', 'lastCacheClear']);
 
     let updated = false;
 
@@ -3453,7 +3554,7 @@ async function clearOldCacheEntries(maxAgeDays) {
         }
       });
       if (updated) {
-        await browser.storage.local.set({ linkStatusCache: linkCache });
+        await safeStorage.set({ linkStatusCache: linkCache });
       }
     }
 
@@ -3467,7 +3568,7 @@ async function clearOldCacheEntries(maxAgeDays) {
         }
       });
       if (updated) {
-        await browser.storage.local.set({ safetyStatusCache: safetyCache });
+        await safeStorage.set({ safetyStatusCache: safetyCache });
       }
     }
 
@@ -3484,12 +3585,12 @@ async function clearOldCacheEntries(maxAgeDays) {
         }
       });
       if (updated) {
-        await browser.storage.local.set({ safetyHistory: history });
+        await safeStorage.set({ safetyHistory: history });
       }
     }
 
     // Update last clear timestamp
-    await browser.storage.local.set({ lastCacheClear: Date.now() });
+    await safeStorage.set({ lastCacheClear: Date.now() });
 
     if (updated) {
       console.log(`Cleared cache entries older than ${maxAgeDays} days`);
@@ -3508,7 +3609,7 @@ async function clearCache() {
 
   try {
     // Remove both cache keys from storage
-    await browser.storage.local.remove(['linkStatusCache', 'safetyStatusCache']);
+    await safeStorage.remove(['linkStatusCache', 'safetyStatusCache']);
 
     console.log('Cache cleared successfully');
     alert('Cache cleared! All bookmark checks will be refreshed on next scan.');
@@ -3537,7 +3638,7 @@ async function rescanAllBookmarks() {
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // Clear cache
-    await browser.storage.local.remove(['linkStatusCache', 'safetyStatusCache']);
+    await safeStorage.remove(['linkStatusCache', 'safetyStatusCache']);
 
     // Clear the checkedBookmarks set to allow re-checking
     checkedBookmarks.clear();
@@ -3896,7 +3997,7 @@ function setupEventListeners() {
   // Auto-clear cache setting
   autoClearCacheSelect.addEventListener('change', async (e) => {
     const autoClearDays = e.target.value;
-    await browser.storage.local.set({ autoClearCacheDays: autoClearDays });
+    await safeStorage.set({ autoClearCacheDays: autoClearDays });
     console.log(`Auto-clear cache set to: ${autoClearDays === 'never' ? 'Never' : autoClearDays + ' days'}`);
 
     // Run auto-clear immediately if enabled
@@ -3964,7 +4065,7 @@ function setupEventListeners() {
     if (apiKey !== null) { // User clicked OK (not Cancel)
       if (apiKey.trim() === '') {
         // Remove API key
-        await browser.storage.local.remove('googleSafeBrowsingApiKey');
+        await safeStorage.remove('googleSafeBrowsingApiKey');
         alert('Google Safe Browsing API key removed.\n\nOnly URLhaus will be used for safety checking.');
       } else {
         // Save encrypted API key
@@ -3989,7 +4090,7 @@ function setupEventListeners() {
     if (apiKey !== null) { // User clicked OK (not Cancel)
       if (apiKey.trim() === '') {
         // Remove API key
-        await browser.storage.local.remove('virusTotalApiKey');
+        await safeStorage.remove('virusTotalApiKey');
         alert('VirusTotal API key removed.\n\nVirusTotal checking is now disabled.');
       } else {
         // Save encrypted API key
