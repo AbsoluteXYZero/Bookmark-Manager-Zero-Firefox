@@ -215,11 +215,34 @@ const checkLinkStatus = async (url) => {
   }
 };
 
-// URLhaus malicious URL database (downloaded from text file)
-// Using abuse.ch's plain text list - updated continuously
+// Malicious URL/domain database (aggregated from multiple sources)
 let maliciousUrlsSet = new Set();
-let urlhausLastUpdate = 0;
-const URLHAUS_UPDATE_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+let blocklistLastUpdate = 0;
+const BLOCKLIST_UPDATE_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+
+// Blocklist sources - all free, no API keys required
+const BLOCKLIST_SOURCES = [
+  {
+    name: 'URLhaus',
+    url: 'https://urlhaus.abuse.ch/downloads/text/',
+    format: 'urlhaus' // Plain text with # comments
+  },
+  {
+    name: 'BlockList-Malware',
+    url: 'https://blocklistproject.github.io/Lists/malware.txt',
+    format: 'hosts' // Hosts file format (0.0.0.0 domain.com)
+  },
+  {
+    name: 'BlockList-Phishing',
+    url: 'https://blocklistproject.github.io/Lists/phishing.txt',
+    format: 'hosts'
+  },
+  {
+    name: 'BlockList-Scam',
+    url: 'https://blocklistproject.github.io/Lists/scam.txt',
+    format: 'hosts'
+  }
+];
 
 // Check URL using Google Safe Browsing API (fallback/redundancy check)
 // Get a free API key at: https://developers.google.com/safe-browsing/v4/get-started
@@ -288,68 +311,127 @@ const checkGoogleSafeBrowsing = async (url) => {
   }
 };
 
-// Download and parse URLhaus malicious URLs text file
-const updateURLhausDatabase = async () => {
+// Parse different blocklist formats
+const parseBlocklistLine = (line, format) => {
+  const trimmed = line.trim();
+
+  // Skip empty lines and comments
+  if (!trimmed || trimmed.startsWith('#')) {
+    return null;
+  }
+
+  let domain = null;
+
+  if (format === 'hosts') {
+    // Hosts file format: "0.0.0.0 domain.com" or "127.0.0.1 domain.com"
+    const parts = trimmed.split(/\s+/);
+    if (parts.length >= 2) {
+      domain = parts[1]; // Second part is the domain
+    }
+  } else if (format === 'urlhaus') {
+    // URLhaus format: plain URLs/domains
+    domain = trimmed;
+  } else {
+    // Default: assume plain domain
+    domain = trimmed;
+  }
+
+  if (!domain) {
+    return null;
+  }
+
+  // Normalize: lowercase, remove protocol, remove trailing slash
+  const normalized = domain.toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/$/, '');
+
+  // Skip localhost and invalid entries
+  if (normalized === 'localhost' || normalized.startsWith('127.') || normalized.startsWith('0.0.0.0')) {
+    return null;
+  }
+
+  return normalized;
+};
+
+// Download from a single blocklist source
+const downloadBlocklistSource = async (source) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
   try {
-    console.log(`[URLhaus] Downloading malicious URLs database...`);
+    console.log(`[Blocklist] Downloading ${source.name}...`);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout for download
-
-    const response = await fetch('https://urlhaus.abuse.ch/downloads/text/', {
+    const response = await fetch(source.url, {
       signal: controller.signal
     });
 
     clearTimeout(timeout);
 
     if (!response.ok) {
-      console.error(`[URLhaus] Failed to download database: ${response.status}`);
-      return false;
+      console.error(`[Blocklist] ${source.name} failed: ${response.status}`);
+      return { domains: [], count: 0 };
     }
 
     const text = await response.text();
     const lines = text.split('\n');
+    const domains = [];
+
+    for (const line of lines) {
+      const normalized = parseBlocklistLine(line, source.format);
+      if (normalized) {
+        domains.push(normalized);
+      }
+    }
+
+    console.log(`[Blocklist] ${source.name}: ${domains.length} domains loaded`);
+    return { domains, count: domains.length };
+
+  } catch (error) {
+    clearTimeout(timeout);
+    console.error(`[Blocklist] ${source.name} error:`, error.message);
+    return { domains: [], count: 0 };
+  }
+};
+
+// Download and aggregate all blocklist sources
+const updateBlocklistDatabase = async () => {
+  try {
+    console.log(`[Blocklist] Starting update from ${BLOCKLIST_SOURCES.length} sources...`);
 
     // Clear existing set
     maliciousUrlsSet.clear();
 
-    // Parse lines (skip comments starting with #)
-    let count = 0;
-    const sampleUrls = []; // Collect first 10 for debugging
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        // Normalize: lowercase and remove protocol for consistent matching
-        const normalized = trimmed.toLowerCase()
-          .replace(/^https?:\/\//, '')
-          .replace(/\/$/, '');
+    // Download all sources in parallel for speed
+    const downloadPromises = BLOCKLIST_SOURCES.map(source => downloadBlocklistSource(source));
+    const results = await Promise.all(downloadPromises);
 
-        maliciousUrlsSet.add(normalized);
-        count++;
-
-        // Collect first 10 URLs for debugging
-        if (sampleUrls.length < 10) {
-          sampleUrls.push(normalized);
-        }
+    // Combine all domains into the Set
+    let totalCount = 0;
+    for (const result of results) {
+      for (const domain of result.domains) {
+        maliciousUrlsSet.add(domain);
       }
+      totalCount += result.count;
     }
 
-    urlhausLastUpdate = Date.now();
-    console.log(`[URLhaus] Database updated: ${count} malicious URLs loaded`);
+    blocklistLastUpdate = Date.now();
+
+    console.log(`[Blocklist] ✓ Database updated: ${maliciousUrlsSet.size} unique domains from ${totalCount} total entries`);
+    console.log(`[Blocklist] Sources: URLhaus + BlockList Project (Malware, Phishing, Scam)`);
 
     // Store update timestamp
     await browser.storage.local.set({
-      urlhausLastUpdate: urlhausLastUpdate
+      blocklistLastUpdate: blocklistLastUpdate
     });
 
     return true;
   } catch (error) {
-    console.error(`[URLhaus] Error updating database:`, error);
+    console.error(`[Blocklist] Error updating database:`, error);
     return false;
   }
 };
 
-// Check URL safety using URLhaus downloaded database
+// Check URL safety using aggregated blocklist database
 const checkURLSafety = async (url) => {
   // Check cache first
   const cached = await getCachedResult(url, 'safetyStatusCache');
@@ -365,17 +447,17 @@ const checkURLSafety = async (url) => {
   try {
     // Update database if needed (once per 24 hours)
     const now = Date.now();
-    if (now - urlhausLastUpdate > URLHAUS_UPDATE_INTERVAL) {
-      console.log(`[URLhaus] Database is stale, updating...`);
-      await updateURLhausDatabase();
+    if (now - blocklistLastUpdate > BLOCKLIST_UPDATE_INTERVAL) {
+      console.log(`[Blocklist] Database is stale, updating...`);
+      await updateBlocklistDatabase();
     }
 
     // If database is empty, try to load it
     if (maliciousUrlsSet.size === 0) {
-      console.log(`[URLhaus] Database empty, loading...`);
-      const success = await updateURLhausDatabase();
+      console.log(`[Blocklist] Database empty, loading...`);
+      const success = await updateBlocklistDatabase();
       if (!success) {
-        console.log(`[URLhaus] Could not load database, returning unknown`);
+        console.log(`[Blocklist] Could not load database, returning unknown`);
         result = 'unknown';
         await setCachedResult(url, result, 'safetyStatusCache');
         return result;
@@ -390,12 +472,12 @@ const checkURLSafety = async (url) => {
     // Extract domain (hostname with port, no path)
     const domain = normalizedUrl.split('/')[0];
 
-    console.log(`[URLhaus] Checking full URL: ${normalizedUrl}`);
-    console.log(`[URLhaus] Checking domain: ${domain}`);
+    console.log(`[Blocklist] Checking full URL: ${normalizedUrl}`);
+    console.log(`[Blocklist] Checking domain: ${domain}`);
 
     // Check if full URL is in the malicious set
     if (maliciousUrlsSet.has(normalizedUrl)) {
-      console.log(`[URLhaus] ⚠️ Full URL found in malicious database!`);
+      console.log(`[Blocklist] ⚠️ Full URL found in malicious database!`);
       result = 'unsafe';
       console.log(`[Safety Check] Final result for ${url}: ${result}`);
       await setCachedResult(url, result, 'safetyStatusCache');
@@ -404,21 +486,21 @@ const checkURLSafety = async (url) => {
 
     // Also check if just the domain is flagged (entire domain compromised)
     if (maliciousUrlsSet.has(domain)) {
-      console.log(`[URLhaus] ⚠️ Domain found in malicious database!`);
+      console.log(`[Blocklist] ⚠️ Domain found in malicious database!`);
       result = 'unsafe';
       console.log(`[Safety Check] Final result for ${url}: ${result}`);
       await setCachedResult(url, result, 'safetyStatusCache');
       return result;
     }
 
-    console.log(`[URLhaus] ✓ Neither full URL nor domain found in malicious database`);
+    console.log(`[Blocklist] ✓ Neither full URL nor domain found in malicious database`);
 
-    // URLhaus says safe - check Google Safe Browsing as redundancy if API key is configured
+    // Blocklists say safe - check Google Safe Browsing as redundancy if API key is configured
     const storage = await browser.storage.local.get('googleSafeBrowsingApiKey');
     const hasApiKey = storage.googleSafeBrowsingApiKey && storage.googleSafeBrowsingApiKey.trim() !== '';
 
     if (hasApiKey) {
-      console.log(`[Safety Check] URLhaus says safe, checking Google Safe Browsing as redundancy...`);
+      console.log(`[Safety Check] Blocklists say safe, checking Google Safe Browsing as redundancy...`);
       const googleResult = await checkGoogleSafeBrowsing(url);
 
       if (googleResult === 'unsafe') {
