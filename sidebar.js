@@ -393,7 +393,8 @@ let displayOptions = {
   url: true,
   liveStatus: true,
   safetyStatus: true,
-  preview: true
+  preview: true,
+  favicon: true
 };
 let currentEditItem = null;
 let zoomLevel = 100;
@@ -1281,6 +1282,22 @@ function createFolderElement(folder) {
       <div class="folder-title">${escapeHtml(folderTitle)}</div>
       <button class="bookmark-menu-btn folder-menu-btn" aria-label="More actions for ${escapeHtml(folderTitle)} folder" aria-haspopup="true" aria-expanded="false">⋮</button>
       <div class="bookmark-actions">
+        <button class="action-btn" data-action="add-bookmark">
+          <span class="icon">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/>
+            </svg>
+          </span>
+          <span>Add Bookmark Here</span>
+        </button>
+        <button class="action-btn" data-action="add-subfolder">
+          <span class="icon">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M13,19V13H19V11H13V5H11V11H5V13H11V19H13M20,18H22V20H2V18H4V10A2,2 0 0,1 6,8H10V6A2,2 0 0,1 12,4H16A2,2 0 0,1 18,6V8H20A2,2 0 0,1 22,10V18M18,10H6V18H18V10M16,6H12V8H16V6Z"/>
+            </svg>
+          </span>
+          <span>Add Subfolder Here</span>
+        </button>
         <button class="action-btn" data-action="rename">
           <span class="icon">
             <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
@@ -1323,6 +1340,13 @@ function createFolderElement(folder) {
 
   // Add menu button handler
   menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleFolderMenu(folderDiv);
+  });
+
+  // Add right-click context menu support for folder
+  folderDiv.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
     e.stopPropagation();
     toggleFolderMenu(folderDiv);
   });
@@ -1414,6 +1438,15 @@ function createBookmarkElement(bookmark) {
     statusIndicatorsHtml += getShieldHtml(safetyStatus, bookmark.url, safetySources);
   }
 
+  // Build favicon HTML based on display options
+  let faviconHtml = '';
+  if (displayOptions.favicon && bookmark.url) {
+    const faviconUrl = getFaviconUrl(bookmark.url);
+    if (faviconUrl) {
+      faviconHtml = `<img class="bookmark-favicon" src="${escapeHtml(faviconUrl)}" alt="" onerror="this.style.display='none'" />`;
+    }
+  }
+
   // Build bookmark info HTML based on display options
   let bookmarkInfoHtml = '';
   if (displayOptions.title) {
@@ -1430,6 +1463,7 @@ function createBookmarkElement(bookmark) {
     <div class="status-indicators">
       ${statusIndicatorsHtml}
     </div>
+    ${faviconHtml}
     <div class="bookmark-info">
       ${bookmarkInfoHtml}
     </div>
@@ -1450,6 +1484,14 @@ function createBookmarkElement(bookmark) {
           </svg>
         </span>
         <span>Open in New Tab</span>
+      </button>
+      <button class="action-btn" data-action="open-new-window">
+        <span class="icon">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M19,19H5V5H19M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M13.96,12.29L11.21,15.83L9.25,13.47L6.5,17H17.5L13.96,12.29Z"/>
+          </svg>
+        </span>
+        <span>Open in New Window</span>
       </button>
       <button class="action-btn" data-action="reader-view">
         <span class="icon">
@@ -1490,6 +1532,14 @@ function createBookmarkElement(bookmark) {
           </svg>
         </span>
         <span>Check on VirusTotal</span>
+      </button>
+      <button class="action-btn" data-action="copy-url">
+        <span class="icon">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"/>
+          </svg>
+        </span>
+        <span>Copy URL</span>
       </button>
       <button class="action-btn" data-action="edit">
         <span class="icon">
@@ -1545,6 +1595,13 @@ function createBookmarkElement(bookmark) {
   // Add menu toggle handler
   const menuBtn = bookmarkDiv.querySelector('.bookmark-menu-btn');
   menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleBookmarkMenu(bookmarkDiv);
+  });
+
+  // Add right-click context menu support
+  bookmarkDiv.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
     e.stopPropagation();
     toggleBookmarkMenu(bookmarkDiv);
   });
@@ -1946,19 +2003,6 @@ async function handleDrop(draggedId, targetId, targetElement, dropState) {
     alert('Failed to move item');
   }
 }
-
-// Helper function to find bookmark by ID in tree
-function findBookmarkById(nodes, id) {
-  for (const node of nodes) {
-    if (node.id === id) return node;
-    if (node.children) {
-      const found = findBookmarkById(node.children, id);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
 // Helper function to find parent of bookmark by ID
 function findParentById(nodes, childId, parent = null) {
   for (const node of nodes) {
@@ -2026,6 +2070,26 @@ function toggleFolderMenu(folderDiv) {
 // Handle folder actions
 async function handleFolderAction(action, folder) {
   switch (action) {
+    case 'add-bookmark':
+      // Open add bookmark modal with this folder pre-selected
+      await openAddBookmarkModal();
+      // Pre-select this folder
+      const folderSelect = document.getElementById('newBookmarkFolder');
+      if (folderSelect) {
+        folderSelect.value = folder.id;
+      }
+      break;
+
+    case 'add-subfolder':
+      // Open add folder modal with this folder pre-selected as parent
+      openAddFolderModal();
+      // Pre-select this folder as parent
+      const parentSelect = document.getElementById('newFolderParent');
+      if (parentSelect) {
+        parentSelect.value = folder.id;
+      }
+      break;
+
     case 'rename':
       openEditModal(folder, true);
       break;
@@ -2637,6 +2701,15 @@ async function handleBookmarkAction(action, bookmark) {
       }
       break;
 
+    case 'open-new-window':
+      // Open in new window
+      if (isPreviewMode) {
+        window.open(bookmark.url, '_blank', 'noopener,noreferrer');
+      } else {
+        browser.windows.create({ url: bookmark.url });
+      }
+      break;
+
     case 'reader-view':
       // Open in text-only view using Textise
       const textiseUrl = `https://www.textise.net/showText.aspx?strURL=${encodeURIComponent(bookmark.url)}`;
@@ -2702,6 +2775,36 @@ async function handleBookmarkAction(action, bookmark) {
         console.error('Error opening VirusTotal:', error);
         alert('Failed to open VirusTotal. Invalid URL.');
       }
+      break;
+
+    case 'copy-url':
+      // Copy URL to clipboard
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(bookmark.url);
+          // Show brief success feedback
+          console.log('URL copied to clipboard:', bookmark.url);
+          // Optional: Could show a toast notification here
+        } else {
+          // Fallback for older browsers
+          const textArea = document.createElement('textarea');
+          textArea.value = bookmark.url;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          console.log('URL copied to clipboard (fallback):', bookmark.url);
+        }
+      } catch (error) {
+        console.error('Error copying URL:', error);
+        alert('Failed to copy URL to clipboard.');
+      }
+      break;
+
+    case 'edit':
+      openEditModal(bookmark, false);
       break;
 
     case 'delete':
@@ -2874,8 +2977,19 @@ function buildFolderList(nodes, indent = 0) {
 }
 
 // Populate folder dropdown
-function populateFolderDropdown(selectElement) {
-  const folders = buildFolderList(bookmarkTree);
+function populateFolderDropdown(selectElement, sortAlphabetically = false) {
+  let folders = buildFolderList(bookmarkTree);
+
+  // Sort alphabetically if requested
+  if (sortAlphabetically) {
+    folders.sort((a, b) => {
+      // Remove indentation for comparison
+      const titleA = a.title.trim().toLowerCase();
+      const titleB = b.title.trim().toLowerCase();
+      return titleA.localeCompare(titleB);
+    });
+  }
+
   selectElement.innerHTML = '<option value="">Root</option>';
   folders.forEach(folder => {
     const option = document.createElement('option');
@@ -2915,7 +3029,35 @@ async function openAddBookmarkModal() {
     urlInput.value = 'https://example.com/current-page';
   }
 
-  populateFolderDropdown(folderSelect);
+  // Load sort preference and populate dropdown
+  const sortCheckbox = document.getElementById('sortBookmarkFoldersAlpha');
+  const sortPref = localStorage.getItem('sortFoldersAlphabetically') === 'true';
+  sortCheckbox.checked = sortPref;
+  populateFolderDropdown(folderSelect, sortPref);
+
+  // Set default folder - prefer last used, then Bookmarks Menu, then first available
+  const lastUsedFolder = localStorage.getItem('lastBookmarkFolder');
+  if (lastUsedFolder && folderSelect.querySelector(`option[value="${lastUsedFolder}"]`)) {
+    folderSelect.value = lastUsedFolder;
+  } else {
+    // Find Bookmarks Menu folder (usually has 'menu' in the ID)
+    const menuOption = Array.from(folderSelect.options).find(opt =>
+      opt.value.includes('menu') || opt.textContent.toLowerCase().includes('bookmarks menu')
+    );
+    if (menuOption) {
+      folderSelect.value = menuOption.value;
+    } else if (folderSelect.options.length > 1) {
+      // Fallback to first non-root option
+      folderSelect.selectedIndex = 1;
+    }
+  }
+
+  // Add event listener for sort checkbox
+  sortCheckbox.addEventListener('change', (e) => {
+    const sortAlpha = e.target.checked;
+    localStorage.setItem('sortFoldersAlphabetically', sortAlpha);
+    populateFolderDropdown(folderSelect, sortAlpha);
+  });
 
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
@@ -2948,6 +3090,12 @@ async function saveNewBookmark() {
     url = 'https://' + url;
   }
 
+  // Check if trying to create bookmark at root level
+  if (!parentId) {
+    alert('Firefox does not allow creating bookmarks at the root level. Please select a parent folder (Bookmarks Menu, Bookmarks Toolbar, Other Bookmarks, or any existing folder/subfolder) to create your bookmark in.');
+    return;
+  }
+
   if (isPreviewMode) {
     alert('✓ In preview mode. In the real extension, this would create a new bookmark.');
     closeAddBookmarkModal();
@@ -2973,6 +3121,12 @@ async function saveNewBookmark() {
       url,
       parentId
     });
+
+    // Remember the selected folder for next time
+    if (parentId) {
+      localStorage.setItem('lastBookmarkFolder', parentId);
+    }
+
     await loadBookmarks();
     renderBookmarks();
     closeAddBookmarkModal();
@@ -2989,7 +3143,36 @@ function openAddFolderModal() {
   const parentSelect = document.getElementById('newFolderParent');
 
   nameInput.value = '';
-  populateFolderDropdown(parentSelect);
+
+  // Load sort preference and populate dropdown
+  const sortCheckbox = document.getElementById('sortFolderParentsAlpha');
+  const sortPref = localStorage.getItem('sortFoldersAlphabetically') === 'true';
+  sortCheckbox.checked = sortPref;
+  populateFolderDropdown(parentSelect, sortPref);
+
+  // Set default folder - prefer last used, then Bookmarks Menu, then first available
+  const lastUsedParent = localStorage.getItem('lastFolderParent');
+  if (lastUsedParent && parentSelect.querySelector(`option[value="${lastUsedParent}"]`)) {
+    parentSelect.value = lastUsedParent;
+  } else {
+    // Find Bookmarks Menu folder (usually has 'menu' in the ID)
+    const menuOption = Array.from(parentSelect.options).find(opt =>
+      opt.value.includes('menu') || opt.textContent.toLowerCase().includes('bookmarks menu')
+    );
+    if (menuOption) {
+      parentSelect.value = menuOption.value;
+    } else if (parentSelect.options.length > 1) {
+      // Fallback to first non-root option
+      parentSelect.selectedIndex = 1;
+    }
+  }
+
+  // Add event listener for sort checkbox
+  sortCheckbox.addEventListener('change', (e) => {
+    const sortAlpha = e.target.checked;
+    localStorage.setItem('sortFoldersAlphabetically', sortAlpha);
+    populateFolderDropdown(parentSelect, sortAlpha);
+  });
 
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
@@ -3014,6 +3197,12 @@ async function saveNewFolder() {
     return;
   }
 
+  // Check if trying to create folder at root level
+  if (!parentId) {
+    alert('Firefox does not allow creating folders at the root level. Please select a parent folder (Bookmarks Menu, Bookmarks Toolbar, Other Bookmarks, or any existing folder/subfolder) to create your folder in.');
+    return;
+  }
+
   if (isPreviewMode) {
     alert('✓ In preview mode. In the real extension, this would create a new folder.');
     closeAddFolderModal();
@@ -3026,6 +3215,12 @@ async function saveNewFolder() {
       type: 'folder',
       parentId
     });
+
+    // Remember the selected parent folder for next time
+    if (parentId) {
+      localStorage.setItem('lastFolderParent', parentId);
+    }
+
     await loadBookmarks();
     renderBookmarks();
     closeAddFolderModal();
@@ -3159,9 +3354,70 @@ async function openInNewTab() {
   }
 }
 
-// SAFETY: Export bookmarks as JSON backup
+// Convert bookmark tree to HTML format
+function bookmarksToHTML(bookmarkNodes, indent = 0) {
+  let html = '';
+  const indentStr = '    '.repeat(indent);
+
+  for (const node of bookmarkNodes) {
+    if (node.url) {
+      // It's a bookmark
+      const addDate = node.dateAdded ? Math.floor(node.dateAdded / 1000) : '';
+      html += `${indentStr}<DT><A HREF="${node.url}"${addDate ? ` ADD_DATE="${addDate}"` : ''}>${node.title || node.url}</A>\n`;
+    } else if (node.children) {
+      // It's a folder
+      const addDate = node.dateAdded ? Math.floor(node.dateAdded / 1000) : '';
+      html += `${indentStr}<DT><H3${addDate ? ` ADD_DATE="${addDate}"` : ''}>${node.title || 'Untitled Folder'}</H3>\n`;
+      html += `${indentStr}<DL><p>\n`;
+      html += bookmarksToHTML(node.children, indent + 1);
+      html += `${indentStr}</DL><p>\n`;
+    }
+  }
+
+  return html;
+}
+
+// Generate complete HTML bookmark file
+function generateBookmarkHTML(bookmarkTree) {
+  const timestamp = new Date().toISOString();
+  const date = new Date();
+
+  let html = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<!-- This is an automatically generated file.
+     It will be read and overwritten.
+     DO NOT EDIT! -->
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+`;
+
+  // Process the bookmark tree
+  // Firefox bookmark tree has a root node, we want to export its children
+  if (bookmarkTree && bookmarkTree.length > 0) {
+    const root = bookmarkTree[0];
+    if (root.children) {
+      html += bookmarksToHTML(root.children, 1);
+    }
+  }
+
+  html += `</DL><p>\n`;
+
+  return html;
+}
+
+// SAFETY: Export bookmarks as JSON or HTML backup
 async function exportBookmarks() {
   try {
+    // Ask user for format preference
+    const format = confirm(
+      'Choose export format:\n\n' +
+      'OK = HTML (compatible with all browsers)\n' +
+      'Cancel = JSON (Firefox native format)\n\n' +
+      'HTML format can be imported into any browser.\n' +
+      'JSON format preserves all Firefox bookmark metadata.'
+    ) ? 'html' : 'json';
+
     let data;
 
     if (isPreviewMode) {
@@ -3173,14 +3429,23 @@ async function exportBookmarks() {
       data = tree;
     }
 
-    // Create JSON file
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
     // Generate filename with timestamp
     const date = new Date().toISOString().split('T')[0];
-    const filename = `bookmarks-backup-${date}.json`;
+    let filename, blob, url;
+
+    if (format === 'html') {
+      // Create HTML file
+      const html = generateBookmarkHTML(data);
+      blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      url = URL.createObjectURL(blob);
+      filename = `bookmarks-${date}.html`;
+    } else {
+      // Create JSON file
+      const json = JSON.stringify(data, null, 2);
+      blob = new Blob([json], { type: 'application/json' });
+      url = URL.createObjectURL(blob);
+      filename = `bookmarks-backup-${date}.json`;
+    }
 
     // Create download link and trigger download
     const a = document.createElement('a');
@@ -3191,7 +3456,23 @@ async function exportBookmarks() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    alert(`✓ Bookmarks exported successfully!\n\nFile: ${filename}\n\nThis backup can be imported back into Firefox via:\nBookmarks → Manage Bookmarks → Import and Backup → Restore → Choose File`);
+    if (format === 'html') {
+      alert(
+        `✓ Bookmarks exported as HTML!\n\n` +
+        `File: ${filename}\n\n` +
+        `This file can be imported into:\n` +
+        `• Firefox: Bookmarks → Manage Bookmarks → Import and Backup → Import Bookmarks from HTML\n` +
+        `• Chrome/Edge: Bookmarks → Import bookmarks and settings\n` +
+        `• Any browser that supports Netscape bookmark format`
+      );
+    } else {
+      alert(
+        `✓ Bookmarks exported as JSON!\n\n` +
+        `File: ${filename}\n\n` +
+        `This backup can be imported back into Firefox via:\n` +
+        `Bookmarks → Manage Bookmarks → Import and Backup → Restore → Choose File`
+      );
+    }
   } catch (error) {
     console.error('Error exporting bookmarks:', error);
     alert('Failed to export bookmarks. Please try again.');
@@ -3919,6 +4200,12 @@ function setupEventListeners() {
     renderBookmarks();
   });
 
+  const displayFavicon = document.getElementById('displayFavicon');
+  displayFavicon.addEventListener('change', (e) => {
+    displayOptions.favicon = e.target.checked;
+    renderBookmarks();
+  });
+
   const displayLiveStatus = document.getElementById('displayLiveStatus');
   const displaySafetyStatus = document.getElementById('displaySafetyStatus');
   const displayPreview = document.getElementById('displayPreview');
@@ -4125,6 +4412,18 @@ function setupEventListeners() {
   const viewErrorLogsBtn = document.getElementById('viewErrorLogsBtn');
   viewErrorLogsBtn.addEventListener('click', async () => {
     await viewErrorLogs();
+    closeAllMenus();
+  });
+
+  // Help & Documentation
+  const helpDocsBtn = document.getElementById('helpDocsBtn');
+  helpDocsBtn.addEventListener('click', () => {
+    const readmeUrl = 'https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero/blob/main/README.md';
+    if (isPreviewMode) {
+      window.open(readmeUrl, '_blank');
+    } else {
+      browser.tabs.create({ url: readmeUrl });
+    }
     closeAllMenus();
   });
 

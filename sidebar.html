@@ -553,6 +553,14 @@
       font-family: 'Courier New', monospace;
     }
 
+    .bookmark-favicon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      border-radius: 2px;
+      object-fit: contain;
+    }
+
     .bookmark-tags {
       display: flex;
       gap: 4px;
@@ -1583,6 +1591,15 @@
             </span>
             <span>View Error Logs</span>
           </button>
+          <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
+          <button class="action-btn" id="helpDocsBtn">
+            <span class="icon">
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z"/>
+              </svg>
+            </span>
+            <span>Help & Documentation</span>
+          </button>
           <button class="action-btn" id="closeExtensionBtn">
             <span class="icon">✕</span>
             <span>Close Extension</span>
@@ -1820,6 +1837,10 @@
       <input type="checkbox" id="displayUrl" checked>
       <span>URL</span>
     </label>
+    <label class="display-toggle" title="Show/hide website favicons">
+      <input type="checkbox" id="displayFavicon" checked>
+      <span>Favicon</span>
+    </label>
     <label class="display-toggle" title="Show/hide live link status">
       <input type="checkbox" id="displayLiveStatus" checked>
       <span>Live Status</span>
@@ -1924,6 +1945,10 @@
           <select id="newBookmarkFolder" class="form-input">
             <option value="">Root</option>
           </select>
+          <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" id="sortBookmarkFoldersAlpha" style="cursor: pointer;">
+            <span>Sort alphabetically</span>
+          </label>
         </div>
       </div>
       <div class="modal-footer">
@@ -1951,6 +1976,10 @@
           <select id="newFolderParent" class="form-input">
             <option value="">Root</option>
           </select>
+          <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" id="sortFolderParentsAlpha" style="cursor: pointer;">
+            <span>Sort alphabetically</span>
+          </label>
         </div>
       </div>
       <div class="modal-footer">
