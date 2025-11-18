@@ -658,9 +658,43 @@ async function loadBookmarks() {
   }
 
   try {
+    // Save current status data before reloading
+    const statusMap = new Map();
+    const saveStatuses = (nodes) => {
+      nodes.forEach(node => {
+        if (node.id && (node.linkStatus || node.safetyStatus)) {
+          statusMap.set(node.id, {
+            linkStatus: node.linkStatus,
+            safetyStatus: node.safetyStatus,
+            safetySources: node.safetySources
+          });
+        }
+        if (node.children) {
+          saveStatuses(node.children);
+        }
+      });
+    };
+    saveStatuses(bookmarkTree);
+
     const tree = await browser.bookmarks.getTree();
     // Firefox returns root with children, we want the actual bookmark folders
     bookmarkTree = tree[0].children || [];
+
+    // Restore status data to reloaded bookmarks
+    const restoreStatuses = (nodes) => {
+      return nodes.map(node => {
+        const savedStatus = statusMap.get(node.id);
+        if (savedStatus) {
+          node = { ...node, ...savedStatus };
+        }
+        if (node.children) {
+          node.children = restoreStatuses(node.children);
+        }
+        return node;
+      });
+    };
+    bookmarkTree = restoreStatuses(bookmarkTree);
+
     console.log('Loaded bookmarks:', bookmarkTree);
     // Clear checked bookmarks when loading fresh data
     checkedBookmarks.clear();
@@ -1573,7 +1607,8 @@ function createBookmarkElement(bookmark) {
     const previewLoading = bookmarkDiv.querySelector('.preview-loading');
 
     // Check if preview was already loaded using global state
-    const previewKey = bookmark.id || bookmark.url;
+    // Always use URL as the key for consistency
+    const previewKey = bookmark.url;
     const previewAlreadyLoaded = loadedPreviews.has(previewKey);
 
     // If preview was already loaded, set the image src immediately
@@ -1581,6 +1616,7 @@ function createBookmarkElement(bookmark) {
       const previewUrl = getPreviewUrl(bookmark.url);
       if (previewUrl) {
         previewImage.src = previewUrl;
+        previewImage.classList.add('loaded');
         previewLoading.style.display = 'none';
       }
     }
@@ -2726,7 +2762,12 @@ async function saveEditModal() {
   const updates = { title: editTitle.value };
 
   if (!isFolder) {
-    updates.url = editUrl.value;
+    let url = editUrl.value.trim();
+    // Add https:// if no protocol is specified
+    if (url && !url.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:/)) {
+      url = 'https://' + url;
+    }
+    updates.url = url;
   }
 
   if (isPreviewMode) {
@@ -2894,12 +2935,17 @@ function closeAddBookmarkModal() {
 // Save new bookmark
 async function saveNewBookmark() {
   const title = document.getElementById('newBookmarkTitle').value;
-  const url = document.getElementById('newBookmarkUrl').value;
+  let url = document.getElementById('newBookmarkUrl').value.trim();
   const parentId = document.getElementById('newBookmarkFolder').value || undefined;
 
   if (!url) {
     alert('Please enter a URL');
     return;
+  }
+
+  // Add https:// if no protocol is specified
+  if (!url.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:/)) {
+    url = 'https://' + url;
   }
 
   if (isPreviewMode) {
