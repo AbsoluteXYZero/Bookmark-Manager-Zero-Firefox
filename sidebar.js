@@ -23,6 +23,9 @@ let scanCancelled = false; // Flag to cancel ongoing scans
 // Track open menus to preserve state across re-renders
 let openMenuBookmarkId = null;
 
+// Track which bookmarks have loaded previews (persists across re-renders)
+let loadedPreviews = new Set();
+
 // Undo system state
 let undoData = null;
 let undoTimer = null;
@@ -259,14 +262,13 @@ async function autoCheckBookmarkStatuses() {
 
     const batch = bookmarksToCheck.slice(i, i + BATCH_SIZE);
 
-    // Set batch to checking status
+    // Set batch to checking status (update data only, don't render yet)
     batch.forEach(item => {
       updateBookmarkInTree(item.id, {
         linkStatus: 'checking',
         safetyStatus: 'checking'
       });
     });
-    renderBookmarks();
 
     // Check this batch - both link status and safety
     const checkPromises = batch.map(async (item) => {
@@ -287,7 +289,7 @@ async function autoCheckBookmarkStatuses() {
 
     const results = await Promise.all(checkPromises);
 
-    // Update results for this batch
+    // Update results for this batch (update data only, don't render yet)
     results.forEach(result => {
       updateBookmarkInTree(result.id, {
         linkStatus: result.linkStatus,
@@ -295,7 +297,6 @@ async function autoCheckBookmarkStatuses() {
         safetySources: result.safetySources
       });
     });
-    renderBookmarks();
 
     console.log(`Checked batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(bookmarksToCheck.length / BATCH_SIZE)} (${results.length} bookmarks)`);
 
@@ -304,6 +305,9 @@ async function autoCheckBookmarkStatuses() {
       await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
     }
   }
+
+  // Render once at the end of all batches
+  renderBookmarks();
 
   console.log(`Finished checking link status for ${bookmarksToCheck.length} bookmarks (safety checks disabled - use Test VT button)`);
 }
@@ -1067,7 +1071,19 @@ function createBookmarkElement(bookmark) {
   const previewContainer = bookmarkDiv.querySelector('.bookmark-preview-container');
   const previewImage = bookmarkDiv.querySelector('.preview-image');
   const previewLoading = bookmarkDiv.querySelector('.preview-loading');
-  let previewLoaded = false;
+
+  // Check if preview was already loaded using global state
+  const previewKey = bookmark.id || bookmark.url;
+  const previewAlreadyLoaded = loadedPreviews.has(previewKey);
+
+  // If preview was already loaded, set the image src immediately
+  if (previewAlreadyLoaded && bookmark.url) {
+    const previewUrl = getPreviewUrl(bookmark.url);
+    if (previewUrl) {
+      previewImage.src = previewUrl;
+      previewLoading.style.display = 'none';
+    }
+  }
 
   // Prevent all interactions with preview (clicks, drags, context menu)
   previewContainer.addEventListener('click', (e) => {
@@ -1090,7 +1106,7 @@ function createBookmarkElement(bookmark) {
   });
 
   bookmarkDiv.addEventListener('mouseenter', () => {
-    if (!previewLoaded && bookmark.url) {
+    if (!loadedPreviews.has(previewKey) && bookmark.url) {
       const previewUrl = getPreviewUrl(bookmark.url);
 
       if (previewUrl) {
@@ -1100,17 +1116,18 @@ function createBookmarkElement(bookmark) {
         previewImage.onload = () => {
           previewLoading.style.display = 'none';
           previewImage.classList.add('loaded');
-          previewLoaded = true;
+          loadedPreviews.add(previewKey); // Mark as loaded in global state
         };
 
         previewImage.onerror = () => {
           previewLoading.textContent = 'No preview';
-          previewLoaded = true;
+          loadedPreviews.add(previewKey); // Mark as loaded even on error
         };
 
         previewImage.src = previewUrl;
       } else {
         previewLoading.textContent = 'No preview';
+        loadedPreviews.add(previewKey); // Mark as loaded
       }
     }
   });
