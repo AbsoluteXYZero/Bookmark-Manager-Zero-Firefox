@@ -2,7 +2,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Firefox](https://img.shields.io/badge/firefox-compatible-orange)
 
@@ -215,7 +215,21 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v1.1.0 (Current) - Bug Fixes & Improvements
+### v1.2.0 (Current) - Export Improvements & Code Cleanup
+
+**New Features:**
+- 📤 **HTML/JSON Export Choice** - Users can now choose between HTML (cross-browser compatible) or JSON (Firefox native) export formats
+- 📋 **Netscape Bookmark Format** - HTML exports use standard format compatible with all major browsers
+
+**Improvements:**
+- 🧹 **Code Cleanup** - Removed legacy duplicate files (crypto-utils.js, url-validator.js)
+- 📖 **Enhanced Documentation** - Added comprehensive acknowledgments for security services (URLhaus, BlockList Project, Google Safe Browsing, VirusTotal)
+- 🔒 **Removed Private Tab Feature** - Eliminated confusing Firefox API limitation issues
+
+**Bug Fixes:**
+- Fixed incognito manifest setting for Firefox compatibility
+
+### v1.1.0 - Bug Fixes & Improvements
 
 **Critical Fixes:**
 - 🔧 **Fixed link checking feature** - Content Security Policy updated to allow URL checking for all bookmark URLs (previously blocked by overly restrictive CSP)

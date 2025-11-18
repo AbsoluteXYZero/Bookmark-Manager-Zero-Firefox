@@ -1,7 +1,7 @@
 # Mozilla Add-ons Submission Notes
 
 **Extension Name:** Bookmark Manager Zero
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Developer:** AbsoluteXYZero
 **Repository:** https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero
 
@@ -194,6 +194,7 @@ Both have generous free tiers suitable for testing.
 
 ## Version History
 
+- **v1.2.0** - Export improvements & code cleanup: HTML/JSON export choice, Netscape bookmark format support, removed legacy files, enhanced documentation with security acknowledgments, removed private tab feature
 - **v1.1.0** - Bug fixes & improvements: Fixed link checking (CSP updated), fixed status indicators persisting after operations, fixed preview image restoration, auto-add https:// protocol, updated icons (transparent background), corrected documentation
 - **v1.0.0** - Stable release: private browsing, error handling, export, accessibility, complete documentation, bug fixes
 - **v0.7.0** - Development release with private browsing and error handling
