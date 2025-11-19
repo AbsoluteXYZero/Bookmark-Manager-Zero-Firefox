@@ -1486,12 +1486,13 @@ function createBookmarkElement(bookmark) {
   const safetySources = bookmark.safetySources || [];
 
   // Build status indicators HTML based on display options
+  // Shield (safety) on top, chain (link status) below
   let statusIndicatorsHtml = '';
-  if (displayOptions.liveStatus) {
-    statusIndicatorsHtml += getStatusDotHtml(linkStatus);
-  }
   if (displayOptions.safetyStatus) {
     statusIndicatorsHtml += getShieldHtml(safetyStatus, bookmark.url, safetySources);
+  }
+  if (displayOptions.liveStatus) {
+    statusIndicatorsHtml += getStatusDotHtml(linkStatus);
   }
 
   // Build favicon HTML based on display options
@@ -2689,12 +2690,13 @@ function updateBookmarkStatusInDOM(bookmarkId, linkStatus, safetyStatus, safetyS
   if (!statusIndicators) return;
 
   // Rebuild the status indicators HTML
+  // Shield (safety) on top, chain (link status) below
   let statusIndicatorsHtml = '';
-  if (displayOptions.liveStatus && linkStatus) {
-    statusIndicatorsHtml += getStatusDotHtml(linkStatus);
-  }
   if (displayOptions.safetyStatus && safetyStatus) {
     statusIndicatorsHtml += getShieldHtml(safetyStatus, url, safetySources);
+  }
+  if (displayOptions.liveStatus && linkStatus) {
+    statusIndicatorsHtml += getStatusDotHtml(linkStatus);
   }
 
   statusIndicators.innerHTML = statusIndicatorsHtml;
