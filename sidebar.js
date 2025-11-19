@@ -2579,8 +2579,25 @@ async function checkSafetyStatus(url) {
     return new Promise(resolve => {
       setTimeout(() => {
         // Mostly safe, some warnings, rare unsafe for demo
-        const statuses = ['safe', 'safe', 'safe', 'safe', 'warning', 'unsafe'];
-        resolve(statuses[Math.floor(Math.random() * statuses.length)]);
+        const random = Math.random();
+        if (random < 0.6) {
+          resolve({ status: 'safe', sources: [] });
+        } else if (random < 0.85) {
+          // Simulate various warning patterns
+          const warningPatterns = [
+            ['HTTP Only (Unencrypted)'],
+            ['URL Shortener'],
+            ['Suspicious TLD'],
+            ['IP Address'],
+            ['HTTP Only (Unencrypted)', 'Suspicious TLD']
+          ];
+          resolve({
+            status: 'warning',
+            sources: warningPatterns[Math.floor(Math.random() * warningPatterns.length)]
+          });
+        } else {
+          resolve({ status: 'unsafe', sources: ['Malware Database Match'] });
+        }
       }, 800);
     });
   }
