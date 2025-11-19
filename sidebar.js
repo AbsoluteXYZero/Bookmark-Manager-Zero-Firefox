@@ -2172,27 +2172,48 @@ function repositionMenuIfNeeded(menu, parentElement) {
   requestAnimationFrame(() => {
     const menuRect = menu.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
+    const parentRect = parentElement.getBoundingClientRect();
+    const menuHeight = menuRect.height;
 
-    // Check if menu bottom extends beyond viewport
-    if (menuRect.bottom > viewportHeight) {
-      // Position menu above the parent element instead
-      const parentRect = parentElement.getBoundingClientRect();
-      const spaceAbove = parentRect.top;
-      const spaceBelow = viewportHeight - parentRect.bottom;
+    // Calculate available space above and below the parent element
+    const spaceAbove = parentRect.top;
+    const spaceBelow = viewportHeight - parentRect.bottom;
 
-      if (spaceAbove > spaceBelow) {
-        // More space above - position menu above
-        menu.style.top = 'auto';
-        menu.style.bottom = '100%';
-        menu.style.marginTop = '0';
-        menu.style.marginBottom = '2px';
-      }
-    } else {
-      // Reset to default positioning (below)
+    // Check if menu fits below
+    if (menuHeight <= spaceBelow) {
+      // Fits below - use default positioning
       menu.style.top = '100%';
       menu.style.bottom = 'auto';
       menu.style.marginTop = '2px';
       menu.style.marginBottom = '0';
+      menu.style.maxHeight = '';
+    }
+    // Check if menu fits above
+    else if (menuHeight <= spaceAbove) {
+      // Fits above - position menu above
+      menu.style.top = 'auto';
+      menu.style.bottom = '100%';
+      menu.style.marginTop = '0';
+      menu.style.marginBottom = '2px';
+      menu.style.maxHeight = '';
+    }
+    // Menu doesn't fit in either direction - use the larger space and constrain height
+    else if (spaceBelow >= spaceAbove) {
+      // More space below - position below with max height
+      menu.style.top = '100%';
+      menu.style.bottom = 'auto';
+      menu.style.marginTop = '2px';
+      menu.style.marginBottom = '0';
+      menu.style.maxHeight = `${spaceBelow - 10}px`;
+      menu.style.overflowY = 'auto';
+    } else {
+      // More space above - position above with max height
+      menu.style.top = 'auto';
+      menu.style.bottom = '100%';
+      menu.style.marginTop = '0';
+      menu.style.marginBottom = '2px';
+      menu.style.maxHeight = `${spaceAbove - 10}px`;
+      menu.style.overflowY = 'auto';
     }
   });
 }
@@ -2555,6 +2576,8 @@ function closeAllMenus() {
     menu.style.bottom = '';
     menu.style.marginTop = '';
     menu.style.marginBottom = '';
+    menu.style.maxHeight = '';
+    menu.style.overflowY = '';
   });
   settingsMenu.classList.remove('show');
   themeMenu.classList.remove('show');
