@@ -2108,6 +2108,9 @@ function toggleBookmarkMenu(bookmarkDiv) {
   if (!isOpen) {
     menu.classList.add('show');
     openMenuBookmarkId = bookmarkId; // Track which menu is open
+
+    // Reposition menu if it overflows viewport
+    repositionMenuIfNeeded(menu, bookmarkDiv);
   } else {
     openMenuBookmarkId = null;
   }
@@ -2126,9 +2129,43 @@ function toggleFolderMenu(folderDiv) {
   if (!isOpen) {
     menu.classList.add('show');
     openMenuBookmarkId = folderId; // Track which menu is open
+
+    // Reposition menu if it overflows viewport
+    repositionMenuIfNeeded(menu, folderDiv);
   } else {
     openMenuBookmarkId = null;
   }
+}
+
+// Reposition menu if it would overflow the viewport
+function repositionMenuIfNeeded(menu, parentElement) {
+  // Use requestAnimationFrame to ensure menu is rendered before measuring
+  requestAnimationFrame(() => {
+    const menuRect = menu.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+
+    // Check if menu bottom extends beyond viewport
+    if (menuRect.bottom > viewportHeight) {
+      // Position menu above the parent element instead
+      const parentRect = parentElement.getBoundingClientRect();
+      const spaceAbove = parentRect.top;
+      const spaceBelow = viewportHeight - parentRect.bottom;
+
+      if (spaceAbove > spaceBelow) {
+        // More space above - position menu above
+        menu.style.top = 'auto';
+        menu.style.bottom = '100%';
+        menu.style.marginTop = '0';
+        menu.style.marginBottom = '2px';
+      }
+    } else {
+      // Reset to default positioning (below)
+      menu.style.top = '100%';
+      menu.style.bottom = 'auto';
+      menu.style.marginTop = '2px';
+      menu.style.marginBottom = '0';
+    }
+  });
 }
 
 // Handle folder actions
@@ -2484,6 +2521,11 @@ function closeAllMenus() {
   openMenuBookmarkId = null; // Clear tracked menu state
   document.querySelectorAll('.bookmark-actions.show').forEach(menu => {
     menu.classList.remove('show');
+    // Reset positioning styles
+    menu.style.top = '';
+    menu.style.bottom = '';
+    menu.style.marginTop = '';
+    menu.style.marginBottom = '';
   });
   settingsMenu.classList.remove('show');
   themeMenu.classList.remove('show');
