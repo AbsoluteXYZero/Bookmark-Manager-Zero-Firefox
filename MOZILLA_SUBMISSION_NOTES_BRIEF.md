@@ -1,5 +1,5 @@
 BOOKMARK MANAGER ZERO v1.4.0 - Submission Notes
-Repository: https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero
+Repository: https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox
 
 ## PERMISSIONS
 
@@ -72,4 +72,4 @@ Firefox only (Firefox bookmark API)
 Sidebar only
 No Firefox Sync (use native sync)
 
-Contact: https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero/issues
+Contact: https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/issues
