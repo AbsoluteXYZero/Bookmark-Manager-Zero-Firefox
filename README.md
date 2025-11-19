@@ -117,7 +117,9 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 ### Link & Safety Checking
 - 🔗 **Link Status Checking** - Automatically detects broken/dead links
 - 🛡️ **Security Scanning** - Checks URLs against malware databases
-- ⚠️ **Safety Indicators** - Visual warnings for suspicious links
+- ⚠️ **Safety Indicators** - Visual warnings for suspicious links with detailed tooltips
+- 👆 **Clickable Status Icons** - Click shield or chain icons for full status details popup
+- 🔄 **HTTP Redirect Detection** - Detects when HTTP bookmarks redirect to HTTPS
 - ✅ **Whitelist Support** - Mark trusted URLs to skip safety checks
 - 📜 **Safety History** - Track status changes over time
 
@@ -319,10 +321,13 @@ If all above checks pass, the URL is analyzed for suspicious patterns:
 
 | Pattern | Detection | Result |
 |---------|-----------|--------|
-| **HTTP Only** | URL uses `http://` instead of `https://` | Warning |
-| **URL Shortener** | Domain is bit.ly, tinyurl.com, t.co, etc. (15+ services) | Warning |
-| **Suspicious TLD** | Domain ends in .xyz, .top, .tk, .ml, .ga, .cf, .gq, etc. | Warning |
-| **IP Address** | URL uses IP address instead of domain name | Warning |
+| **HTTP Only (Unencrypted)** | URL uses `http://` and doesn't redirect to HTTPS | Warning |
+| **HTTP Only (redirects to HTTPS)** | URL uses `http://` but site redirects to HTTPS | Warning (informational) |
+| **URL Shortener** | Domain is bit.ly, tinyurl.com, t.co, etc. (18+ services) | Warning |
+| **Suspicious TLD** | Domain ends in .xyz, .top, .tk, .ml, .ga, .cf, .gq, .cc, etc. (30+ TLDs) | Warning |
+| **IP Address** | URL uses IP address instead of domain name (IPv4 or IPv6) | Warning |
+
+**Note:** Multiple patterns can be detected simultaneously (e.g., HTTP + Suspicious TLD).
 
 #### Final Status Determination
 
@@ -382,6 +387,13 @@ Users can whitelist specific URLs to:
 - Firefox WebExtensions API
 - AES-256-GCM encryption for API keys
 - CSS Grid & Flexbox
+
+### Version Management
+The extension version is centralized in `manifest.json`. All JavaScript files read the version using:
+```javascript
+const APP_VERSION = browser.runtime.getManifest().version;
+```
+When updating the version, only `manifest.json` needs to be changed for code references.
 
 ### Building
 No build process required - pure vanilla JavaScript.
