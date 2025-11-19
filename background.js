@@ -767,12 +767,39 @@ const updateBlocklistDatabase = async () => {
 };
 
 // Check for suspicious URL patterns that aren't necessarily malicious but warrant caution
-const checkSuspiciousPatterns = (url, domain) => {
+const checkSuspiciousPatterns = async (url, domain) => {
   const patterns = [];
 
   // 1. Check for HTTP-only (no encryption)
   if (url.toLowerCase().startsWith('http://')) {
-    patterns.push('HTTP Only (Unencrypted)');
+    // Check if it redirects to HTTPS
+    let redirectsToHttps = false;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(url, {
+        method: 'HEAD',
+        signal: controller.signal,
+        credentials: 'omit',
+        redirect: 'follow'
+      });
+      clearTimeout(timeoutId);
+
+      // Check if final URL is HTTPS
+      if (response.url && response.url.toLowerCase().startsWith('https://')) {
+        redirectsToHttps = true;
+      }
+    } catch (e) {
+      // Couldn't check redirect, assume no redirect
+      console.log(`[Suspicious Patterns] Could not check redirect for ${url}:`, e.message);
+    }
+
+    if (redirectsToHttps) {
+      patterns.push('HTTP Only (redirects to HTTPS)');
+    } else {
+      patterns.push('HTTP Only (Unencrypted)');
+    }
   }
 
   // 2. Check for known URL shorteners
@@ -929,7 +956,7 @@ const checkURLSafety = async (url) => {
     }
 
     // Not malicious, but check for suspicious patterns
-    const suspiciousPatterns = checkSuspiciousPatterns(url, domain);
+    const suspiciousPatterns = await checkSuspiciousPatterns(url, domain);
     if (suspiciousPatterns.length > 0) {
       console.log(`[Safety Check] Suspicious patterns detected: ${suspiciousPatterns.join(', ')}`);
       const resultObj = { status: 'warning', sources: suspiciousPatterns };
