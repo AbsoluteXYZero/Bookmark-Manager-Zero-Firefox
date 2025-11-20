@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -431,7 +431,17 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v1.4.0 (Current) - UI Overhaul & Enhanced Status Display
+### v1.5.0 (Current) - Grid View Improvements
+
+**Improvements:**
+- 📐 **Square Card Layout** - Bookmarks display as square cards in grid view with aspect-ratio
+- 🖼️ **Preview Support** - Webpage previews visible in grid view cards
+- 📁 **Compact Folders** - Reduced spacing between collapsed folders in grid view
+- 🔧 **Fixed Column Layout** - Grid columns now properly sized with minmax(0, 1fr)
+
+---
+
+### v1.4.0 - UI Overhaul & Enhanced Status Display
 
 **New Features:**
 - 🎨 **Stacked Status Icons** - Shield and chain icons now stack vertically, reclaiming horizontal space
