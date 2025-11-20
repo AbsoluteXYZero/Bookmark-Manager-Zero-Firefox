@@ -274,6 +274,9 @@ The extension checks if bookmark URLs are still accessible and categorizes them 
 
 6. **Fallback Strategy**: If HEAD fails, a GET request is attempted with the same detection logic
 
+#### Rate Limiting
+Bookmarks are scanned in batches of 5 with a 1-second delay between batches. This prevents overwhelming your network with too many DNS requests at once.
+
 #### Caching
 Results are cached locally for 7 days to minimize network requests.
 
