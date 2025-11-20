@@ -14,7 +14,11 @@
 
 ## Overview
 
-Bookmark Manager Zero is a Firefox extension that provides a beautiful, feature-rich sidebar interface for managing your native Firefox bookmarks. It enhances your bookmark management experience with modern UI, advanced search, safety checking, and intelligent organization tools.
+Bookmark Manager Zero is a Firefox extension that provides a beautiful, feature-rich sidebar interface for managing your **native Firefox bookmarks**. No cloud sync, no self-hosting, no separate accounts—it works directly with the bookmarks already built into your browser.
+
+Changes sync **bi-directionally and instantly**: any edits made in Bookmark Manager Zero immediately appear in Firefox's native bookmark system, and vice versa. Don't worry about accidental changes—the built-in undo feature lets you quickly restore recently deleted bookmarks.
+
+It enhances your bookmark management experience with modern UI, advanced search, safety checking, and intelligent organization tools while keeping your data exactly where it belongs: in Firefox.
 
 ### Why Bookmark Manager Zero?
 
