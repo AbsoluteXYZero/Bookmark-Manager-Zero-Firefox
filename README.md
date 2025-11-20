@@ -248,23 +248,31 @@ The extension checks if bookmark URLs are still accessible and categorizes them 
 
 #### Detection Method
 
-1. **Initial Domain Check**: The URL's domain is first checked against a list of known domain parking services (HugeDomains, GoDaddy, Namecheap, Sedo, etc.)
+1. **Initial Domain Check**: The URL's domain is first checked against a list of 22+ known domain parking services:
+   - **Registrars**: HugeDomains, GoDaddy, Namecheap, NameSilo, Porkbun, Dynadot, Epik
+   - **Marketplaces**: Sedo, Dan.com, Afternic, DomainMarket, Squadhelp, BrandBucket, Undeveloped, Atom
+   - **Parking Services**: Bodis, ParkingCrew, Above.com, SedoParking
 
 2. **HTTP HEAD Request**: A lightweight HEAD request is sent to the URL with a 10-second timeout
    - No page content is downloaded
-   - Only HTTP response codes are checked
    - Credentials are omitted for privacy
 
-3. **Response Code Interpretation**:
-   - **2xx or 3xx** → Live (successful response or redirect)
-   - **4xx or 5xx** → Dead (client/server error)
-   - **Timeout/Network Error** → Dead
+3. **Redirect Detection**: If the URL redirects to a different domain, the final destination is checked against parking domain lists
+   - Example: `example.com` → `hugedomains.com/domain/example.com` = **Parked**
+   - Same-site redirects (www, HTTPS) are not flagged
 
-4. **Redirect Analysis**: If the URL redirects, the final destination is checked against parking domain lists
+4. **Content Analysis**: Page HTML is analyzed for parking indicators:
+   - Strong indicators (immediately flagged): "sedo domain parking", "this domain is parked", "domain has expired"
+   - Weak indicators (require 3+ matches on small pages): "domain for sale", "buy this domain", "coming soon"
 
-5. **Content Analysis** (for ambiguous cases): Page HTML is analyzed for 50+ parking indicators like "domain for sale", "buy this domain", "parked free", etc.
+5. **Response Interpretation**:
+   - **Successful response** → Live
+   - **Redirects to parking domain** → Parked
+   - **Parking content detected** → Parked
+   - **Cloudflare-protected or blocking requests** → Live
+   - **Timeout/Network Error** → Live (slow server) or Dead
 
-6. **Fallback Strategy**: If HEAD fails due to CORS, a GET request with `no-cors` mode is attempted
+6. **Fallback Strategy**: If HEAD fails, a GET request is attempted with the same detection logic
 
 #### Caching
 Results are cached locally for 7 days to minimize network requests.

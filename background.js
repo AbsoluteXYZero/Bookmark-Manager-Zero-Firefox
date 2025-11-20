@@ -92,16 +92,30 @@ function sanitizeUrl(urlString) {
 }
 
 const PARKING_DOMAINS = [
+  // Major registrars with parking
   'hugedomains.com',
   'godaddy.com',
   'namecheap.com',
+  'namesilo.com',
+  'porkbun.com',
+  'dynadot.com',
+  'epik.com',
+  // Domain marketplaces
   'sedo.com',
   'dan.com',
-  'squadhelp.com',
   'afternic.com',
   'domainmarket.com',
   'uniregistry.com',
-  'namesilo.com',
+  'squadhelp.com',
+  'brandbucket.com',
+  'undeveloped.com',
+  'atom.com',
+  // Parking services
+  'bodis.com',
+  'parkingcrew.net',
+  'parkingcrew.com',
+  'above.com',
+  'sedoparking.com',
 ];
 
 // Cache for link and safety checks (7 days TTL)
