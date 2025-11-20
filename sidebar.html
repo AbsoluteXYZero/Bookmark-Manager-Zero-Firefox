@@ -1165,7 +1165,24 @@
 
     /* Reduce spacing between collapsed folders in grid view */
     .content.grid-view .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -10px;
+    }
+
+    .content.grid-view.grid-2 .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -10px;
+    }
+
+    .content.grid-view.grid-3 .folder-item:not(:has(.folder-children.show)) {
       margin-bottom: -8px;
+    }
+
+    .content.grid-view.grid-4 .folder-item:not(:has(.folder-children.show)),
+    .content.grid-view.grid-5 .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -6px;
+    }
+
+    .content.grid-view.grid-6 .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -4px;
     }
 
     /* Hide drop zones in grid view - they take up grid cells */
