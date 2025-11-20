@@ -131,10 +131,22 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 
 ## Installation
 
-### From Mozilla Add-ons (Recommended)
-Coming soon - awaiting Mozilla review
+### From Mozilla Add-ons (Optimal)
+Coming soon - awaiting Mozilla review. This will be the recommended installation method once approved.
 
-### Manual Installation (Developer Mode)
+### From XPI File (Recommended)
+The preferred way to install while awaiting Mozilla approval. **This method persists after Firefox closes.**
+
+1. Download the `.xpi` file from the [Releases page](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+2. Open Firefox and navigate to `about:addons` (or press `Ctrl+Shift+A`)
+3. Click the gear icon (⚙️) in the top-right corner
+4. Select "Install Add-on From File..."
+5. Browse to and select the downloaded `.xpi` file
+6. Click "Add" when prompted to confirm the installation
+
+### From Source Code (Temporary)
+For development or testing purposes. **Note:** This method requires re-adding the extension every time Firefox closes.
+
 1. Clone this repository:
    ```bash
    git clone https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox.git
@@ -142,7 +154,6 @@ Coming soon - awaiting Mozilla review
 2. Open Firefox and navigate to `about:debugging`
 3. Click "This Firefox" → "Load Temporary Add-on"
 4. Select `manifest.json` from the cloned directory
-
 ## Usage
 
 ### Basic Usage
