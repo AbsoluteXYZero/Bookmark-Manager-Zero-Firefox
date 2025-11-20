@@ -1127,32 +1127,33 @@
     /* Grid View Styles */
     .content.grid-view {
       display: grid;
+      grid-auto-flow: dense;
       gap: 12px;
       padding: 12px;
     }
 
     .content.grid-view.grid-2 {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
     }
 
     .content.grid-view.grid-3 {
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
     }
 
     .content.grid-view.grid-4 {
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
     }
 
     .content.grid-view.grid-5 {
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 8px;
     }
 
     .content.grid-view.grid-6 {
-      grid-template-columns: repeat(6, 1fr);
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 6px;
     }
 
@@ -1162,59 +1163,189 @@
       margin-bottom: 0;
     }
 
-    /* Bookmarks get more compact as columns increase */
-    .content.grid-view .bookmark-item {
-      margin-bottom: 0;
+    /* Reduce spacing between collapsed folders in grid view */
+    .content.grid-view .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -10px;
     }
 
-    /* 2-3 column grid - normal size */
+    .content.grid-view.grid-2 .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -10px;
+    }
+
+    .content.grid-view.grid-3 .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -8px;
+    }
+
+    .content.grid-view.grid-4 .folder-item:not(:has(.folder-children.show)),
+    .content.grid-view.grid-5 .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -6px;
+    }
+
+    .content.grid-view.grid-6 .folder-item:not(:has(.folder-children.show)) {
+      margin-bottom: -4px;
+    }
+
+    /* Hide drop zones in grid view - they take up grid cells */
+    .content.grid-view .inter-item-drop-zone {
+      display: none;
+    }
+
+    /* Square card layout for bookmarks in grid view */
+    .content.grid-view .bookmark-item {
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 8px 6px;
+      margin-bottom: 0;
+      gap: 4px;
+      min-width: 0;
+      aspect-ratio: 1;
+    }
+
+    .content.grid-view .bookmark-favicon {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      order: 0;
+    }
+
+    .content.grid-view .bookmark-info {
+      width: 100%;
+      min-width: 0;
+      overflow: hidden;
+      margin-top: auto;
+      order: 2;
+    }
+
+    .content.grid-view .bookmark-title {
+      font-size: 12px;
+      line-height: 1.2;
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .content.grid-view .bookmark-url {
+      font-size: 10px;
+      line-height: 1.1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .content.grid-view .bookmark-menu-btn {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      font-size: 12px;
+      padding: 2px;
+    }
+
+    .content.grid-view .status-indicators {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .content.grid-view .status-icon {
+      width: 10px;
+      height: 10px;
+    }
+
+    /* Preview in grid view - always visible */
+    .content.grid-view .bookmark-preview-container {
+      width: 100% !important;
+      flex: 1;
+      min-height: 0;
+      margin: 0;
+      border-radius: 6px;
+      order: 1;
+    }
+
+    .content.grid-view .bookmark-item:not(:hover) .bookmark-preview-container,
+    .content.grid-view .bookmark-item:not(.force-preview) .bookmark-preview-container {
+      width: 100% !important;
+    }
+
+    /* Hide preview in grid view if disabled */
+    .content.grid-view .bookmark-item.no-preview .bookmark-preview-container {
+      display: none;
+      flex: 0;
+    }
+
+    /* Hide loading text in grid view */
+    .content.grid-view .bookmark-preview-container .preview-loading {
+      display: none;
+    }
+
+    /* 2-3 column grid - larger cards */
     .content.grid-view.grid-2 .bookmark-item,
     .content.grid-view.grid-3 .bookmark-item {
-      padding: 10px 12px;
+      padding: 10px 8px;
+      gap: 6px;
     }
 
-    /* 4-5 column grid - compact */
+    .content.grid-view.grid-2 .bookmark-favicon,
+    .content.grid-view.grid-3 .bookmark-favicon {
+      width: 24px;
+      height: 24px;
+    }
+
+    .content.grid-view.grid-2 .bookmark-title,
+    .content.grid-view.grid-3 .bookmark-title {
+      font-size: 13px;
+    }
+
+    .content.grid-view.grid-2 .bookmark-url,
+    .content.grid-view.grid-3 .bookmark-url {
+      font-size: 11px;
+    }
+
+    /* 4-5 column grid - medium cards */
     .content.grid-view.grid-4 .bookmark-item,
     .content.grid-view.grid-5 .bookmark-item {
-      padding: 8px 10px;
+      padding: 6px 4px;
+      gap: 3px;
+    }
+
+    .content.grid-view.grid-4 .bookmark-favicon,
+    .content.grid-view.grid-5 .bookmark-favicon {
+      width: 16px;
+      height: 16px;
     }
 
     .content.grid-view.grid-4 .bookmark-title,
     .content.grid-view.grid-5 .bookmark-title {
-      font-size: 12px;
+      font-size: 11px;
     }
 
     .content.grid-view.grid-4 .bookmark-url,
     .content.grid-view.grid-5 .bookmark-url {
-      font-size: 10px;
+      font-size: 9px;
     }
 
-    .content.grid-view.grid-4 .status-icon,
-    .content.grid-view.grid-5 .status-icon {
+    /* 6 column grid - small cards */
+    .content.grid-view.grid-6 .bookmark-item {
+      padding: 4px 3px;
+      gap: 2px;
+    }
+
+    .content.grid-view.grid-6 .bookmark-favicon {
       width: 14px;
       height: 14px;
     }
 
-    /* 6 column grid - very compact */
-    .content.grid-view.grid-6 .bookmark-item {
-      padding: 6px 8px;
-    }
-
     .content.grid-view.grid-6 .bookmark-title {
-      font-size: 11px;
+      font-size: 10px;
     }
 
     .content.grid-view.grid-6 .bookmark-url {
       font-size: 9px;
-    }
-
-    .content.grid-view.grid-6 .status-icon {
-      width: 12px;
-      height: 12px;
-    }
-
-    .content.grid-view.grid-6 .bookmark-menu-btn {
-      font-size: 14px;
     }
 
     /* Grid view for folder children */
