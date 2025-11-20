@@ -2180,42 +2180,72 @@ function repositionMenuIfNeeded(menu, parentElement) {
     const spaceAbove = parentRect.top;
     const spaceBelow = viewportHeight - parentRect.bottom;
 
-    // Check if menu fits below
+    // Reset styles
+    menu.style.maxHeight = '';
+    menu.style.overflowY = '';
+
+    // Determine positioning
+    let positionAbove = false;
+    let needsConstraint = false;
+    let constrainedHeight = 0;
+
     if (menuHeight <= spaceBelow) {
       // Fits below - use default positioning
-      menu.style.top = '100%';
-      menu.style.bottom = 'auto';
-      menu.style.marginTop = '2px';
-      menu.style.marginBottom = '0';
-      menu.style.maxHeight = '';
-    }
-    // Check if menu fits above
-    else if (menuHeight <= spaceAbove) {
+      positionAbove = false;
+    } else if (menuHeight <= spaceAbove) {
       // Fits above - position menu above
+      positionAbove = true;
+    } else if (spaceBelow >= spaceAbove) {
+      // More space below - constrain height
+      positionAbove = false;
+      needsConstraint = true;
+      constrainedHeight = Math.max(spaceBelow - 8, 100);
+    } else {
+      // More space above - constrain height
+      positionAbove = true;
+      needsConstraint = true;
+      constrainedHeight = Math.max(spaceAbove - 8, 100);
+    }
+
+    // Apply positioning
+    if (positionAbove) {
       menu.style.top = 'auto';
       menu.style.bottom = '100%';
       menu.style.marginTop = '0';
-      menu.style.marginBottom = '2px';
-      menu.style.maxHeight = '';
-    }
-    // Menu doesn't fit in either direction - use the larger space and constrain height
-    else if (spaceBelow >= spaceAbove) {
-      // More space below - position below with max height
+      menu.style.marginBottom = '4px';
+    } else {
       menu.style.top = '100%';
       menu.style.bottom = 'auto';
-      menu.style.marginTop = '2px';
+      menu.style.marginTop = '4px';
       menu.style.marginBottom = '0';
-      menu.style.maxHeight = `${spaceBelow - 10}px`;
-      menu.style.overflowY = 'auto';
-    } else {
-      // More space above - position above with max height
-      menu.style.top = 'auto';
-      menu.style.bottom = '100%';
-      menu.style.marginTop = '0';
-      menu.style.marginBottom = '2px';
-      menu.style.maxHeight = `${spaceAbove - 10}px`;
+    }
+
+    // Apply height constraint if needed
+    if (needsConstraint) {
+      menu.style.maxHeight = `${constrainedHeight}px`;
       menu.style.overflowY = 'auto';
     }
+
+    // Final safety check - ensure menu is within viewport after positioning
+    requestAnimationFrame(() => {
+      const finalRect = menu.getBoundingClientRect();
+
+      // Check if menu extends beyond top of viewport
+      if (finalRect.top < 0) {
+        const overflow = Math.abs(finalRect.top);
+        const currentMaxHeight = parseInt(menu.style.maxHeight) || finalRect.height;
+        menu.style.maxHeight = `${currentMaxHeight - overflow - 8}px`;
+        menu.style.overflowY = 'auto';
+      }
+
+      // Check if menu extends beyond bottom of viewport
+      if (finalRect.bottom > viewportHeight) {
+        const overflow = finalRect.bottom - viewportHeight;
+        const currentMaxHeight = parseInt(menu.style.maxHeight) || finalRect.height;
+        menu.style.maxHeight = `${currentMaxHeight - overflow - 8}px`;
+        menu.style.overflowY = 'auto';
+      }
+    });
   });
 }
 
