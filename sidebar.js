@@ -460,6 +460,7 @@ const undoCountdownEl = document.getElementById('undoCountdown');
 const undoDismiss = document.getElementById('undoDismiss');
 
 // Scan status bar DOM elements
+const rescanAllBtn = document.getElementById('rescanAllBtn');
 const scanStatusBar = document.getElementById('scanStatusBar');
 const scanProgress = document.getElementById('scanProgress');
 const totalCount = document.getElementById('totalCount');
@@ -728,7 +729,7 @@ async function autoCheckBookmarkStatuses() {
   function traverse(nodes, parentExpanded = true) {
     nodes.forEach(node => {
       // Only check bookmarks if parent is expanded (or at root level)
-      if (parentExpanded && node.type === 'bookmark' && node.url && !node.linkStatus && !checkedBookmarks.has(node.id)) {
+      if (parentExpanded && node.url && (!node.linkStatus || node.linkStatus === 'unknown') && !checkedBookmarks.has(node.id)) {
         bookmarksToCheck.push(node);
       }
       // For folders, only traverse children if folder is expanded
@@ -2674,33 +2675,37 @@ async function checkSafetyStatus(url) {
 
 // Recheck bookmark status (link + safety)
 async function recheckBookmarkStatus(bookmarkId) {
-  // Find the bookmark in the tree
   const bookmark = findBookmarkById(bookmarkTree, bookmarkId);
   if (!bookmark || !bookmark.url) return;
 
-  if (isPreviewMode) {
-    alert('🔄 Rechecking bookmark status...\n\nIn the real extension, this would check:\n• Link status (live/dead/parked)\n• Security analysis (heuristic-based threat detection)');
+  // Skip if both checking types are disabled
+  if (!linkCheckingEnabled && !safetyCheckingEnabled) {
+    alert('Both link checking and safety checking are disabled.\n\nEnable at least one in Settings to recheck bookmark status.');
+    return;
   }
 
-  // Update bookmark to show checking status
-  updateBookmarkInTree(bookmarkId, {
-    linkStatus: 'checking',
-    safetyStatus: 'checking'
-  });
+  if (isPreviewMode) {
+    alert('🔄 Rechecking bookmark status...\n\nIn the real extension, this would check:\n• Link status (live/dead/parked)\n• Security analysis (heuristic-based threat detection)');
+    return;
+  }
+
+  const checkingUpdates = {};
+  if (linkCheckingEnabled) checkingUpdates.linkStatus = 'checking';
+  if (safetyCheckingEnabled) checkingUpdates.safetyStatus = 'checking';
+  updateBookmarkInTree(bookmarkId, checkingUpdates);
   renderBookmarks();
 
-  // Perform checks
-  const [linkStatus, safetyStatusResult] = await Promise.all([
-    checkLinkStatus(bookmark.url),
-    checkSafetyStatus(bookmark.url)
-  ]);
+  const results = {};
+  if (linkCheckingEnabled) {
+    results.linkStatus = await checkLinkStatus(bookmark.url);
+  }
+  if (safetyCheckingEnabled) {
+    const safetyStatusResult = await checkSafetyStatus(bookmark.url);
+    results.safetyStatus = safetyStatusResult.status;
+    results.safetySources = safetyStatusResult.sources;
+  }
 
-  // Update bookmark with results
-  updateBookmarkInTree(bookmarkId, {
-    linkStatus,
-    safetyStatus: safetyStatusResult.status,
-    safetySources: safetyStatusResult.sources
-  });
+  updateBookmarkInTree(bookmarkId, results);
   renderBookmarks();
 }
 
@@ -4571,6 +4576,33 @@ function setupEventListeners() {
     closeAllMenus();
   });
 
+  // Rescan all bookmarks button
+  if (rescanAllBtn) {
+    rescanAllBtn.addEventListener('click', async () => {
+      if (!linkCheckingEnabled && !safetyCheckingEnabled) {
+        alert('Both link checking and safety checking are disabled.\n\nEnable at least one in Settings to rescan bookmarks.');
+        return;
+      }
+
+      // Reset all bookmark statuses to trigger rescan
+      function resetStatuses(nodes) {
+        nodes.forEach(node => {
+          if (node.url) {
+            node.linkStatus = 'unknown';
+            node.safetyStatus = 'unknown';
+          }
+          if (node.children) {
+            resetStatuses(node.children);
+          }
+        });
+      }
+      resetStatuses(bookmarkTree);
+      checkedBookmarks.clear();
+      renderBookmarks();
+      await autoCheckBookmarkStatuses();
+    });
+  }
+
   // Set Google API Key
   setApiKeyBtn.addEventListener('click', async () => {
     const currentKey = await getDecryptedApiKey('googleSafeBrowsingApiKey');
@@ -4618,13 +4650,6 @@ function setupEventListeners() {
         alert('VirusTotal API key saved securely!\n\nSafety checking will now include VirusTotal scans.');
       }
     }
-    closeAllMenus();
-  });
-
-  // View error logs
-  const viewErrorLogsBtn = document.getElementById('viewErrorLogsBtn');
-  viewErrorLogsBtn.addEventListener('click', async () => {
-    await viewErrorLogs();
     closeAllMenus();
   });
 
