@@ -3956,7 +3956,7 @@ function matchesFilter(bookmark) {
 
   // Separate filters by category
   const linkFilters = activeFilters.filter(f => ['live', 'parked', 'dead'].includes(f));
-  const safetyFilters = activeFilters.filter(f => ['safe', 'suspicious', 'unsafe'].includes(f));
+  const safetyFilters = activeFilters.filter(f => ['safe', 'suspicious', 'unsafe', 'whitelisted'].includes(f));
 
   // Check link status (OR within category)
   let matchesLink = true;
@@ -3979,6 +3979,7 @@ function matchesFilter(bookmark) {
         case 'safe': return safetyStatus === 'safe';
         case 'suspicious': return safetyStatus === 'warning';
         case 'unsafe': return safetyStatus === 'unsafe';
+        case 'whitelisted': return bookmark.safetySources && bookmark.safetySources.includes('Whitelisted by user');
         default: return false;
       }
     });
