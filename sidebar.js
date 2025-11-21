@@ -451,6 +451,8 @@ const clearCacheBtn = document.getElementById('clearCacheBtn');
 const autoClearCacheSelect = document.getElementById('autoClearCache');
 const rescanBookmarksBtn = document.getElementById('rescanBookmarksBtn');
 const setApiKeyBtn = document.getElementById('setApiKeyBtn');
+const accentColorPicker = document.getElementById('accentColorPicker');
+const resetAccentColorBtn = document.getElementById('resetAccentColor');
 
 // Undo toast DOM elements
 const undoToast = document.getElementById('undoToast');
@@ -548,6 +550,116 @@ function loadTheme() {
   });
 }
 
+// Store current custom accent color globally
+let currentCustomAccentColor = null;
+
+// Apply custom accent color (global function so it can be called from applyTheme)
+function applyCustomAccentColor(color) {
+  currentCustomAccentColor = color;
+  // Convert hex to RGB for variations
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+
+  // Create lighter container color (add 80 to each channel, cap at 255)
+  const containerR = Math.min(255, r + 80);
+  const containerG = Math.min(255, g + 80);
+  const containerB = Math.min(255, b + 80);
+  const containerColor = `#${containerR.toString(16).padStart(2, '0')}${containerG.toString(16).padStart(2, '0')}${containerB.toString(16).padStart(2, '0')}`;
+
+  // Remove existing custom accent style if it exists
+  let styleTag = document.getElementById('custom-accent-style');
+  if (styleTag) {
+    styleTag.remove();
+  }
+
+  // Inject a style tag with higher specificity selectors
+  styleTag = document.createElement('style');
+  styleTag.id = 'custom-accent-style';
+  styleTag.textContent = `
+    /* Use @layer to ensure these rules take priority */
+    @layer custom-accent {
+      html:root {
+        --md-sys-color-primary: ${color} !important;
+        --md-sys-color-primary-container: ${containerColor} !important;
+        --md-sys-color-secondary: ${color} !important;
+      }
+      html body.light,
+      html body.blue-dark,
+      html body.dark {
+        --md-sys-color-primary: ${color} !important;
+        --md-sys-color-primary-container: ${containerColor} !important;
+        --md-sys-color-secondary: ${color} !important;
+      }
+      /* Directly override border-left on folder-children */
+      .folder-children {
+        border-left: 2px solid ${color} !important;
+      }
+    }
+  `;
+  // Append to body instead of head for later cascade position
+  if (document.body) {
+    document.body.appendChild(styleTag);
+  } else {
+    document.head.appendChild(styleTag);
+  }
+
+  // Directly update all existing .folder-children elements
+  // This bypasses CSS variable resolution issues
+  document.querySelectorAll('.folder-children').forEach(element => {
+    element.style.setProperty('border-left-color', color, 'important');
+  });
+}
+
+// Set up MutationObserver to apply custom color to new folder-children elements
+function setupFolderChildrenObserver() {
+  if (typeof window.folderChildrenObserver === 'undefined' && document.body) {
+    window.folderChildrenObserver = new MutationObserver((mutations) => {
+      if (!currentCustomAccentColor) return;
+
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) { // Element node
+            // Check if the node itself is folder-children
+            if (node.classList && node.classList.contains('folder-children')) {
+              node.style.setProperty('border-left-color', currentCustomAccentColor, 'important');
+            }
+            // Check descendants
+            if (node.querySelectorAll) {
+              node.querySelectorAll('.folder-children').forEach(element => {
+                element.style.setProperty('border-left-color', currentCustomAccentColor, 'important');
+              });
+            }
+          }
+        });
+
+        // Also check for class changes (when .show is added)
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          const target = mutation.target;
+          if (target.classList && target.classList.contains('folder-children')) {
+            target.style.setProperty('border-left-color', currentCustomAccentColor, 'important');
+          }
+        }
+      });
+    });
+
+    // Start observing
+    window.folderChildrenObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class']
+    });
+  }
+}
+
+// Call setup when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupFolderChildrenObserver);
+} else {
+  setupFolderChildrenObserver();
+}
+
 // Apply theme
 function applyTheme() {
   // Remove all theme classes
@@ -555,6 +667,12 @@ function applyTheme() {
 
   // Add current theme class
   document.body.classList.add(theme);
+
+  // Reapply custom accent color if one is saved
+  const savedColor = localStorage.getItem('customAccentColor');
+  if (savedColor) {
+    applyCustomAccentColor(savedColor);
+  }
 }
 
 // Set theme
@@ -4599,6 +4717,58 @@ function setupEventListeners() {
     localStorage.setItem('safetyCheckingEnabled', safetyCheckingEnabled);
     console.log(`Safety checking ${safetyCheckingEnabled ? 'enabled' : 'disabled'}`);
   });
+
+  // Accent color picker
+  accentColorPicker.addEventListener('input', (e) => {
+    const color = e.target.value;
+    applyAccentColor(color);
+    localStorage.setItem('customAccentColor', color);
+  });
+
+  // Close settings menu when color picker is closed
+  accentColorPicker.addEventListener('change', (e) => {
+    closeAllMenus();
+  });
+
+  // Reset accent color
+  resetAccentColorBtn.addEventListener('click', () => {
+    const defaultColor = getDefaultAccentColor();
+    accentColorPicker.value = defaultColor;
+    applyAccentColor(defaultColor);
+    localStorage.removeItem('customAccentColor');
+  });
+
+  // Load saved accent color on startup
+  function loadSavedAccentColor() {
+    const savedColor = localStorage.getItem('customAccentColor');
+    if (savedColor) {
+      accentColorPicker.value = savedColor;
+      applyAccentColor(savedColor);
+    } else {
+      const defaultColor = getDefaultAccentColor();
+      accentColorPicker.value = defaultColor;
+    }
+  }
+
+  // Get default accent color based on current theme
+  function getDefaultAccentColor() {
+    const isDarkMode = document.body.classList.contains('blue-dark') || document.body.classList.contains('dark');
+    if (document.body.classList.contains('dark')) {
+      return '#bb86fc'; // Pure dark theme purple
+    } else if (isDarkMode) {
+      return '#818cf8'; // Blue dark theme
+    } else {
+      return '#6366f1'; // Light theme default
+    }
+  }
+
+  // Apply accent color by calling the global function
+  function applyAccentColor(color) {
+    applyCustomAccentColor(color);
+  }
+
+  // Initialize accent color on page load
+  loadSavedAccentColor();
 
   // Rescan all bookmarks
   rescanBookmarksBtn.addEventListener('click', async () => {
