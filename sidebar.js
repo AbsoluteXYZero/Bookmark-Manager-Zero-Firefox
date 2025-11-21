@@ -1923,7 +1923,6 @@ function createBookmarkElement(bookmark) {
   const safetySources = bookmark.safetySources || [];
 
   // Build status indicators HTML based on display options
-  // Shield (safety) on top, chain (link status) below
   let statusIndicatorsHtml = '';
   if (displayOptions.safetyStatus) {
     statusIndicatorsHtml += getShieldHtml(safetyStatus, bookmark.url, safetySources);
@@ -1932,12 +1931,23 @@ function createBookmarkElement(bookmark) {
     statusIndicatorsHtml += getStatusDotHtml(linkStatus);
   }
 
+  // Also build separate shield and chainlink for grid view
+  let shieldHtml = '';
+  if (displayOptions.safetyStatus) {
+    shieldHtml = getShieldHtml(safetyStatus, bookmark.url, safetySources);
+  }
+
+  let linkStatusHtml = '';
+  if (displayOptions.liveStatus) {
+    linkStatusHtml = getStatusDotHtml(linkStatus);
+  }
+
   // Build favicon HTML based on display options
   let faviconHtml = '';
   if (displayOptions.favicon && bookmark.url) {
     const faviconUrl = getFaviconUrl(bookmark.url);
     if (faviconUrl) {
-      faviconHtml = `<img class="bookmark-favicon" src="${escapeHtml(faviconUrl)}" alt="" />`;
+      faviconHtml = `<img class="bookmark-favicon" src="${escapeHtml(faviconUrl)}" alt="" onerror="this.style.display='none'" />`;
     }
   }
 
@@ -1958,6 +1968,11 @@ function createBookmarkElement(bookmark) {
       ${statusIndicatorsHtml}
     </div>
     ${faviconHtml}
+    <div class="bookmark-top-row">
+      ${shieldHtml}
+      ${faviconHtml}
+      ${linkStatusHtml}
+    </div>
     <div class="bookmark-info">
       ${bookmarkInfoHtml}
     </div>
@@ -2073,6 +2088,7 @@ function createBookmarkElement(bookmark) {
         e.target.closest('.bookmark-actions') ||
         e.target.closest('.bookmark-preview-container') ||
         e.target.closest('.status-indicators') ||
+        e.target.closest('.bookmark-top-row') ||
         e.target.closest('.item-checkbox')) {
       return;
     }

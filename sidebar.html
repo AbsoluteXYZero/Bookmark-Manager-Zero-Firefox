@@ -650,6 +650,15 @@
       opacity: 0.8;
     }
 
+    /* Grid view only: horizontal top row (shield → favicon → chainlink) */
+    .bookmark-top-row {
+      display: none; /* Hidden in list view */
+      flex-direction: row;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
     .bookmark-info {
       flex: 1;
       min-width: 0;
@@ -1309,6 +1318,56 @@
     .content.grid-view .status-icon {
       width: 10px;
       height: 10px;
+    }
+
+    .content.grid-view .bookmark-top-row {
+      display: flex !important;  /* Show in grid view */
+      width: 100%;
+      justify-content: center;
+      gap: 4px;
+      order: -1;  /* Place at top of flexbox */
+    }
+
+    .content.grid-view .bookmark-top-row .status-icon {
+      width: 10px;
+      height: 10px;
+    }
+
+    .content.grid-view .bookmark-top-row .bookmark-favicon {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* Larger icons in grid-2 and grid-3 */
+    .content.grid-view.grid-2 .bookmark-top-row .bookmark-favicon,
+    .content.grid-view.grid-3 .bookmark-top-row .bookmark-favicon {
+      width: 24px;
+      height: 24px;
+    }
+
+    /* Smaller icons in denser grid views */
+    .content.grid-view.grid-4 .bookmark-top-row .status-icon,
+    .content.grid-view.grid-5 .bookmark-top-row .status-icon,
+    .content.grid-view.grid-6 .bookmark-top-row .status-icon {
+      width: 8px;
+      height: 8px;
+    }
+
+    .content.grid-view.grid-4 .bookmark-top-row .bookmark-favicon,
+    .content.grid-view.grid-5 .bookmark-top-row .bookmark-favicon {
+      width: 16px;
+      height: 16px;
+    }
+
+    .content.grid-view.grid-6 .bookmark-top-row .bookmark-favicon {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Tighter gaps in denser grids */
+    .content.grid-view.grid-5 .bookmark-top-row,
+    .content.grid-view.grid-6 .bookmark-top-row {
+      gap: 2px;
     }
 
     /* Preview in grid view - always visible */
