@@ -453,7 +453,6 @@ const exportBookmarksBtn = document.getElementById('exportBookmarksBtn');
 const closeExtensionBtn = document.getElementById('closeExtensionBtn');
 const clearCacheBtn = document.getElementById('clearCacheBtn');
 const autoClearCacheSelect = document.getElementById('autoClearCache');
-const rescanBookmarksBtn = document.getElementById('rescanBookmarksBtn');
 const setApiKeyBtn = document.getElementById('setApiKeyBtn');
 const accentColorPicker = document.getElementById('accentColorPicker');
 const resetAccentColorBtn = document.getElementById('resetAccentColor');
@@ -5394,12 +5393,6 @@ function setupEventListeners() {
       applyGuiScale();
     });
   }
-
-  // Rescan all bookmarks
-  rescanBookmarksBtn.addEventListener('click', async () => {
-    await rescanAllBookmarks();
-    closeAllMenus();
-  });
 
   // Rescan all bookmarks button
   if (rescanAllBtn) {
