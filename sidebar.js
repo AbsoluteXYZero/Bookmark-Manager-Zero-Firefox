@@ -474,9 +474,10 @@ const blurValue = document.getElementById('blurValue');
 const scaleValue = document.getElementById('scaleValue');
 const manageWhitelistBtn = document.getElementById('manageWhitelistBtn');
 const whitelistPanel = document.getElementById('whitelistPanel');
-const whitelistItems = document.getElementById('whitelistItems');
-const whitelistEmpty = document.getElementById('whitelistEmpty');
+const closeWhitelistPanel = document.getElementById('closeWhitelistPanel');
+const whitelistList = document.getElementById('whitelistList');
 const whitelistCount = document.getElementById('whitelistCount');
+const emptyWhitelistMessage = document.getElementById('emptyWhitelistMessage');
 const guiScaleSelect = document.getElementById('guiScaleSelect');
 
 // Undo toast DOM elements
@@ -891,50 +892,93 @@ function loadBackgroundImage() {
   loadSavedBackgroundImage();
 }
 
-// Update whitelist UI (count badge and panel)
-function updateWhitelistUI() {
+// Update whitelist count badge
+function updateWhitelistCount() {
   const count = whitelistedUrls.size;
+  whitelistCount.textContent = count;
+}
 
-  if (whitelistCount) {
-    if (count > 0) {
-      whitelistCount.textContent = count;
-      whitelistCount.style.display = 'inline';
-    } else {
-      whitelistCount.style.display = 'none';
-    }
-  }
+// Populate whitelist panel with current entries
+function populateWhitelistPanel() {
+  whitelistList.innerHTML = '';
 
-  if (whitelistItems && whitelistEmpty) {
-    whitelistItems.innerHTML = '';
+  if (whitelistedUrls.size === 0) {
+    emptyWhitelistMessage.style.display = 'block';
+    whitelistList.style.display = 'none';
+  } else {
+    emptyWhitelistMessage.style.display = 'none';
+    whitelistList.style.display = 'flex';
 
-    if (count > 0) {
-      whitelistEmpty.style.display = 'none';
-      const urls = Array.from(whitelistedUrls).sort();
-      urls.forEach(url => {
-        const item = document.createElement('div');
-        item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 6px; background: var(--md-sys-color-surface); border-radius: 6px; margin-bottom: 4px; font-size: 10px;';
+    // Sort domains alphabetically
+    const sortedDomains = Array.from(whitelistedUrls).sort();
 
-        const urlSpan = document.createElement('span');
-        urlSpan.textContent = url;
-        urlSpan.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px;';
+    sortedDomains.forEach(domain => {
+      const entryDiv = document.createElement('div');
+      entryDiv.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 10px;
+        background: var(--md-sys-color-surface);
+        border-radius: 6px;
+        font-size: 12px;
+        color: var(--md-sys-color-on-surface);
+      `;
 
-        const removeBtn = document.createElement('button');
-        removeBtn.textContent = '×';
-        removeBtn.style.cssText = 'background: var(--md-sys-color-error); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 14px; line-height: 1; padding: 0;';
-        removeBtn.title = 'Remove from whitelist';
+      const domainSpan = document.createElement('span');
+      domainSpan.textContent = domain;
+      domainSpan.style.cssText = `
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-right: 8px;
+      `;
 
-        removeBtn.addEventListener('click', async () => {
-          await removeFromWhitelist(url);
-        });
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '✕';
+      removeBtn.title = `Remove ${domain} from whitelist`;
+      removeBtn.style.cssText = `
+        background: var(--md-sys-color-error-container);
+        color: var(--md-sys-color-on-error-container);
+        border: none;
+        border-radius: 4px;
+        width: 24px;
+        height: 24px;
+        cursor: pointer;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: background 0.2s;
+      `;
 
-        item.appendChild(urlSpan);
-        item.appendChild(removeBtn);
-        whitelistItems.appendChild(item);
+      removeBtn.addEventListener('mouseover', () => {
+        removeBtn.style.background = 'var(--md-sys-color-error)';
+        removeBtn.style.color = 'var(--md-sys-color-on-error)';
       });
-    } else {
-      whitelistEmpty.style.display = 'block';
-    }
+
+      removeBtn.addEventListener('mouseout', () => {
+        removeBtn.style.background = 'var(--md-sys-color-error-container)';
+        removeBtn.style.color = 'var(--md-sys-color-on-error-container)';
+      });
+
+      removeBtn.addEventListener('click', async () => {
+        await removeFromWhitelist(domain);
+      });
+
+      entryDiv.appendChild(domainSpan);
+      entryDiv.appendChild(removeBtn);
+      whitelistList.appendChild(entryDiv);
+    });
   }
+}
+
+// Legacy function name for compatibility
+function updateWhitelistUI() {
+  updateWhitelistCount();
+  populateWhitelistPanel();
 }
 
 // Remove URL from whitelist
@@ -5343,9 +5387,16 @@ function setupEventListeners() {
         const isVisible = whitelistPanel.style.display !== 'none';
         whitelistPanel.style.display = isVisible ? 'none' : 'block';
         if (!isVisible) {
-          updateWhitelistUI();
+          populateWhitelistPanel();
         }
       }
+    });
+  }
+
+  if (closeWhitelistPanel) {
+    closeWhitelistPanel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      whitelistPanel.style.display = 'none';
     });
   }
 

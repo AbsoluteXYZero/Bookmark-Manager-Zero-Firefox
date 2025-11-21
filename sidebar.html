@@ -1841,17 +1841,27 @@
             <input type="checkbox" id="enableSafetyChecking" checked style="cursor: pointer;">
           </label>
           <button class="action-btn" id="manageWhitelistBtn" style="position: relative;">
-            <span class="icon">
-              <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9"/>
-              </svg>
-            </span>
-            <span>Manage Whitelist</span>
-            <span id="whitelistCount" class="whitelist-count" style="display: none; margin-left: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); padding: 2px 6px; border-radius: 10px; font-size: 10px; font-weight: 600;">0</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="icon">
+                <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9"/>
+                </svg>
+              </span>
+              <span>Manage Whitelist</span>
+            </div>
+            <span id="whitelistCount" style="background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">0</span>
           </button>
-          <div id="whitelistPanel" class="whitelist-panel" style="display: none; padding: 8px 16px; background: var(--md-sys-color-surface-variant); border-radius: 8px; margin: 0 8px 8px 8px; max-height: 200px; overflow-y: auto;">
-            <div id="whitelistItems"></div>
-            <div id="whitelistEmpty" style="font-size: 10px; color: var(--md-sys-color-on-surface-variant); text-align: center; padding: 8px;">No whitelisted domains</div>
+          <div id="whitelistPanel" style="display: none; padding: 8px 12px; background: var(--md-sys-color-surface-container); border-radius: 8px; margin: 4px 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div style="font-size: 12px; font-weight: 600; color: var(--md-sys-color-on-surface);">Whitelisted Domains</div>
+              <button id="closeWhitelistPanel" style="background: none; border: none; cursor: pointer; font-size: 18px; color: var(--md-sys-color-on-surface-variant); padding: 0; line-height: 1;">×</button>
+            </div>
+            <div id="whitelistList" style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+              <!-- Whitelist entries will be populated here -->
+            </div>
+            <div id="emptyWhitelistMessage" style="text-align: center; padding: 16px; font-size: 11px; color: var(--md-sys-color-on-surface-variant);">
+              No whitelisted domains yet
+            </div>
           </div>
           <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
           <button class="action-btn" id="setApiKeyBtn">
