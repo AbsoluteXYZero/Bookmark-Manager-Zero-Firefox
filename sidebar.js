@@ -403,6 +403,10 @@ let displayOptions = {
 };
 let currentEditItem = null;
 let zoomLevel = 80;
+let guiScale = 100; // GUI scale for header, toolbar, and filter elements
+let customBackgroundImage = null; // Custom background image data
+let backgroundPosition = { x: 50, y: 50 }; // Background image position (%)
+let backgroundScale = 100; // Background image scale (%)
 let checkedBookmarks = new Set(); // Track which bookmarks have been checked to prevent infinite loops
 let scanCancelled = false; // Flag to cancel ongoing scans
 let linkCheckingEnabled = true; // Toggle for link checking
@@ -453,6 +457,14 @@ const rescanBookmarksBtn = document.getElementById('rescanBookmarksBtn');
 const setApiKeyBtn = document.getElementById('setApiKeyBtn');
 const accentColorPicker = document.getElementById('accentColorPicker');
 const resetAccentColorBtn = document.getElementById('resetAccentColor');
+const backgroundImageUpload = document.getElementById('backgroundImageUpload');
+const resetBackgroundImage = document.getElementById('resetBackgroundImage');
+const manageWhitelistBtn = document.getElementById('manageWhitelistBtn');
+const whitelistPanel = document.getElementById('whitelistPanel');
+const whitelistItems = document.getElementById('whitelistItems');
+const whitelistEmpty = document.getElementById('whitelistEmpty');
+const whitelistCount = document.getElementById('whitelistCount');
+const guiScaleSelect = document.getElementById('guiScaleSelect');
 
 // Undo toast DOM elements
 const undoToast = document.getElementById('undoToast');
@@ -492,6 +504,8 @@ async function init() {
   loadTheme();
   loadView();
   loadZoom();
+  loadGuiScale();
+  loadBackgroundImage();
   loadCheckingSettings();
   await loadWhitelist();
   await loadSafetyHistory();
@@ -499,6 +513,7 @@ async function init() {
   await loadBookmarks();
   setupEventListeners();
   renderBookmarks();
+  updateWhitelistUI();
 
   // Automatically check bookmark statuses after initial render
   autoCheckBookmarkStatuses();
@@ -731,6 +746,187 @@ function loadZoom() {
     applyZoom();
     updateZoomDisplay();
   });
+}
+
+// Load and apply GUI scale
+function loadGuiScale() {
+  const savedScale = localStorage.getItem('guiScale');
+  guiScale = savedScale ? parseInt(savedScale) : 100;
+  applyGuiScale();
+  if (guiScaleSelect) {
+    guiScaleSelect.value = guiScale;
+  }
+}
+
+// Apply GUI scale to header, toolbar, and filter elements
+function applyGuiScale() {
+  const scaleFactor = guiScale / 100;
+  const elements = [
+    document.querySelector('.header'),
+    document.getElementById('collapsibleHeader'),
+    document.getElementById('filterBar'),
+    document.getElementById('displayBar'),
+    document.getElementById('scanStatusBar')
+  ];
+
+  elements.forEach(element => {
+    if (element) {
+      element.style.zoom = scaleFactor;
+    }
+  });
+}
+
+// Load and apply custom background image
+function loadBackgroundImage() {
+  const savedImage = localStorage.getItem('customBackgroundImage');
+  const savedPosition = localStorage.getItem('backgroundPosition');
+  const savedScale = localStorage.getItem('backgroundScale');
+
+  if (savedImage) {
+    customBackgroundImage = savedImage;
+    backgroundPosition = savedPosition ? JSON.parse(savedPosition) : { x: 50, y: 50 };
+    backgroundScale = savedScale ? parseInt(savedScale) : 100;
+    applyBackgroundImage();
+  }
+}
+
+// Apply custom background image with position and scale
+function applyBackgroundImage() {
+  const body = document.body;
+  if (customBackgroundImage) {
+    body.style.backgroundImage = `url(${customBackgroundImage})`;
+    body.style.backgroundPosition = `${backgroundPosition.x}% ${backgroundPosition.y}%`;
+    body.style.backgroundSize = `${backgroundScale}%`;
+    body.classList.add('has-custom-background');
+    setupBackgroundDragAndZoom();
+  } else {
+    body.style.backgroundImage = '';
+    body.classList.remove('has-custom-background');
+  }
+}
+
+// Setup drag-to-reposition and pinch/scroll-to-scale for background
+function setupBackgroundDragAndZoom() {
+  const body = document.body;
+  let isDragging = false;
+  let startX, startY;
+  let startPosX, startPosY;
+
+  // Drag to reposition
+  body.addEventListener('mousedown', (e) => {
+    if (customBackgroundImage && e.target === body) {
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startPosX = backgroundPosition.x;
+      startPosY = backgroundPosition.y;
+      body.style.cursor = 'grabbing';
+    }
+  });
+
+  body.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      const deltaX = ((e.clientX - startX) / window.innerWidth) * 100;
+      const deltaY = ((e.clientY - startY) / window.innerHeight) * 100;
+      backgroundPosition.x = startPosX + deltaX;
+      backgroundPosition.y = startPosY + deltaY;
+      applyBackgroundImage();
+    }
+  });
+
+  body.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      body.style.cursor = '';
+      localStorage.setItem('backgroundPosition', JSON.stringify(backgroundPosition));
+    }
+  });
+
+  // Scroll to scale
+  body.addEventListener('wheel', (e) => {
+    if (customBackgroundImage && e.target === body && e.ctrlKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -10 : 10;
+      backgroundScale = Math.max(50, Math.min(200, backgroundScale + delta));
+      applyBackgroundImage();
+      localStorage.setItem('backgroundScale', backgroundScale.toString());
+    }
+  }, { passive: false });
+}
+
+// Update whitelist UI (count badge and panel)
+function updateWhitelistUI() {
+  const count = whitelistedUrls.size;
+
+  if (whitelistCount) {
+    if (count > 0) {
+      whitelistCount.textContent = count;
+      whitelistCount.style.display = 'inline';
+    } else {
+      whitelistCount.style.display = 'none';
+    }
+  }
+
+  if (whitelistItems && whitelistEmpty) {
+    whitelistItems.innerHTML = '';
+
+    if (count > 0) {
+      whitelistEmpty.style.display = 'none';
+      const urls = Array.from(whitelistedUrls).sort();
+      urls.forEach(url => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 6px; background: var(--md-sys-color-surface); border-radius: 6px; margin-bottom: 4px; font-size: 10px;';
+
+        const urlSpan = document.createElement('span');
+        urlSpan.textContent = url;
+        urlSpan.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px;';
+
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '×';
+        removeBtn.style.cssText = 'background: var(--md-sys-color-error); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 14px; line-height: 1; padding: 0;';
+        removeBtn.title = 'Remove from whitelist';
+
+        removeBtn.addEventListener('click', async () => {
+          await removeFromWhitelist(url);
+        });
+
+        item.appendChild(urlSpan);
+        item.appendChild(removeBtn);
+        whitelistItems.appendChild(item);
+      });
+    } else {
+      whitelistEmpty.style.display = 'block';
+    }
+  }
+}
+
+// Remove URL from whitelist
+async function removeFromWhitelist(url) {
+  whitelistedUrls.delete(url);
+  await saveWhitelist();
+  updateWhitelistUI();
+
+  // Recheck affected bookmarks
+  const affectedBookmarks = bookmarkTree.filter(item =>
+    !item.children && item.url && new URL(item.url).hostname === new URL(url).hostname
+  );
+
+  if (affectedBookmarks.length > 0) {
+    console.log(`Rechecking ${affectedBookmarks.length} bookmarks after removing ${url} from whitelist`);
+    for (const bookmark of affectedBookmarks) {
+      // Clear cached safety status
+      const cached = await safeStorage.get(bookmark.url);
+      if (cached[bookmark.url]) {
+        delete cached[bookmark.url].safety;
+        await safeStorage.set({ [bookmark.url]: cached[bookmark.url] });
+      }
+      // Recheck
+      if (safetyCheckingEnabled) {
+        await checkUrlSafety(bookmark);
+      }
+    }
+    renderBookmarks();
+  }
 }
 
 // Load checking settings from localStorage
@@ -1454,8 +1650,24 @@ Not in whitelist or blacklist" data-status-message="${escapedMessage}">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12.5,7V12.5H11V7H12.5M12.5,14V15.5H11V14H12.5Z"/>
         </svg>
       </span>
+    `,
+    'whitelisted': `
+      <span class="shield-indicator shield-whitelisted clickable-status" title="Security Check: Whitelisted
+
+✓ Manually trusted by user
+✓ Bypasses security checks" data-status-message="${escapedMessage}">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24" style="filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));">
+          <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.18L16.59,7.59L18,9L10,17Z" fill="#ffffff"/>
+        </svg>
+      </span>
     `
   };
+
+  // Check if whitelisted
+  const isWhitelisted = safetySources && safetySources.includes('Whitelisted by user');
+  if (isWhitelisted) {
+    return shieldSvgs['whitelisted'];
+  }
 
   return shieldSvgs[safetyStatus] || shieldSvgs['unknown'];
 }
@@ -2711,6 +2923,42 @@ function adjustDropdownPosition(dropdown) {
       dropdown.style.bottom = '100%';
       dropdown.style.marginBottom = '4px';
       dropdown.style.marginTop = '0';
+    }
+  });
+}
+
+// Position dropdown menu with fixed positioning and overflow detection
+function positionFixedDropdown(dropdown, button) {
+  if (!dropdown || !button) return;
+
+  const buttonRect = button.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  // Set max width to prevent horizontal overflow
+  dropdown.style.maxWidth = `${viewportWidth - 16}px`;
+
+  // Position below button by default
+  dropdown.style.position = 'fixed';
+  dropdown.style.top = `${buttonRect.bottom + 4}px`;
+  dropdown.style.right = `${viewportWidth - buttonRect.right}px`;
+  dropdown.style.zIndex = '99999';
+
+  // Wait for next frame to check if menu fits
+  requestAnimationFrame(() => {
+    const dropdownRect = dropdown.getBoundingClientRect();
+
+    // Check if menu overflows bottom
+    if (dropdownRect.bottom > viewportHeight - 8) {
+      // Position above button instead
+      dropdown.style.top = 'auto';
+      dropdown.style.bottom = `${viewportHeight - buttonRect.top + 4}px`;
+    }
+
+    // Check horizontal overflow
+    if (dropdownRect.left < 8) {
+      // Constrain width if needed
+      dropdown.style.maxWidth = `${buttonRect.right - 8}px`;
     }
   });
 }
@@ -4613,9 +4861,11 @@ function setupEventListeners() {
   // Theme menu
   themeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    themeMenu.classList.toggle('show');
-    if (themeMenu.classList.contains('show')) {
-      adjustDropdownPosition(themeMenu);
+    const wasOpen = themeMenu.classList.contains('show');
+    closeAllMenus();
+    if (!wasOpen) {
+      themeMenu.classList.add('show');
+      positionFixedDropdown(themeMenu, themeBtn);
     }
   });
 
@@ -4631,9 +4881,11 @@ function setupEventListeners() {
   // View menu
   viewBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    viewMenu.classList.toggle('show');
-    if (viewMenu.classList.contains('show')) {
-      adjustDropdownPosition(viewMenu);
+    const wasOpen = viewMenu.classList.contains('show');
+    closeAllMenus();
+    if (!wasOpen) {
+      viewMenu.classList.add('show');
+      positionFixedDropdown(viewMenu, viewBtn);
     }
   });
 
@@ -4649,9 +4901,11 @@ function setupEventListeners() {
   // Zoom menu
   zoomBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    zoomMenu.classList.toggle('show');
-    if (zoomMenu.classList.contains('show')) {
-      adjustDropdownPosition(zoomMenu);
+    const wasOpen = zoomMenu.classList.contains('show');
+    closeAllMenus();
+    if (!wasOpen) {
+      zoomMenu.classList.add('show');
+      positionFixedDropdown(zoomMenu, zoomBtn);
     }
   });
 
@@ -4664,9 +4918,11 @@ function setupEventListeners() {
   // Settings menu
   settingsBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    settingsMenu.classList.toggle('show');
-    if (settingsMenu.classList.contains('show')) {
-      adjustDropdownPosition(settingsMenu);
+    const wasOpen = settingsMenu.classList.contains('show');
+    closeAllMenus();
+    if (!wasOpen) {
+      settingsMenu.classList.add('show');
+      positionFixedDropdown(settingsMenu, settingsBtn);
       // Update cache size display when menu opens
       await updateCacheSizeDisplay();
     }
@@ -4769,6 +5025,59 @@ function setupEventListeners() {
 
   // Initialize accent color on page load
   loadSavedAccentColor();
+
+  // Background image upload
+  if (backgroundImageUpload) {
+    backgroundImageUpload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          customBackgroundImage = event.target.result;
+          backgroundPosition = { x: 50, y: 50 };
+          backgroundScale = 100;
+          localStorage.setItem('customBackgroundImage', customBackgroundImage);
+          localStorage.setItem('backgroundPosition', JSON.stringify(backgroundPosition));
+          localStorage.setItem('backgroundScale', backgroundScale.toString());
+          applyBackgroundImage();
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+
+  // Reset background image
+  if (resetBackgroundImage) {
+    resetBackgroundImage.addEventListener('click', () => {
+      customBackgroundImage = null;
+      localStorage.removeItem('customBackgroundImage');
+      localStorage.removeItem('backgroundPosition');
+      localStorage.removeItem('backgroundScale');
+      applyBackgroundImage();
+    });
+  }
+
+  // Manage whitelist button
+  if (manageWhitelistBtn) {
+    manageWhitelistBtn.addEventListener('click', () => {
+      if (whitelistPanel) {
+        const isVisible = whitelistPanel.style.display !== 'none';
+        whitelistPanel.style.display = isVisible ? 'none' : 'block';
+        if (!isVisible) {
+          updateWhitelistUI();
+        }
+      }
+    });
+  }
+
+  // GUI Scale select
+  if (guiScaleSelect) {
+    guiScaleSelect.addEventListener('change', (e) => {
+      guiScale = parseInt(e.target.value);
+      localStorage.setItem('guiScale', guiScale.toString());
+      applyGuiScale();
+    });
+  }
 
   // Rescan all bookmarks
   rescanBookmarksBtn.addEventListener('click', async () => {

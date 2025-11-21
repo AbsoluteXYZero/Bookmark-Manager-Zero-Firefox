@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -116,9 +116,12 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 
 ### User Experience
 - 🎨 **3 Themes** - Blue Dark (default), Light, Dark
+- 🎨 **Custom Accent Colors** - Personalize with your own Material Design accent color
+- 🖼️ **Custom Background Images** - Upload and position your own background with drag-to-reposition and scroll-to-zoom
 - ⌨️ **Keyboard Navigation** - Full keyboard support with arrow keys
 - ♿ **Accessibility** - Comprehensive ARIA labels and keyboard traps
-- 🔍 **Zoom Control** - 50% - 200% zoom levels
+- 🔍 **Zoom Control** - 50% - 200% zoom levels for bookmarks
+- 📏 **GUI Scale Control** - 80% - 140% scaling for header, toolbar, and filters
 - 📱 **Responsive Design** - Adapts to sidebar width
 
 ### Advanced Features
@@ -188,10 +191,14 @@ For development or testing purposes. **Note:** This method requires re-adding th
 ### Settings
 Click the gear icon to access:
 - **Display Options:** Toggle title, URL, status indicators, previews
-- **View Mode:** Switch between list and grid layouts
+- **View Mode:** Switch between list and grid layouts (with configurable column counts)
 - **Theme:** Choose from 3 themes
-- **Zoom:** Adjust interface size
+- **Zoom:** Adjust bookmark display size (50% - 200%)
+- **GUI Scale:** Scale header, toolbar, and filters (80% - 140%)
+- **Customization:** Custom accent colors and background images
+- **Whitelist Management:** View and manage all whitelisted domains
 - **Cache Management:** Configure auto-clear settings
+- **Checking Toggles:** Enable/disable link checking and safety checking
 - **API Keys:** Set up optional security API keys
 
 ### Keyboard Shortcuts
@@ -363,6 +370,14 @@ Users can whitelist specific URLs to:
 - Override false positives
 - Whitelist is stored locally and persists across sessions
 
+**Managing the Whitelist:**
+- Access via Settings → "Manage Whitelist" button
+- View count badge showing number of whitelisted domains
+- Expandable panel lists all whitelisted domains
+- Remove button for each domain
+- Automatic recheck of affected bookmarks when domain is removed from whitelist
+- Whitelisted bookmarks show a white shield indicator
+
 ## Permissions
 
 ### Required Permissions
@@ -437,7 +452,26 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v1.5.0 (Current) - Grid View & Link Detection Improvements
+### v1.6.0 (Current) - Customization & UI Enhancements
+
+**New Features:**
+- 🎨 **Custom Accent Color Picker** - Personalize Material Design accent colors via color picker in Settings
+- 🖼️ **Custom Background Image** - Upload custom backgrounds with drag-to-reposition and scroll-to-scale functionality
+- 🛡️ **Whitelist Management UI** - View and manage whitelisted domains with count badge, expandable panel, and quick removal
+- 📏 **GUI Scale Controls** - Separate GUI scaling (80-140%) for header, toolbar, and filter elements
+- ⚪ **White Shield Indicator** - Whitelisted bookmarks display a distinct white shield instead of green
+- 🎨 **Theme-Aware Scrollbars** - All scrollbars now match the selected Material Design theme
+
+**Improvements:**
+- 🎯 **Improved Menu Positioning** - Fixed positioning with better viewport detection and overflow handling
+- 🔒 **Menu Mutual Exclusion** - Only one dropdown menu can be open at a time
+- 👆 **Click-Outside Menu Closing** - Menus close when clicking outside them
+- 🐛 **Fixed Double Favicon Bug** - Resolved duplicate favicon display in grid view
+- 📱 **Better Context Menu Positioning** - Header-aware calculations prevent toolbar cutoff
+
+---
+
+### v1.5.0 - Grid View & Link Detection Improvements
 
 **New Features:**
 - 📐 **Square Card Layout** - Bookmarks display as square cards in grid view with aspect-ratio
