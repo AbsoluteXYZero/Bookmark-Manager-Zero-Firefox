@@ -116,12 +116,12 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 
 ### User Experience
 - 🎨 **3 Themes** - Blue Dark (default), Light, Dark
-- 🎨 **Custom Accent Colors** - Personalize with your own Material Design accent color
-- 🖼️ **Custom Background Images** - Upload and position your own background with drag-to-reposition and scroll-to-zoom
+- 🎨 **Custom Accent Colors** - Pick any color for the Material Design accent theme
+- 🖼️ **Custom Background Images** - Upload your own background image with drag-to-reposition and pinch-to-zoom scaling controls
 - ⌨️ **Keyboard Navigation** - Full keyboard support with arrow keys
 - ♿ **Accessibility** - Comprehensive ARIA labels and keyboard traps
 - 🔍 **Zoom Control** - 50% - 200% zoom levels for bookmarks
-- 📏 **GUI Scale Control** - 80% - 140% scaling for header, toolbar, and filters
+- 📏 **GUI Scaling** - Independent size control for header, toolbar, menus, and status bar (80% - 140% in 10% increments)
 - 📱 **Responsive Design** - Adapts to sidebar width
 
 ### Advanced Features
@@ -455,19 +455,15 @@ Contributions welcome! Please:
 ### v1.6.0 (Current) - Customization & UI Enhancements
 
 **New Features:**
-- 🎨 **Custom Accent Color Picker** - Personalize Material Design accent colors via color picker in Settings
-- 🖼️ **Custom Background Image** - Upload custom backgrounds with drag-to-reposition and scroll-to-scale functionality
-- 🛡️ **Whitelist Management UI** - View and manage whitelisted domains with count badge, expandable panel, and quick removal
-- 📏 **GUI Scale Controls** - Separate GUI scaling (80-140%) for header, toolbar, and filter elements
-- ⚪ **White Shield Indicator** - Whitelisted bookmarks display a distinct white shield instead of green
-- 🎨 **Theme-Aware Scrollbars** - All scrollbars now match the selected Material Design theme
-
-**Improvements:**
-- 🎯 **Improved Menu Positioning** - Fixed positioning with better viewport detection and overflow handling
-- 🔒 **Menu Mutual Exclusion** - Only one dropdown menu can be open at a time
-- 👆 **Click-Outside Menu Closing** - Menus close when clicking outside them
-- 🐛 **Fixed Double Favicon Bug** - Resolved duplicate favicon display in grid view
-- 📱 **Better Context Menu Positioning** - Header-aware calculations prevent toolbar cutoff
+- 🎨 **Custom Accent Colors** - Pick any color for the Material Design accent theme
+- 🖼️ **Custom Background Images** - Upload your own background image with drag-to-reposition and pinch-to-zoom scaling controls
+- 📋 **Whitelist Management UI** - View and manage whitelisted domains directly from settings menu
+- 📏 **GUI Scaling** - Independent size control for header, toolbar, menus, and status bar (80% - 140% in 10% increments)
+- 🎯 **Improved Menu Positioning** - Context menus and dropdown menus now properly constrain to viewport boundaries
+- 🎨 **Theme-Aware Scrollbars** - Scrollbars now match your selected color theme
+- ⚪ **White Shield Indicator** - Whitelisted bookmarks display white shield instead of green to distinguish user-trusted vs security-scanned sites
+- 🔒 **Menu Mutual Exclusion** - Only one menu can be open at a time for cleaner UX
+- 👆 **Click-Outside Menu Closing** - Menus automatically close when clicking elsewhere
 
 ---
 

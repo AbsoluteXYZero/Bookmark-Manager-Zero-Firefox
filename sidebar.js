@@ -457,8 +457,19 @@ const rescanBookmarksBtn = document.getElementById('rescanBookmarksBtn');
 const setApiKeyBtn = document.getElementById('setApiKeyBtn');
 const accentColorPicker = document.getElementById('accentColorPicker');
 const resetAccentColorBtn = document.getElementById('resetAccentColor');
-const backgroundImageUpload = document.getElementById('backgroundImageUpload');
-const resetBackgroundImage = document.getElementById('resetBackgroundImage');
+const backgroundImagePicker = document.getElementById('backgroundImagePicker');
+const chooseBackgroundImageBtn = document.getElementById('chooseBackgroundImage');
+const removeBackgroundImageBtn = document.getElementById('removeBackgroundImage');
+const backgroundOpacitySlider = document.getElementById('backgroundOpacity');
+const backgroundBlurSlider = document.getElementById('backgroundBlur');
+const backgroundSizeSelect = document.getElementById('backgroundSize');
+const repositionBackgroundBtn = document.getElementById('repositionBackground');
+const backgroundScaleSlider = document.getElementById('backgroundScale');
+const dragModeOverlay = document.getElementById('dragModeOverlay');
+const closeDragModeBtn = document.getElementById('closeDragModeBtn');
+const opacityValue = document.getElementById('opacityValue');
+const blurValue = document.getElementById('blurValue');
+const scaleValue = document.getElementById('scaleValue');
 const manageWhitelistBtn = document.getElementById('manageWhitelistBtn');
 const whitelistPanel = document.getElementById('whitelistPanel');
 const whitelistItems = document.getElementById('whitelistItems');
@@ -777,81 +788,105 @@ function applyGuiScale() {
 }
 
 // Load and apply custom background image
-function loadBackgroundImage() {
-  const savedImage = localStorage.getItem('customBackgroundImage');
-  const savedPosition = localStorage.getItem('backgroundPosition');
+// Apply background image with all settings
+function applyBackgroundImage(imageData, opacity, blur, size, positionX, positionY, scale) {
+  if (imageData) {
+    // Create or update background overlay
+    let bgOverlay = document.getElementById('background-overlay');
+    if (!bgOverlay) {
+      bgOverlay = document.createElement('div');
+      bgOverlay.id = 'background-overlay';
+      bgOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        pointer-events: none;
+        background-repeat: no-repeat;
+      `;
+      document.body.insertBefore(bgOverlay, document.body.firstChild);
+
+      // Make sure container has higher z-index
+      const content = document.querySelector('.content');
+      if (content && !content.style.position) {
+        content.style.position = 'relative';
+        content.style.zIndex = '1';
+      }
+
+      // Make sure status bar has higher z-index
+      const statusBar = document.getElementById('scanStatusBar');
+      if (statusBar) {
+        statusBar.style.position = 'relative';
+        statusBar.style.zIndex = '2';
+      }
+    }
+
+    bgOverlay.style.backgroundImage = `url(${imageData})`;
+    bgOverlay.style.opacity = opacity / 100;
+    bgOverlay.style.filter = `blur(${blur}px)`;
+    bgOverlay.style.backgroundSize = size || 'cover';
+    bgOverlay.style.backgroundPosition = `${positionX || 50}% ${positionY || 50}%`;
+
+    // Apply scale by using transform
+    if (scale && scale != 100) {
+      const scalePercent = scale / 100;
+      bgOverlay.style.transform = `scale(${scalePercent})`;
+      bgOverlay.style.transformOrigin = 'center center';
+    } else {
+      bgOverlay.style.transform = 'none';
+      bgOverlay.style.transformOrigin = 'center center';
+    }
+  } else {
+    // Remove background overlay
+    const bgOverlay = document.getElementById('background-overlay');
+    if (bgOverlay) {
+      bgOverlay.remove();
+    }
+  }
+}
+
+function loadSavedBackgroundImage() {
+  const savedImage = localStorage.getItem('backgroundImage');
+  const savedOpacity = localStorage.getItem('backgroundOpacity');
+  const savedBlur = localStorage.getItem('backgroundBlur');
+  const savedSize = localStorage.getItem('backgroundSize');
+  const savedPositionX = localStorage.getItem('backgroundPositionX');
+  const savedPositionY = localStorage.getItem('backgroundPositionY');
   const savedScale = localStorage.getItem('backgroundScale');
 
+  if (savedOpacity) {
+    backgroundOpacitySlider.value = savedOpacity;
+    opacityValue.textContent = `${savedOpacity}%`;
+  }
+  if (savedBlur) {
+    backgroundBlurSlider.value = savedBlur;
+    blurValue.textContent = `${savedBlur}px`;
+  }
+  if (savedSize) {
+    backgroundSizeSelect.value = savedSize;
+  }
+  if (savedScale) {
+    backgroundScaleSlider.value = savedScale;
+    scaleValue.textContent = `${savedScale}%`;
+  }
+
   if (savedImage) {
-    customBackgroundImage = savedImage;
-    backgroundPosition = savedPosition ? JSON.parse(savedPosition) : { x: 50, y: 50 };
-    backgroundScale = savedScale ? parseInt(savedScale) : 100;
-    applyBackgroundImage();
+    applyBackgroundImage(
+      savedImage,
+      savedOpacity || 100,
+      savedBlur || 0,
+      savedSize || 'contain',
+      savedPositionX || 50,
+      savedPositionY || 50,
+      savedScale || 200
+    );
   }
 }
 
-// Apply custom background image with position and scale
-function applyBackgroundImage() {
-  const body = document.body;
-  if (customBackgroundImage) {
-    body.style.backgroundImage = `url(${customBackgroundImage})`;
-    body.style.backgroundPosition = `${backgroundPosition.x}% ${backgroundPosition.y}%`;
-    body.style.backgroundSize = `${backgroundScale}%`;
-    body.classList.add('has-custom-background');
-    setupBackgroundDragAndZoom();
-  } else {
-    body.style.backgroundImage = '';
-    body.classList.remove('has-custom-background');
-  }
-}
-
-// Setup drag-to-reposition and pinch/scroll-to-scale for background
-function setupBackgroundDragAndZoom() {
-  const body = document.body;
-  let isDragging = false;
-  let startX, startY;
-  let startPosX, startPosY;
-
-  // Drag to reposition
-  body.addEventListener('mousedown', (e) => {
-    if (customBackgroundImage && e.target === body) {
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      startPosX = backgroundPosition.x;
-      startPosY = backgroundPosition.y;
-      body.style.cursor = 'grabbing';
-    }
-  });
-
-  body.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-      const deltaX = ((e.clientX - startX) / window.innerWidth) * 100;
-      const deltaY = ((e.clientY - startY) / window.innerHeight) * 100;
-      backgroundPosition.x = startPosX + deltaX;
-      backgroundPosition.y = startPosY + deltaY;
-      applyBackgroundImage();
-    }
-  });
-
-  body.addEventListener('mouseup', () => {
-    if (isDragging) {
-      isDragging = false;
-      body.style.cursor = '';
-      localStorage.setItem('backgroundPosition', JSON.stringify(backgroundPosition));
-    }
-  });
-
-  // Scroll to scale
-  body.addEventListener('wheel', (e) => {
-    if (customBackgroundImage && e.target === body && e.ctrlKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -10 : 10;
-      backgroundScale = Math.max(50, Math.min(200, backgroundScale + delta));
-      applyBackgroundImage();
-      localStorage.setItem('backgroundScale', backgroundScale.toString());
-    }
-  }, { passive: false });
+function loadBackgroundImage() {
+  loadSavedBackgroundImage();
 }
 
 // Update whitelist UI (count badge and panel)
@@ -5026,38 +5061,269 @@ function setupEventListeners() {
   // Initialize accent color on page load
   loadSavedAccentColor();
 
-  // Background image upload
-  if (backgroundImageUpload) {
-    backgroundImageUpload.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          customBackgroundImage = event.target.result;
-          backgroundPosition = { x: 50, y: 50 };
-          backgroundScale = 100;
-          localStorage.setItem('customBackgroundImage', customBackgroundImage);
-          localStorage.setItem('backgroundPosition', JSON.stringify(backgroundPosition));
-          localStorage.setItem('backgroundScale', backgroundScale.toString());
-          applyBackgroundImage();
-        };
-        reader.readAsDataURL(file);
+  // Background image controls
+  let isDragging = false;
+
+  // Choose background image
+  chooseBackgroundImageBtn.addEventListener('click', () => {
+    backgroundImagePicker.click();
+  });
+
+  backgroundImagePicker.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const imageData = event.target.result;
+        localStorage.setItem('backgroundImage', imageData);
+        applyBackgroundImage(
+          imageData,
+          backgroundOpacitySlider.value,
+          backgroundBlurSlider.value,
+          backgroundSizeSelect.value,
+          localStorage.getItem('backgroundPositionX') || 50,
+          localStorage.getItem('backgroundPositionY') || 50,
+          backgroundScaleSlider.value
+        );
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // Remove background image
+  removeBackgroundImageBtn.addEventListener('click', () => {
+    localStorage.removeItem('backgroundImage');
+    localStorage.removeItem('backgroundOpacity');
+    localStorage.removeItem('backgroundBlur');
+    localStorage.removeItem('backgroundSize');
+    localStorage.removeItem('backgroundPositionX');
+    localStorage.removeItem('backgroundPositionY');
+    localStorage.removeItem('backgroundScale');
+    applyBackgroundImage(null);
+    backgroundOpacitySlider.value = 100;
+    opacityValue.textContent = '100%';
+    backgroundBlurSlider.value = 0;
+    blurValue.textContent = '0px';
+    backgroundSizeSelect.value = 'contain';
+    backgroundScaleSlider.value = 200;
+    scaleValue.textContent = '200%';
+  });
+
+  // Opacity slider
+  backgroundOpacitySlider.addEventListener('input', (e) => {
+    const opacity = e.target.value;
+    opacityValue.textContent = `${opacity}%`;
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (savedImage) {
+      localStorage.setItem('backgroundOpacity', opacity);
+      applyBackgroundImage(
+        savedImage,
+        opacity,
+        backgroundBlurSlider.value,
+        backgroundSizeSelect.value,
+        localStorage.getItem('backgroundPositionX') || 50,
+        localStorage.getItem('backgroundPositionY') || 50,
+        backgroundScaleSlider.value
+      );
+    }
+  });
+
+  // Blur slider
+  backgroundBlurSlider.addEventListener('input', (e) => {
+    const blur = e.target.value;
+    blurValue.textContent = `${blur}px`;
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (savedImage) {
+      localStorage.setItem('backgroundBlur', blur);
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        blur,
+        backgroundSizeSelect.value,
+        localStorage.getItem('backgroundPositionX') || 50,
+        localStorage.getItem('backgroundPositionY') || 50,
+        backgroundScaleSlider.value
+      );
+    }
+  });
+
+  // Size select
+  backgroundSizeSelect.addEventListener('change', (e) => {
+    const size = e.target.value;
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (savedImage) {
+      localStorage.setItem('backgroundSize', size);
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        backgroundBlurSlider.value,
+        size,
+        localStorage.getItem('backgroundPositionX') || 50,
+        localStorage.getItem('backgroundPositionY') || 50,
+        backgroundScaleSlider.value
+      );
+    }
+  });
+
+  // Scale slider
+  backgroundScaleSlider.addEventListener('input', (e) => {
+    const scale = e.target.value;
+    scaleValue.textContent = `${scale}%`;
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (savedImage) {
+      localStorage.setItem('backgroundScale', scale);
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        backgroundBlurSlider.value,
+        backgroundSizeSelect.value,
+        localStorage.getItem('backgroundPositionX') || 50,
+        localStorage.getItem('backgroundPositionY') || 50,
+        scale
+      );
+    }
+  });
+
+  // Reposition background (drag mode)
+  repositionBackgroundBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (!savedImage) {
+      return;
+    }
+
+    const bgOverlay = document.getElementById('background-overlay');
+    if (!bgOverlay) return;
+
+    // Reload current position from localStorage when entering drag mode
+    let currentPosX = parseFloat(localStorage.getItem('backgroundPositionX')) || 50;
+    let currentPosY = parseFloat(localStorage.getItem('backgroundPositionY')) || 50;
+    let dragStartX = 0;
+    let dragStartY = 0;
+
+    // Show the drag mode overlay and close all menus
+    dragModeOverlay.style.display = 'flex';
+    closeAllMenus();
+
+    // Enable dragging - raise z-index above everything (10001)
+    bgOverlay.style.cursor = 'move';
+    bgOverlay.style.pointerEvents = 'auto';
+    bgOverlay.style.zIndex = '10001';
+
+    // Also raise banner to stay on top of overlay
+    dragModeOverlay.style.zIndex = '10002';
+
+    const handleMouseDown = (event) => {
+      // Don't start dragging if clicking on the exit button
+      if (event.target === closeDragModeBtn || closeDragModeBtn.contains(event.target)) {
+        return;
       }
-    });
-  }
 
-  // Reset background image
-  if (resetBackgroundImage) {
-    resetBackgroundImage.addEventListener('click', () => {
-      customBackgroundImage = null;
-      localStorage.removeItem('customBackgroundImage');
-      localStorage.removeItem('backgroundPosition');
-      localStorage.removeItem('backgroundScale');
-      applyBackgroundImage();
-    });
-  }
+      isDragging = true;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      event.preventDefault();
+      event.stopPropagation();
+    };
 
-  // Manage whitelist button
+    const handleMouseMove = (event) => {
+      if (!isDragging) return;
+
+      const deltaX = event.clientX - dragStartX;
+      const deltaY = event.clientY - dragStartY;
+
+      // Convert pixel movement to percentage based on window size
+      const percentX = (deltaX / window.innerWidth) * 100;
+      const percentY = (deltaY / window.innerHeight) * 100;
+
+      // Update positions with stricter limits (-50% to 150%)
+      currentPosX = Math.max(-50, Math.min(150, currentPosX + percentX));
+      currentPosY = Math.max(-50, Math.min(150, currentPosY + percentY));
+
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        backgroundBlurSlider.value,
+        backgroundSizeSelect.value,
+        currentPosX,
+        currentPosY,
+        backgroundScaleSlider.value
+      );
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging) {
+        isDragging = false;
+        localStorage.setItem('backgroundPositionX', currentPosX);
+        localStorage.setItem('backgroundPositionY', currentPosY);
+      }
+    };
+
+    const handleWheel = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Get current scale from slider
+      let currentScale = parseFloat(backgroundScaleSlider.value);
+
+      // Adjust scale based on scroll direction
+      const scaleChange = event.deltaY > 0 ? -5 : 5;
+      currentScale = Math.max(10, Math.min(1000, currentScale + scaleChange));
+
+      // Update slider and display
+      backgroundScaleSlider.value = currentScale;
+      scaleValue.textContent = `${currentScale}%`;
+
+      // Save to localStorage
+      localStorage.setItem('backgroundScale', currentScale);
+
+      // Apply the new scale
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        backgroundBlurSlider.value,
+        backgroundSizeSelect.value,
+        currentPosX,
+        currentPosY,
+        currentScale
+      );
+    };
+
+    const stopDragging = () => {
+      // Hide overlay
+      dragModeOverlay.style.display = 'none';
+
+      // Reset background overlay
+      bgOverlay.style.cursor = '';
+      bgOverlay.style.pointerEvents = 'none';
+      bgOverlay.style.zIndex = '0';
+
+      // Remove event listeners
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('wheel', handleWheel);
+      closeDragModeBtn.removeEventListener('click', stopDragging);
+
+      // Save final position
+      localStorage.setItem('backgroundPositionX', currentPosX);
+      localStorage.setItem('backgroundPositionY', currentPosY);
+    };
+
+    // Listen on document instead of bgOverlay to bypass any blocking elements
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('wheel', handleWheel, { passive: false });
+
+    // Set up banner close handler
+    closeDragModeBtn.addEventListener('click', stopDragging);
+  });
+
   if (manageWhitelistBtn) {
     manageWhitelistBtn.addEventListener('click', () => {
       if (whitelistPanel) {

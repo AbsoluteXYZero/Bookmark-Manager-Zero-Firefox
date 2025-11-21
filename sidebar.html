@@ -1811,20 +1811,59 @@
               <button id="resetAccentColor" style="cursor: pointer; padding: 4px 8px; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 10px; white-space: nowrap;">Reset</button>
             </div>
           </label>
-          <label class="action-btn" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="icon">
-                <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8.5,13.5L11,16.5L14.5,12L19,18H5M21,19V5C21,3.89 20.1,3 19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19Z"/>
-                </svg>
-              </span>
-              <span>Background Image</span>
+          <div style="display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="icon">
+                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8.5,13.5L11,16.5L14.5,12L19,18H5M21,19V5C21,3.89 20.1,3 19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19Z"/>
+                  </svg>
+                </span>
+                <span>Background Image</span>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="file" id="backgroundImagePicker" accept="image/*" style="display: none;">
+                <button id="chooseBackgroundImage" style="cursor: pointer; padding: 4px 8px; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 10px; white-space: nowrap;">Choose</button>
+                <button id="removeBackgroundImage" style="cursor: pointer; padding: 4px 8px; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 10px; white-space: nowrap;">Remove</button>
+              </div>
             </div>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <label for="backgroundImageUpload" style="cursor: pointer; padding: 4px 8px; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 10px; white-space: nowrap;">Upload</label>
-              <input type="file" id="backgroundImageUpload" accept="image/*" style="display: none;">
-              <button id="resetBackgroundImage" style="cursor: pointer; padding: 4px 8px; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 10px; white-space: nowrap;">Reset</button>
+            <div style="display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; margin-top: 4px;">
+              <label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px;">
+                <span>Opacity</span>
+                <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+                  <input type="range" id="backgroundOpacity" min="0" max="100" value="100" style="flex: 1; cursor: pointer;">
+                  <span id="opacityValue" style="min-width: 35px; text-align: right; font-weight: 600;">100%</span>
+                </div>
+              </label>
+              <label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px;">
+                <span>Blur</span>
+                <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+                  <input type="range" id="backgroundBlur" min="0" max="20" value="0" style="flex: 1; cursor: pointer;">
+                  <span id="blurValue" style="min-width: 35px; text-align: right; font-weight: 600;">0px</span>
+                </div>
+              </label>
+              <label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px;">
+                <span>Size</span>
+                <select id="backgroundSize" style="flex: 1; cursor: pointer; padding: 4px; background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 10px;">
+                  <option value="cover">Cover</option>
+                  <option value="contain" selected>Contain</option>
+                  <option value="auto">Auto</option>
+                  <option value="100% 100%">Stretch</option>
+                </select>
+              </label>
+              <label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px;">
+                <span>Position</span>
+                <button id="repositionBackground" style="flex: 1; cursor: pointer; padding: 6px; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 10px;">Drag to Move</button>
+              </label>
+              <label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px;">
+                <span>Scale</span>
+                <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+                  <input type="range" id="backgroundScale" min="10" max="1000" value="200" style="flex: 1; cursor: pointer;">
+                  <span id="scaleValue" style="min-width: 45px; text-align: right; font-weight: 600;">200%</span>
+                </div>
+              </label>
             </div>
+          </div>
           </label>
           <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
           <label class="action-btn" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
@@ -2370,6 +2409,22 @@
         <button id="errorReload" class="error-btn">Reload</button>
         <button id="errorDismiss" class="error-dismiss">×</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Drag Mode Info Banner -->
+  <div id="dragModeOverlay" style="display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; pointer-events: none;">
+    <div style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); padding: 12px 16px; box-shadow: 0 -4px 6px -1px rgb(0 0 0 / 0.1); display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none;">
+      <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0;">
+          <path d="M13,6V11H18V7.75L22.25,12L18,16.25V13H13V18H16.25L12,22.25L7.75,18H11V13H6V16.25L1.75,12L6,7.75V11H11V6H7.75L12,1.75L16.25,6H13Z"/>
+        </svg>
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-weight: 600; font-size: 13px; margin-bottom: 2px;">Drag-to-Edit Mode Active</div>
+          <div style="font-size: 11px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Drag to reposition • Scroll to scale</div>
+        </div>
+      </div>
+      <button id="closeDragModeBtn" style="padding: 6px 16px; background: rgba(255, 255, 255, 0.2); color: var(--md-sys-color-on-primary); border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background 0.2s; pointer-events: auto;">Exit & Save</button>
     </div>
   </div>
 
