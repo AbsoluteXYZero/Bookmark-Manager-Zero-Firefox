@@ -3246,6 +3246,7 @@ async function whitelistBookmark(bookmark) {
     if (remove) {
       whitelistedUrls.delete(hostname);
       await saveWhitelist();
+      updateWhitelistCount();
       alert(`Removed "${hostname}" from whitelist.\n\nIt will be scanned normally on next check.`);
       // Recheck the bookmark
       await recheckBookmarkStatus(bookmark.id);
@@ -3255,6 +3256,7 @@ async function whitelistBookmark(bookmark) {
     if (confirm_add) {
       whitelistedUrls.add(hostname);
       await saveWhitelist();
+      updateWhitelistCount();
       // Update safety status to safe
       updateBookmarkInTree(bookmark.id, {
         safetyStatus: 'safe',
@@ -5006,6 +5008,8 @@ function setupEventListeners() {
       positionFixedDropdown(settingsMenu, settingsBtn);
       // Update cache size display when menu opens
       await updateCacheSizeDisplay();
+      // Update whitelist count when menu opens
+      updateWhitelistCount();
     }
   });
 
