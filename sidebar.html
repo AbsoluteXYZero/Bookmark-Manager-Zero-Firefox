@@ -632,10 +632,12 @@
 
     .shield-whitelisted {
       color: #ffffff;
+      filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.3));
     }
 
     .dark .shield-whitelisted {
       color: #f0f0f0;
+      filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.2));
     }
 
     .shield-indicator:hover {
@@ -2232,7 +2234,7 @@
       <span>Unsafe</span>
     </button>
     <button class="filter-chip" data-filter="whitelisted" title="Show only whitelisted URLs">
-      <svg width="12" height="12" class="shield-whitelisted" viewBox="0 0 24 24">
+      <svg width="12" height="12" fill="currentColor" class="shield-whitelisted" viewBox="0 0 24 24">
         <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.18L16.59,7.59L18,9L10,17Z"/>
       </svg>
       <span>Whitelisted</span>
