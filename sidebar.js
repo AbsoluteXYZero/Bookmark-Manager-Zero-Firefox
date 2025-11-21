@@ -457,8 +457,6 @@ const rescanBookmarksBtn = document.getElementById('rescanBookmarksBtn');
 const setApiKeyBtn = document.getElementById('setApiKeyBtn');
 const accentColorPicker = document.getElementById('accentColorPicker');
 const resetAccentColorBtn = document.getElementById('resetAccentColor');
-const doneAccentColorBtn = document.getElementById('doneAccentColor');
-const accentColorTooltip = document.getElementById('accentColorTooltip');
 const backgroundImagePicker = document.getElementById('backgroundImagePicker');
 const chooseBackgroundImageBtn = document.getElementById('chooseBackgroundImage');
 const removeBackgroundImageBtn = document.getElementById('removeBackgroundImage');
@@ -4953,7 +4951,7 @@ function setupEventListeners() {
   });
 
   // Theme selection
-  themeMenu.querySelectorAll('.action-btn').forEach(btn => {
+  themeMenu.querySelectorAll('[data-theme]').forEach(btn => {
     btn.addEventListener('click', () => {
       const selectedTheme = btn.dataset.theme;
       setTheme(selectedTheme);
@@ -5066,28 +5064,12 @@ function setupEventListeners() {
     localStorage.setItem('customAccentColor', color);
   });
 
-  // Hide tooltip when color picker loses focus or closes
-  accentColorPicker.addEventListener('blur', () => {
-    // Small delay to allow clicking Done button
-    setTimeout(() => {
-      if (document.activeElement !== doneAccentColorBtn) {
-        accentColorTooltip.style.display = 'none';
-      }
-    }, 100);
-  });
-
   // Reset accent color
   resetAccentColorBtn.addEventListener('click', () => {
     const defaultColor = getDefaultAccentColor();
     accentColorPicker.value = defaultColor;
     applyAccentColor(defaultColor);
     localStorage.removeItem('customAccentColor');
-  });
-
-  // Done button - close settings menu and hide tooltip
-  doneAccentColorBtn.addEventListener('click', () => {
-    accentColorTooltip.style.display = 'none';
-    closeAllMenus();
   });
 
   // Load saved accent color on startup
