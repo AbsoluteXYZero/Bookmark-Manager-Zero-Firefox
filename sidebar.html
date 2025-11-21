@@ -1308,11 +1308,11 @@
     }
 
     .content.grid-view .status-indicators {
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      flex-direction: column;
-      gap: 1px;
+      display: none !important;  /* Hide in grid view - use bookmark-top-row instead */
+    }
+
+    .content.grid-view .bookmark-item > .bookmark-favicon {
+      display: none !important;  /* Hide standalone favicon - use one in bookmark-top-row instead */
     }
 
     .content.grid-view .status-icon {
