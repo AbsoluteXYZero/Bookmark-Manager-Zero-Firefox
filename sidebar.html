@@ -2424,17 +2424,16 @@
 
   <!-- Drag Mode Info Banner -->
   <div id="dragModeOverlay" style="display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; pointer-events: none;">
-    <div style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); padding: 12px 16px; box-shadow: 0 -4px 6px -1px rgb(0 0 0 / 0.1); display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none;">
-      <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
-        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0;">
+    <div style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); padding: 6px 10px; box-shadow: 0 -2px 4px -1px rgb(0 0 0 / 0.1); display: flex; align-items: center; justify-content: space-between; gap: 8px; pointer-events: none;">
+      <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0;">
           <path d="M13,6V11H18V7.75L22.25,12L18,16.25V13H13V18H16.25L12,22.25L7.75,18H11V13H6V16.25L1.75,12L6,7.75V11H11V6H7.75L12,1.75L16.25,6H13Z"/>
         </svg>
         <div style="flex: 1; min-width: 0;">
-          <div style="font-weight: 600; font-size: 13px; margin-bottom: 2px;">Drag-to-Edit Mode Active</div>
-          <div style="font-size: 11px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Drag to reposition • Scroll to scale</div>
+          <div style="font-weight: 600; font-size: 11px;">Drag Mode Active</div>
         </div>
       </div>
-      <button id="closeDragModeBtn" style="padding: 6px 16px; background: rgba(255, 255, 255, 0.2); color: var(--md-sys-color-on-primary); border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background 0.2s; pointer-events: auto;">Exit & Save</button>
+      <button id="closeDragModeBtn" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.2); color: var(--md-sys-color-on-primary); border: none; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background 0.2s; pointer-events: auto;">Exit</button>
     </div>
   </div>
 
