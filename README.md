@@ -36,6 +36,7 @@ Other bookmark tools make you choose between organization OR security. Bookmark 
 | Suspicious pattern detection | ✅ | ❌ | ❌ | ❌ |
 | No tracking/analytics | ✅ | ✅ | ✅ | ❌ |
 | Website previews | ✅ | ❌ | ❌ | ❌ |
+| Free (no premium upsell) | ✅ | ❌ | ✅ | ❌ |
 
 Stop blindly clicking old bookmarks. Know which links are dead, parked, or potentially dangerous before you visit them.
 
@@ -105,10 +106,10 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 👆 **Clickable Status Icons** - Click shield or chain icons for full status details popup
 - 🔄 **HTTP Redirect Detection** - Detects when HTTP bookmarks redirect to HTTPS
 - ✅ **Whitelist Support** - Mark trusted URLs to skip safety checks
+- ⚪ **Trusted Filter** - Filter to view only whitelisted bookmarks (white shield)
 - 📜 **Safety History** - Track status changes over time
 
 ### Privacy & Security
-- 🔒 **Private Browsing Support** - Respects incognito mode with memory-only storage
 - 🔐 **Encrypted API Keys** - AES-256-GCM encryption for stored credentials
 - 🚫 **No Tracking** - Zero analytics, no data collection
 - 🌐 **Offline Mode** - Works fully offline when external features disabled
@@ -116,12 +117,12 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 
 ### User Experience
 - 🎨 **3 Themes** - Blue Dark (default), Light, Dark
-- 🎨 **Custom Accent Colors** - Pick any color for the Material Design accent theme
-- 🖼️ **Custom Background Images** - Upload your own background image with drag-to-reposition and pinch-to-zoom scaling controls
+- 🎨 **Custom Accent Colors** - Pick any color for theme customization
+- 🖼️ **Custom Backgrounds** - Upload and position your own background images
 - ⌨️ **Keyboard Navigation** - Full keyboard support with arrow keys
 - ♿ **Accessibility** - Comprehensive ARIA labels and keyboard traps
-- 🔍 **Zoom Control** - 50% - 200% zoom levels for bookmarks
-- 📏 **GUI Scaling** - Independent size control for header, toolbar, menus, and status bar (80% - 140% in 10% increments)
+- 🔍 **Zoom Control** - 50% - 200% zoom levels for bookmark content
+- 📏 **GUI Scaling** - 80% - 140% scaling for interface elements
 - 📱 **Responsive Design** - Adapts to sidebar width
 
 ### Advanced Features
@@ -191,19 +192,19 @@ For development or testing purposes. **Note:** This method requires re-adding th
 ### Settings
 Click the gear icon to access:
 - **Display Options:** Toggle title, URL, status indicators, previews
-- **View Mode:** Switch between list and grid layouts (with configurable column counts)
-- **Theme:** Choose from 3 themes
-- **Zoom:** Adjust bookmark display size (50% - 200%)
-- **GUI Scale:** Scale header, toolbar, and filters (80% - 140%)
-- **Customization:** Custom accent colors and background images
+- **View Mode:** Switch between list and grid layouts
+- **Default Start Folder:** Choose which folder to expand on sidebar load
 - **Cache Management:** Configure auto-clear settings
-- **Checking Toggles:** Enable/disable link checking and safety checking
 - **API Keys:** Set up optional security API keys
 
-### Keyboard Shortcuts
+Click the theme icon to access:
+- **Theme:** Choose from 3 themes (Blue Dark, Light, Dark)
+- **Accent Color:** Customize theme accent color
+- **Custom Background:** Upload and position your own background image
+- **Zoom:** Adjust bookmark content size (50% - 200%)
+- **GUI Scale:** Adjust interface element size (80% - 140%)
 
-#### Global
-- Sidebar toggle - Can be customized in Firefox (Settings → Extensions & Themes → Manage Extension Shortcuts)
+### Keyboard Shortcuts
 
 #### Navigation (when item selected)
 - `↑/↓` - Navigate bookmarks
@@ -358,7 +359,6 @@ If all above checks pass, the URL is analyzed for suspicious patterns:
 - Only URLs are sent to external services (no personal data)
 - API keys are encrypted with AES-256-GCM before storage
 - All features can be disabled in settings
-- In private browsing, cache uses memory only (no disk writes)
 
 ---
 
@@ -367,13 +367,10 @@ If all above checks pass, the URL is analyzed for suspicious patterns:
 Users can whitelist specific URLs to:
 - Skip safety checks for trusted sites
 - Override false positives
+- Whitelisted bookmarks display a white shield indicator instead of green
+- Add/remove from whitelist via bookmark context menu (right-click)
+- Use the "Trusted" filter to view all whitelisted bookmarks
 - Whitelist is stored locally and persists across sessions
-
-**Managing the Whitelist:**
-- Add/remove domains via bookmark context menu → "Whitelist (Trust Site)"
-- View all whitelisted bookmarks using the "Trusted" filter button
-- Whitelisted bookmarks show a white shield indicator
-- Automatic recheck of affected bookmarks when domain is removed from whitelist
 
 ## Permissions
 
@@ -432,7 +429,8 @@ Please report security vulnerabilities via GitHub Issues (mark as security issue
 ## Browser Compatibility
 
 - **Firefox:** ✅ Fully supported (Manifest V3)
-- **Chrome/Edge:** ❌ Not compatible (Firefox-specific APIs)
+- **Chrome:** ❌ Use [Chrome version](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Chrome)
+- **Edge:** ❌ Use [Chrome version](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Chrome) (Chromium-based)
 
 ## Roadmap
 
@@ -449,31 +447,23 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v1.6.0 (Current) - Customization & UI Enhancements
+### v1.6.0 (Current) - UI Refinements & Custom Navigation
 
 **New Features:**
-- 🎨 **Custom Accent Colors** - Pick any color for the Material Design accent theme
-- 🖼️ **Custom Background Images** - Upload your own background image with drag-to-reposition and pinch-to-zoom scaling controls
-- 🏷️ **Trusted Filter** - New filter button to view all whitelisted bookmarks in one click
-- 📐 **Grid View Icon Row** - Shield, favicon, and chainlink icons now displayed in centered horizontal row at top of each card
-- 📏 **GUI Scaling** - Independent size control for header, toolbar, menus, and status bar (80% - 140% in 10% increments)
-- 🎯 **Improved Menu Positioning** - Context menus and dropdown menus now properly constrain to viewport boundaries
-- 🎨 **Theme-Aware Scrollbars** - Scrollbars now match your selected color theme
-- ⚪ **White Shield Indicator** - Whitelisted bookmarks display white shield instead of green to distinguish user-trusted vs security-scanned sites
-- 🔒 **Menu Mutual Exclusion** - Only one menu can be open at a time for cleaner UX
-- 👆 **Click-Outside Menu Closing** - Menus automatically close when clicking elsewhere
+- 📁 **Default Start Folder** - Choose which folder to auto-expand when opening the sidebar
+- ⚪ **Trusted Filter** - New filter chip to view only whitelisted bookmarks (white shield icon at far right)
+- 🎨 **Accent Color in Theme Menu** - Moved accent color picker from settings to theme menu for better organization
+- 📏 **Compact Filter Chips** - Reduced size of safety filter chips so all 4 fit on one line
 
-**UI Improvements:**
-- 🎛️ **Streamlined Settings Menu** - Removed redundant Manage Whitelist UI (use Trusted filter instead)
-- 🔄 **Simplified Rescan Button** - Single rescan button in status bar (removed duplicate from settings)
-- 📊 **Optimized Filter Bar** - All 4 shield filters (Safe, Suspicious, Unsafe, Trusted) now fit on one line
-- 📏 **Compact GUI Scale Control** - Dropdown now inline with label, removed description text
+**Improvements:**
+- 🔄 **Streamlined Whitelist Management** - Removed whitelist panel from settings menu; use Trusted filter instead
+- 🎯 **Simplified Accent Color Picker** - Removed Done button as changes apply instantly
+- 📐 **Compact Background Settings** - Reduced size of background image controls to save screen space
+- 🎯 **Reorganized Settings** - Theme-related settings (theme, accent color, background, zoom, GUI scale) moved to theme menu
 
 **Bug Fixes:**
-- Fixed grid view showing duplicate shield and chainlink icons
-- Fixed missing favicons in grid view top row
-- Fixed white shield not visible in Trusted filter button
-- Fixed filter bar cutting off buttons with overflow:hidden
+- 🐛 Fixed accent color picker triggering theme switch when clicked
+- 🐛 Fixed Safe filter excluding whitelisted bookmarks (now separate Trusted filter)
 
 ---
 
@@ -484,7 +474,9 @@ Contributions welcome! Please:
 - 🖼️ **Preview Support** - Webpage previews visible in grid view cards
 - 📁 **Compact Folders** - Reduced spacing between collapsed folders in grid view
 - 🔧 **Fixed Column Layout** - Grid columns now properly sized with minmax(0, 1fr)
+- 🔗 **Redirect-Based Parking Detection** - Detects when URLs redirect to known parking domains
 - 🌐 **Expanded Parking Domains** - Now checks 22+ parking services (up from 10)
+- ☠️ **Dead Link Detection** - Properly flags 404, 410, and 451 responses as dead
 
 ---
 
@@ -497,7 +489,13 @@ Contributions welcome! Please:
 - 👆 **Clickable Status Icons** - Click on shield or chain to see full status details in a popup
 - 📐 **Larger Favicons** - Increased favicon size from 16px to 20px for better visibility
 - 🔧 **Context Menu Repositioning** - Menus automatically reposition to stay within viewport
+- 💾 **Improved Caching** - Cache now stores sources with status for better tooltip support
+- 📦 **Centralized Version** - Version now managed from manifest.json as single source of truth
+
+**Bug Fixes:**
 - 🐛 **Zoom Fix** - Fixed gap between content and status bar caused by CSS transform zoom
+- Fixed security warnings not showing specific pattern details
+- Improved cache to handle both old and new format for backwards compatibility
 
 ### v1.3.0 - Multiple Filters & Support
 
