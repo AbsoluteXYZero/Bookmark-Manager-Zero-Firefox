@@ -220,7 +220,6 @@ Bookmark Manager Zero respects your privacy:
 - **No tracking or analytics**
 - **No advertisements**
 - **Open source** - audit the code yourself
-- **Private browsing support** - memory-only storage in incognito mode
 
 See [PRIVACY.md](PRIVACY.md) for complete privacy policy.
 
@@ -255,26 +254,21 @@ The extension checks if bookmark URLs are still accessible and categorizes them 
    - **Marketplaces**: Sedo, Dan.com, Afternic, DomainMarket, Squadhelp, BrandBucket, Undeveloped, Atom
    - **Parking Services**: Bodis, ParkingCrew, Above.com, SedoParking
 
-2. **HTTP HEAD Request**: A lightweight HEAD request is sent to the URL with a 10-second timeout
+2. **HTTP HEAD Request**: A lightweight HEAD request is sent with CORS mode to track redirects (10-second timeout)
    - No page content is downloaded
    - Credentials are omitted for privacy
+   - Falls back to no-cors mode if CORS is blocked
 
 3. **Redirect Detection**: If the URL redirects to a different domain, the final destination is checked against parking domain lists
    - Example: `example.com` → `hugedomains.com/domain/example.com` = **Parked**
    - Same-site redirects (www, HTTPS) are not flagged
 
-4. **Content Analysis**: Page HTML is analyzed for parking indicators:
-   - Strong indicators (immediately flagged): "sedo domain parking", "this domain is parked", "domain has expired"
-   - Weak indicators (require 3+ matches on small pages): "domain for sale", "buy this domain", "coming soon"
-
-5. **Response Interpretation**:
+4. **Response Interpretation**:
    - **Successful response** → Live
    - **Redirects to parking domain** → Parked
-   - **Parking content detected** → Parked
-   - **Cloudflare-protected or blocking requests** → Live
-   - **Timeout/Network Error** → Live (slow server) or Dead
+   - **Timeout/Network Error** → Dead
 
-6. **Fallback Strategy**: If HEAD fails, a GET request is attempted with the same detection logic
+5. **Fallback Strategy**: If HEAD fails, a GET request is attempted with the same redirect detection logic
 
 #### Rate Limiting
 Bookmarks are scanned in batches of 5 with a 1-second delay between batches. This prevents overwhelming your network with too many DNS requests at once.
