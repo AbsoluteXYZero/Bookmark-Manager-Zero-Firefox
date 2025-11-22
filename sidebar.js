@@ -470,6 +470,9 @@ const closeDragModeBtn = document.getElementById('closeDragModeBtn');
 const opacityValue = document.getElementById('opacityValue');
 const blurValue = document.getElementById('blurValue');
 const scaleValue = document.getElementById('scaleValue');
+const containerOpacitySlider = document.getElementById('containerOpacity');
+const containerOpacityValue = document.getElementById('containerOpacityValue');
+const darkTextToggle = document.getElementById('darkTextToggle');
 const guiScaleSelect = document.getElementById('guiScaleSelect');
 const startFolderSelect = document.getElementById('startFolderSelect');
 
@@ -513,6 +516,8 @@ async function init() {
   loadZoom();
   loadGuiScale();
   loadBackgroundImage();
+  loadContainerOpacity();
+  loadDarkTextMode();
   loadCheckingSettings();
   await loadWhitelist();
   await loadSafetyHistory();
@@ -953,6 +958,43 @@ function loadSavedBackgroundImage() {
 
 function loadBackgroundImage() {
   loadSavedBackgroundImage();
+}
+
+// Apply container opacity to bookmark items
+function applyContainerOpacity(opacity) {
+  const opacityValue = opacity / 100;
+  document.documentElement.style.setProperty('--bookmark-container-opacity', opacityValue);
+}
+
+// Load saved container opacity
+function loadContainerOpacity() {
+  if (!containerOpacitySlider) return;
+  const savedOpacity = localStorage.getItem('containerOpacity');
+  if (savedOpacity) {
+    containerOpacitySlider.value = savedOpacity;
+    containerOpacityValue.textContent = `${savedOpacity}%`;
+    applyContainerOpacity(savedOpacity);
+  } else {
+    applyContainerOpacity(100);
+  }
+}
+
+// Apply dark text mode
+function applyDarkTextMode(enabled) {
+  if (enabled) {
+    document.body.classList.add('dark-text-mode');
+  } else {
+    document.body.classList.remove('dark-text-mode');
+  }
+}
+
+// Load saved dark text mode preference
+function loadDarkTextMode() {
+  if (!darkTextToggle) return;
+  const savedMode = localStorage.getItem('darkTextMode');
+  const isEnabled = savedMode === 'true';
+  darkTextToggle.checked = isEnabled;
+  applyDarkTextMode(isEnabled);
 }
 
 // Remove URL from whitelist
@@ -5072,6 +5114,25 @@ function setupEventListeners() {
     await expandToStartFolder();
     renderBookmarks();
   });
+
+  // Container opacity slider
+  if (containerOpacitySlider) {
+    containerOpacitySlider.addEventListener('input', (e) => {
+      const opacity = e.target.value;
+      containerOpacityValue.textContent = `${opacity}%`;
+      localStorage.setItem('containerOpacity', opacity);
+      applyContainerOpacity(opacity);
+    });
+  }
+
+  // Dark text toggle
+  if (darkTextToggle) {
+    darkTextToggle.addEventListener('change', (e) => {
+      const isEnabled = e.target.checked;
+      localStorage.setItem('darkTextMode', isEnabled);
+      applyDarkTextMode(isEnabled);
+    });
+  }
 
   // Link checking toggle
   const enableLinkCheckingToggle = document.getElementById('enableLinkChecking');
