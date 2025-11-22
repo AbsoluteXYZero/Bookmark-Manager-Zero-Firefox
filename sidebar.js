@@ -519,6 +519,7 @@ async function init() {
   await loadAutoClearSetting();
   await loadStartFolder();
   await loadBookmarks();
+  await expandToStartFolder();
   setupEventListeners();
   renderBookmarks();
   updateWhitelistUI();
@@ -822,6 +823,34 @@ function populateStartFolderDropdown() {
   // Set selected value
   if (startFolderId) {
     startFolderSelect.value = startFolderId;
+  }
+}
+
+// Expand to start folder on load
+async function expandToStartFolder() {
+  if (!startFolderId) return;
+
+  // Find the path to this folder (all parent folders)
+  const pathToFolder = [];
+  function findPath(nodes, targetId, path = []) {
+    for (const node of nodes) {
+      if (node.id === targetId) {
+        return [...path, node.id];
+      }
+      if (node.children) {
+        const found = findPath(node.children, targetId, [...path, node.id]);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const path = findPath(bookmarkTree, startFolderId);
+  if (path) {
+    // Expand all folders in the path
+    path.forEach(folderId => {
+      expandedFolders.add(folderId);
+    });
   }
 }
 
@@ -1430,21 +1459,7 @@ function getMockBookmarks() {
 
 // Render bookmarks
 function renderBookmarks() {
-  // Determine which nodes to display based on start folder setting
-  let nodesToDisplay = bookmarkTree;
-
-  if (startFolderId) {
-    const startFolder = findFolderById(bookmarkTree, startFolderId);
-    if (startFolder && startFolder.children) {
-      nodesToDisplay = startFolder.children;
-    } else {
-      // If folder not found, fall back to root
-      console.warn(`Start folder ${startFolderId} not found, using root`);
-      nodesToDisplay = bookmarkTree;
-    }
-  }
-
-  const filtered = filterAndSearchBookmarks(nodesToDisplay);
+  const filtered = filterAndSearchBookmarks(bookmarkTree);
 
   if (filtered.length === 0) {
     bookmarkList.innerHTML = `
@@ -5052,6 +5067,10 @@ function setupEventListeners() {
     startFolderId = e.target.value || null;
     await safeStorage.set({ startFolderId: startFolderId });
     console.log(`Start folder set to: ${startFolderId || 'Root'}`);
+
+    // Clear expanded folders and expand to new start folder
+    expandedFolders.clear();
+    await expandToStartFolder();
     renderBookmarks();
   });
 
