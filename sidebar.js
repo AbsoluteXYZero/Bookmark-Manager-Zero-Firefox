@@ -5073,8 +5073,12 @@ function setupEventListeners() {
     if (!wasOpen) {
       menuJustOpened = true;
       themeMenu.classList.add('show');
-      // Don't use positionFixedDropdown for theme menu - let CSS handle it
-      // positionFixedDropdown(themeMenu, themeBtn);
+      // Simple positioning without complex overflow checks
+      const buttonRect = themeBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      themeMenu.style.position = 'fixed';
+      themeMenu.style.top = `${buttonRect.bottom + 4}px`;
+      themeMenu.style.right = `${viewportWidth - buttonRect.right}px`;
     }
   });
 
