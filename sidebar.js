@@ -5078,7 +5078,7 @@ function setupEventListeners() {
       themeMenu.style.position = 'fixed';
       themeMenu.style.top = `${buttonRect.bottom + 4}px`;
       themeMenu.style.left = 'auto';
-      themeMenu.style.right = '8px'; // Small margin from right edge
+      themeMenu.style.right = '20px'; // Margin from right edge to keep menu on-screen
     }
   });
 
@@ -5219,11 +5219,15 @@ function setupEventListeners() {
 
   // Custom text color picker
   if (customTextColorPicker) {
-    customTextColorPicker.addEventListener('input', (e) => {
+    // Handle both input (while dragging) and change (on OK click) events
+    const handleColorChange = (e) => {
       const color = e.target.value;
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
-    });
+    };
+
+    customTextColorPicker.addEventListener('input', handleColorChange);
+    customTextColorPicker.addEventListener('change', handleColorChange);
 
     // Prevent menu from closing when clicking the color picker
     customTextColorPicker.addEventListener('click', (e) => {
