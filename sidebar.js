@@ -1043,7 +1043,7 @@ function loadCustomTextColor() {
     customTextColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
   } else {
-    customTextColorPicker.value = '#fefefe';
+    customTextColorPicker.value = '#6366f1';
   }
 }
 
@@ -5378,7 +5378,7 @@ function setupEventListeners() {
     resetTextColorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       resetCustomTextColor();
-      customTextColorPicker.value = '#fefefe'; // Reset to near-white
+      customTextColorPicker.value = '#6366f1'; // Reset to default
     });
   }
 
