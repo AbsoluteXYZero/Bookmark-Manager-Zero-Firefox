@@ -1043,7 +1043,7 @@ function loadCustomTextColor() {
     customTextColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
   } else {
-    customTextColorPicker.value = '#fffffe'; // Near-white to avoid Firefox color picker bug with pure white
+    customTextColorPicker.value = '#f0f0f0'; // Light gray to avoid Firefox color picker bug with pure white
   }
 }
 
@@ -5378,7 +5378,7 @@ function setupEventListeners() {
     resetTextColorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       resetCustomTextColor();
-      customTextColorPicker.value = '#fffffe'; // Reset to near-white (avoids Firefox bug with pure white)
+      customTextColorPicker.value = '#f0f0f0'; // Reset to light gray (avoids Firefox bug with pure white)
     });
   }
 
