@@ -2682,8 +2682,13 @@ function repositionMenuIfNeeded(menu, parentElement) {
     const parentRect = parentElement.getBoundingClientRect();
     const menuHeight = menuRect.height;
 
+    // Get toolbar height to ensure menus don't extend behind it
+    const toolbar = document.querySelector('.toolbar');
+    const toolbarHeight = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+
     // Calculate available space above and below the parent element
-    const spaceAbove = parentRect.top;
+    // Space above should not include area behind toolbar
+    const spaceAbove = parentRect.top - toolbarHeight;
     const spaceBelow = viewportHeight - parentRect.bottom;
 
     // Reset styles
@@ -2738,12 +2743,18 @@ function repositionMenuIfNeeded(menu, parentElement) {
       const viewportWidth = window.innerWidth;
       const margin = 16; // Safety margin from edges
 
-      // Check if menu extends beyond top of viewport
-      if (finalRect.top < 0) {
-        const overflow = Math.abs(finalRect.top);
+      // Check if menu extends behind toolbar at top
+      if (finalRect.top < toolbarHeight) {
+        const overflow = toolbarHeight - finalRect.top;
         const currentMaxHeight = parseInt(menu.style.maxHeight) || finalRect.height;
         menu.style.maxHeight = `${currentMaxHeight - overflow - 8}px`;
         menu.style.overflowY = 'auto';
+        // Reposition menu to start just below toolbar if positioned above
+        if (positionAbove) {
+          menu.style.top = `${toolbarHeight}px`;
+          menu.style.bottom = 'auto';
+          menu.style.position = 'fixed';
+        }
       }
 
       // Check if menu extends beyond bottom of viewport
