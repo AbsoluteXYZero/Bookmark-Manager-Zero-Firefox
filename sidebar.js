@@ -5051,9 +5051,9 @@ function setupEventListeners() {
   });
 
   // TEMPORARY: Test safety alert (REMOVE BEFORE PRODUCTION)
-  // Add test by holding Alt and clicking Clear Cache
+  // Add test by holding Ctrl and clicking Clear Cache
   clearCacheBtn.addEventListener('click', (e) => {
-    if (e.altKey) {
+    if (e.ctrlKey) {
       e.preventDefault();
       console.log('🧪 Testing safety alert system...');
 
