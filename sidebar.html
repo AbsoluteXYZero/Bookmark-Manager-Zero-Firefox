@@ -73,31 +73,10 @@
     }
 
     /* Theme-aware scrollbars */
+    /* Firefox scrollbar styling */
     * {
       scrollbar-width: thin;
       scrollbar-color: var(--md-sys-color-outline) var(--md-sys-color-surface-container);
-    }
-
-    *::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-
-    *::-webkit-scrollbar-track {
-      background: var(--md-sys-color-surface-container);
-    }
-
-    *::-webkit-scrollbar-thumb {
-      background: var(--md-sys-color-outline);
-      border-radius: 4px;
-    }
-
-    *::-webkit-scrollbar-thumb:hover {
-      background: var(--md-sys-color-outline-variant);
-    }
-
-    *::-webkit-scrollbar-thumb:active {
-      background: var(--md-sys-color-on-surface-variant);
     }
 
     body {
@@ -1176,22 +1155,6 @@
       cursor: pointer;
     }
 
-    .zoom-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: var(--md-sys-color-primary);
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .zoom-slider::-webkit-slider-thumb:hover {
-      transform: scale(1.2);
-      box-shadow: 0 0 0 4px var(--md-sys-color-primary-container);
-    }
-
     .zoom-slider::-moz-range-thumb {
       width: 16px;
       height: 16px;
@@ -1205,16 +1168,6 @@
     .zoom-slider::-moz-range-thumb:hover {
       transform: scale(1.2);
       box-shadow: 0 0 0 4px var(--md-sys-color-primary-container);
-    }
-
-    .zoom-slider::-webkit-slider-runnable-track {
-      background: linear-gradient(to right,
-        var(--md-sys-color-primary) 0%,
-        var(--md-sys-color-primary) var(--zoom-progress, 50%),
-        var(--md-sys-color-surface-container-high) var(--zoom-progress, 50%),
-        var(--md-sys-color-surface-container-high) 100%);
-      height: 6px;
-      border-radius: 3px;
     }
 
     .zoom-slider::-moz-range-track {
