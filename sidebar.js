@@ -5089,26 +5089,29 @@ function setupEventListeners() {
       const viewportWidth = window.innerWidth;
       const margin = 16; // Safety margin from edges
 
-      // Calculate maximum width the menu can be without overflowing
+      // Set max-width to fit within margins
       const maxWidth = viewportWidth - (margin * 2);
-
-      // Determine if we should align to the left or right of the button
-      const openToLeft = buttonRect.left > viewportWidth / 2;
-
+      themeMenu.style.maxWidth = `${maxWidth}px`;
       themeMenu.style.position = 'fixed';
       themeMenu.style.top = `${buttonRect.bottom + 4}px`;
-      themeMenu.style.maxWidth = `${maxWidth}px`;
 
-      if (openToLeft) {
-        // Align menu to the right edge of the button, constrained by left margin
-        const rightPosition = viewportWidth - buttonRect.right;
-        themeMenu.style.right = `${Math.max(rightPosition, margin)}px`;
-        themeMenu.style.left = 'auto';
-      } else {
-        // Align menu to the left edge of the button, constrained by right margin
-        themeMenu.style.left = `${Math.max(buttonRect.left, margin)}px`;
-        themeMenu.style.right = 'auto';
+      // Position menu to stay within margins on both sides
+      // Start by aligning with button, then adjust if it would overflow
+      let leftPos = buttonRect.left;
+
+      // Ensure menu doesn't overflow left edge
+      if (leftPos < margin) {
+        leftPos = margin;
       }
+
+      // Ensure menu doesn't overflow right edge
+      // (menu will be maxWidth or less, so check if leftPos + maxWidth exceeds viewport)
+      if (leftPos + maxWidth > viewportWidth - margin) {
+        leftPos = viewportWidth - margin - maxWidth;
+      }
+
+      themeMenu.style.left = `${leftPos}px`;
+      themeMenu.style.right = 'auto';
     }
   });
 
@@ -5135,26 +5138,27 @@ function setupEventListeners() {
       const viewportWidth = window.innerWidth;
       const margin = 16; // Safety margin from edges
 
-      // Calculate maximum width the menu can be without overflowing
+      // Set max-width to fit within margins
       const maxWidth = viewportWidth - (margin * 2);
-
-      // Determine if we should align to the left or right of the button
-      const openToLeft = buttonRect.left > viewportWidth / 2;
-
+      viewMenu.style.maxWidth = `${maxWidth}px`;
       viewMenu.style.position = 'fixed';
       viewMenu.style.top = `${buttonRect.bottom + 4}px`;
-      viewMenu.style.maxWidth = `${maxWidth}px`;
 
-      if (openToLeft) {
-        // Align menu to the right edge of the button, constrained by left margin
-        const rightPosition = viewportWidth - buttonRect.right;
-        viewMenu.style.right = `${Math.max(rightPosition, margin)}px`;
-        viewMenu.style.left = 'auto';
-      } else {
-        // Align menu to the left edge of the button, constrained by right margin
-        viewMenu.style.left = `${Math.max(buttonRect.left, margin)}px`;
-        viewMenu.style.right = 'auto';
+      // Position menu to stay within margins on both sides
+      let leftPos = buttonRect.left;
+
+      // Ensure menu doesn't overflow left edge
+      if (leftPos < margin) {
+        leftPos = margin;
       }
+
+      // Ensure menu doesn't overflow right edge
+      if (leftPos + maxWidth > viewportWidth - margin) {
+        leftPos = viewportWidth - margin - maxWidth;
+      }
+
+      viewMenu.style.left = `${leftPos}px`;
+      viewMenu.style.right = 'auto';
     }
   });
 
@@ -5181,26 +5185,27 @@ function setupEventListeners() {
       const viewportWidth = window.innerWidth;
       const margin = 16; // Safety margin from edges
 
-      // Calculate maximum width the menu can be without overflowing
+      // Set max-width to fit within margins
       const maxWidth = viewportWidth - (margin * 2);
-
-      // Determine if we should align to the left or right of the button
-      const openToLeft = buttonRect.left > viewportWidth / 2;
-
+      zoomMenu.style.maxWidth = `${maxWidth}px`;
       zoomMenu.style.position = 'fixed';
       zoomMenu.style.top = `${buttonRect.bottom + 4}px`;
-      zoomMenu.style.maxWidth = `${maxWidth}px`;
 
-      if (openToLeft) {
-        // Align menu to the right edge of the button, constrained by left margin
-        const rightPosition = viewportWidth - buttonRect.right;
-        zoomMenu.style.right = `${Math.max(rightPosition, margin)}px`;
-        zoomMenu.style.left = 'auto';
-      } else {
-        // Align menu to the left edge of the button, constrained by right margin
-        zoomMenu.style.left = `${Math.max(buttonRect.left, margin)}px`;
-        zoomMenu.style.right = 'auto';
+      // Position menu to stay within margins on both sides
+      let leftPos = buttonRect.left;
+
+      // Ensure menu doesn't overflow left edge
+      if (leftPos < margin) {
+        leftPos = margin;
       }
+
+      // Ensure menu doesn't overflow right edge
+      if (leftPos + maxWidth > viewportWidth - margin) {
+        leftPos = viewportWidth - margin - maxWidth;
+      }
+
+      zoomMenu.style.left = `${leftPos}px`;
+      zoomMenu.style.right = 'auto';
     }
   });
 
@@ -5224,26 +5229,27 @@ function setupEventListeners() {
       const viewportWidth = window.innerWidth;
       const margin = 16; // Safety margin from edges
 
-      // Calculate maximum width the menu can be without overflowing
+      // Set max-width to fit within margins
       const maxWidth = viewportWidth - (margin * 2);
-
-      // Determine if we should align to the left or right of the button
-      const openToLeft = buttonRect.left > viewportWidth / 2;
-
+      settingsMenu.style.maxWidth = `${maxWidth}px`;
       settingsMenu.style.position = 'fixed';
       settingsMenu.style.top = `${buttonRect.bottom + 4}px`;
-      settingsMenu.style.maxWidth = `${maxWidth}px`;
 
-      if (openToLeft) {
-        // Align menu to the right edge of the button, constrained by left margin
-        const rightPosition = viewportWidth - buttonRect.right;
-        settingsMenu.style.right = `${Math.max(rightPosition, margin)}px`;
-        settingsMenu.style.left = 'auto';
-      } else {
-        // Align menu to the left edge of the button, constrained by right margin
-        settingsMenu.style.left = `${Math.max(buttonRect.left, margin)}px`;
-        settingsMenu.style.right = 'auto';
+      // Position menu to stay within margins on both sides
+      let leftPos = buttonRect.left;
+
+      // Ensure menu doesn't overflow left edge
+      if (leftPos < margin) {
+        leftPos = margin;
       }
+
+      // Ensure menu doesn't overflow right edge
+      if (leftPos + maxWidth > viewportWidth - margin) {
+        leftPos = viewportWidth - margin - maxWidth;
+      }
+
+      settingsMenu.style.left = `${leftPos}px`;
+      settingsMenu.style.right = 'auto';
 
       // Update cache size display when menu opens
       await updateCacheSizeDisplay();
@@ -5325,24 +5331,25 @@ function setupEventListeners() {
 
   // Custom text color picker
   if (customTextColorPicker) {
-    // Ensure color picker has a valid initial value to enable custom color area
-    const savedColor = localStorage.getItem('customTextColor');
-    if (!savedColor) {
-      // Set default value explicitly in JavaScript to initialize the picker
-      customTextColorPicker.value = '#ffffff';
-    }
-
-    // Handle both input (while dragging) and change (on OK click) events
+    // Handle color selection events
     const handleColorChange = (e) => {
       const color = e.target.value;
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
     };
 
+    // Initialize with saved or default value
+    const savedColor = localStorage.getItem('customTextColor');
+    const initialColor = savedColor || '#ffffff';
+    customTextColorPicker.value = initialColor;
+
+    // Trigger a synthetic input event to initialize the picker properly
+    // This ensures custom color area works from the start
+    const initEvent = new Event('input', { bubbles: true });
+    customTextColorPicker.dispatchEvent(initEvent);
+
     customTextColorPicker.addEventListener('input', handleColorChange);
     customTextColorPicker.addEventListener('change', handleColorChange);
-
-    // Also listen to blur event for when color picker dialog closes
     customTextColorPicker.addEventListener('blur', handleColorChange);
 
     // Prevent menu from closing when clicking the color picker
