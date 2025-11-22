@@ -5073,12 +5073,12 @@ function setupEventListeners() {
     if (!wasOpen) {
       menuJustOpened = true;
       themeMenu.classList.add('show');
-      // Simple positioning without complex overflow checks
+      // Simple positioning - align menu right edge with button right edge
       const buttonRect = themeBtn.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
       themeMenu.style.position = 'fixed';
       themeMenu.style.top = `${buttonRect.bottom + 4}px`;
-      themeMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+      themeMenu.style.left = 'auto';
+      themeMenu.style.right = '8px'; // Small margin from right edge
     }
   });
 
