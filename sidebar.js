@@ -5362,11 +5362,6 @@ function setupEventListeners() {
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
     });
-
-    // Prevent menu from closing when clicking the color picker
-    customTextColorPicker.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
   }
 
   // Reset text color button
