@@ -1043,7 +1043,7 @@ function loadCustomTextColor() {
     customTextColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
   } else {
-    customTextColorPicker.value = '#ffffff';
+    customTextColorPicker.value = '#fffffe'; // Near-white to avoid Firefox color picker bug with pure white
   }
 }
 
@@ -5378,7 +5378,7 @@ function setupEventListeners() {
     resetTextColorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       resetCustomTextColor();
-      customTextColorPicker.value = '#ffffff'; // Reset to white
+      customTextColorPicker.value = '#fffffe'; // Reset to near-white (avoids Firefox bug with pure white)
     });
   }
 
