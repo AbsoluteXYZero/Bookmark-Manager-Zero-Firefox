@@ -1967,7 +1967,7 @@ function createBookmarkElement(bookmark) {
   if (displayOptions.favicon && bookmark.url) {
     const faviconUrl = getFaviconUrl(bookmark.url);
     if (faviconUrl) {
-      faviconHtml = `<img class="bookmark-favicon" src="${escapeHtml(faviconUrl)}" alt="" onerror="this.style.display='none'" />`;
+      faviconHtml = `<img class="bookmark-favicon" src="${escapeHtml(faviconUrl)}" alt="" />`;
     }
   }
 
