@@ -1010,28 +1010,28 @@
     }
 
     /* Inverted text colors - theme-aware */
-    body.theme-blue-dark.dark-text-mode .bookmark-title,
-    body.theme-blue-dark.dark-text-mode .folder-title,
-    body.theme-dark.dark-text-mode .bookmark-title,
-    body.theme-dark.dark-text-mode .folder-title {
+    body.blue-dark.dark-text-mode .bookmark-title,
+    body.blue-dark.dark-text-mode .folder-title,
+    body.dark.dark-text-mode .bookmark-title,
+    body.dark.dark-text-mode .folder-title {
       color: #1a1a1a !important;
       text-shadow: 0 0 2px rgba(255, 255, 255, 0.5);
     }
 
-    body.theme-blue-dark.dark-text-mode .bookmark-url,
-    body.theme-dark.dark-text-mode .bookmark-url {
+    body.blue-dark.dark-text-mode .bookmark-url,
+    body.dark.dark-text-mode .bookmark-url {
       color: #3a3a3a !important;
       text-shadow: 0 0 2px rgba(255, 255, 255, 0.5);
     }
 
     /* Light text for dark backgrounds on light theme */
-    body.theme-light.dark-text-mode .bookmark-title,
-    body.theme-light.dark-text-mode .folder-title {
+    body.light.dark-text-mode .bookmark-title,
+    body.light.dark-text-mode .folder-title {
       color: #e8e8e8 !important;
       text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
     }
 
-    body.theme-light.dark-text-mode .bookmark-url {
+    body.light.dark-text-mode .bookmark-url {
       color: #c8c8c8 !important;
       text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
     }
@@ -1924,32 +1924,6 @@
             </select>
           </label>
           <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
-          <label class="action-btn" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="icon">
-                <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M19,3H14.82C14.25,1.44 12.53,0.64 11,1.2C10.14,1.5 9.5,2.16 9.18,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M12,3A1,1 0 0,1 13,4A1,1 0 0,1 12,5A1,1 0 0,1 11,4A1,1 0 0,1 12,3M7,7H17V5H19V19H5V5H7V7Z"/>
-                </svg>
-              </span>
-              <span>Bookmark Opacity</span>
-            </div>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <input type="range" id="containerOpacity" min="0" max="100" value="100" style="width: 80px; cursor: pointer;">
-              <span id="containerOpacityValue" style="min-width: 38px; text-align: right; font-size: 11px;">100%</span>
-            </div>
-          </label>
-          <label class="action-btn" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="icon">
-                <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20,8.69V4H4V8.69C2.84,9.44 2,10.64 2,12C2,13.36 2.84,14.56 4,15.31V20H20V15.31C21.16,14.56 22,13.36 22,12C22,10.64 21.16,9.44 20,8.69M12,13A1,1 0 0,1 11,12A1,1 0 0,1 12,11A1,1 0 0,1 13,12A1,1 0 0,1 12,13M15,7V10A3,3 0 0,1 12,13A3,3 0 0,1 9,10V7H15Z"/>
-                </svg>
-              </span>
-              <span>Inverted Text Color</span>
-            </div>
-            <input type="checkbox" id="darkTextToggle" style="cursor: pointer;">
-          </label>
-          <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
           <button class="action-btn" id="setApiKeyBtn">
             <span class="icon">
               <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
@@ -2177,6 +2151,33 @@
                 <span id="scaleValue" style="min-width: 32px; text-align: right; font-size: 10px;">200%</span>
               </label>
             </div>
+          </div>
+          <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; padding: 4px 10px 6px;">
+            <label style="display: flex; justify-content: space-between; align-items: center; font-size: 10px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="icon">
+                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19,3H14.82C14.25,1.44 12.53,0.64 11,1.2C10.14,1.5 9.5,2.16 9.18,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M12,3A1,1 0 0,1 13,4A1,1 0 0,1 12,5A1,1 0 0,1 11,4A1,1 0 0,1 12,3M7,7H17V5H19V19H5V5H7V7Z"/>
+                  </svg>
+                </span>
+                <span style="min-width: 80px;">Bookmark Opacity</span>
+              </div>
+              <input type="range" id="containerOpacity" min="0" max="100" value="100" style="width: 100px; cursor: pointer;">
+              <span id="containerOpacityValue" style="min-width: 32px; text-align: right; font-size: 10px;">100%</span>
+            </label>
+            <label style="display: flex; justify-content: space-between; align-items: center; font-size: 10px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="icon">
+                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M20,8.69V4H4V8.69C2.84,9.44 2,10.64 2,12C2,13.36 2.84,14.56 4,15.31V20H20V15.31C21.16,14.56 22,13.36 22,12C22,10.64 21.16,9.44 20,8.69M12,13A1,1 0 0,1 11,12A1,1 0 0,1 12,11A1,1 0 0,1 13,12A1,1 0 0,1 12,13M15,7V10A3,3 0 0,1 12,13A3,3 0 0,1 9,10V7H15Z"/>
+                  </svg>
+                </span>
+                <span style="min-width: 80px;">Invert Text</span>
+              </div>
+              <input type="checkbox" id="darkTextToggle" style="cursor: pointer; margin-right: 110px;">
+              <span style="min-width: 32px;"></span>
+            </label>
           </div>
           </div>
         </div>
