@@ -1035,7 +1035,7 @@ function applyCustomTextColor(color) {
   document.head.appendChild(styleTag);
 }
 
-// Load saved custom text color
+// Load saved custom text color (matches accent color picker pattern)
 function loadCustomTextColor() {
   if (!customTextColorPicker) return;
   const savedColor = localStorage.getItem('customTextColor');
@@ -1043,23 +1043,8 @@ function loadCustomTextColor() {
     customTextColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
   } else {
-    customTextColorPicker.value = '#ffffff';
+    customTextColorPicker.value = '#fefefe';
   }
-
-  // Try to wake up the custom color area by simulating value changes
-  // This is a workaround for Firefox color picker requiring interaction before custom colors work
-  setTimeout(() => {
-    const originalValue = customTextColorPicker.value;
-    // Briefly change to a slightly different color and back
-    customTextColorPicker.value = '#fffffe';
-    setTimeout(() => {
-      customTextColorPicker.value = originalValue;
-      // Trigger focus and change events
-      customTextColorPicker.focus();
-      customTextColorPicker.dispatchEvent(new Event('change', { bubbles: true }));
-      customTextColorPicker.blur();
-    }, 10);
-  }, 100);
 }
 
 // Reset custom text color
@@ -5393,7 +5378,7 @@ function setupEventListeners() {
     resetTextColorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       resetCustomTextColor();
-      customTextColorPicker.value = '#ffffff'; // Reset to white
+      customTextColorPicker.value = '#fefefe'; // Reset to near-white
     });
   }
 
