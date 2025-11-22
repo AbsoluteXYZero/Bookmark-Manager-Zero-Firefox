@@ -1047,6 +1047,15 @@ function loadCustomTextColor() {
     // This ensures the picker is properly initialized (use HTML default)
     customTextColorPicker.value = '#6366f1';
   }
+
+  // Force initialization by programmatically focusing and blurring
+  // This may help Firefox properly initialize the custom color area
+  setTimeout(() => {
+    customTextColorPicker.focus();
+    setTimeout(() => {
+      customTextColorPicker.blur();
+    }, 10);
+  }, 100);
 }
 
 // Reset custom text color
