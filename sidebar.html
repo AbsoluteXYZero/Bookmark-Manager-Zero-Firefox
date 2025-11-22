@@ -765,6 +765,9 @@
       align-items: center;
       gap: 10px;
       transition: background 0.2s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .action-btn:hover {
@@ -1116,14 +1119,21 @@
       padding: 6px 0;
       box-shadow: var(--md-elevation-3);
       z-index: 99999;
-      min-width: 200px;
+      min-width: 150px;
       max-height: calc(100vh - 100px);
       overflow-y: auto;
+      overflow-x: hidden;
       opacity: 0;
       visibility: hidden;
       transform: translateY(-8px);
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       margin-top: 4px;
+    }
+
+    .settings-menu > div,
+    .settings-menu > div > div {
+      max-width: 100%;
+      overflow: hidden;
     }
 
     .settings-menu.show {
