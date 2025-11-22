@@ -1045,15 +1045,6 @@ function loadCustomTextColor() {
   } else {
     customTextColorPicker.value = '#6366f1';
   }
-
-  // Try to wake up custom color area by programmatically clicking the picker
-  setTimeout(() => {
-    customTextColorPicker.click();
-    // Close it immediately by clicking elsewhere
-    setTimeout(() => {
-      document.body.click();
-    }, 50);
-  }, 500);
 }
 
 // Reset custom text color
