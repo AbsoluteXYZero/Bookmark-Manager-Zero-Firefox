@@ -5329,28 +5329,13 @@ function setupEventListeners() {
     });
   }
 
-  // Custom text color picker
+  // Custom text color picker (matches accent color picker pattern exactly)
   if (customTextColorPicker) {
-    // Handle color selection events
-    const handleColorChange = (e) => {
+    customTextColorPicker.addEventListener('input', (e) => {
       const color = e.target.value;
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
-    };
-
-    // Initialize with saved or default value
-    const savedColor = localStorage.getItem('customTextColor');
-    const initialColor = savedColor || '#ffffff';
-    customTextColorPicker.value = initialColor;
-
-    // Trigger a synthetic input event to initialize the picker properly
-    // This ensures custom color area works from the start
-    const initEvent = new Event('input', { bubbles: true });
-    customTextColorPicker.dispatchEvent(initEvent);
-
-    customTextColorPicker.addEventListener('input', handleColorChange);
-    customTextColorPicker.addEventListener('change', handleColorChange);
-    customTextColorPicker.addEventListener('blur', handleColorChange);
+    });
 
     // Prevent menu from closing when clicking the color picker
     customTextColorPicker.addEventListener('click', (e) => {
@@ -5363,7 +5348,7 @@ function setupEventListeners() {
     resetTextColorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       resetCustomTextColor();
-      customTextColorPicker.value = '#ffffff';
+      customTextColorPicker.value = '#6366f1'; // Match default value in HTML
     });
   }
 
