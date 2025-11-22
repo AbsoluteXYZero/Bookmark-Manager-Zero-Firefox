@@ -815,7 +815,7 @@ function populateStartFolderDropdown() {
   folders.forEach(folder => {
     const option = document.createElement('option');
     option.value = folder.id;
-    option.textContent = folder.path;
+    option.textContent = folder.title;
     startFolderSelect.appendChild(option);
   });
 
@@ -3982,18 +3982,16 @@ function countBookmarks(folder) {
 }
 
 // Get all folders recursively for start folder dropdown
-function getAllFolders(nodes, path = '', folders = []) {
+function getAllFolders(nodes, depth = 0, folders = []) {
   nodes.forEach(node => {
-    if (node.type === 'folder') {
-      const folderPath = path ? `${path} > ${node.title}` : node.title;
+    if (node.children) {
+      const indent = '  '.repeat(depth);
       folders.push({
         id: node.id,
-        title: node.title,
-        path: folderPath
+        title: indent + (node.title || 'Unnamed Folder'),
+        depth: depth
       });
-      if (node.children) {
-        getAllFolders(node.children, folderPath, folders);
-      }
+      getAllFolders(node.children, depth + 1, folders);
     }
   });
   return folders;
@@ -4002,7 +4000,7 @@ function getAllFolders(nodes, path = '', folders = []) {
 // Find a folder by ID in the bookmark tree
 function findFolderById(nodes, folderId) {
   for (const node of nodes) {
-    if (node.id === folderId && node.type === 'folder') {
+    if (node.id === folderId && node.children) {
       return node;
     }
     if (node.children) {
