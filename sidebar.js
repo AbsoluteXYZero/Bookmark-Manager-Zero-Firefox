@@ -5126,7 +5126,28 @@ function setupEventListeners() {
     if (!wasOpen) {
       menuJustOpened = true;
       viewMenu.classList.add('show');
-      positionFixedDropdown(viewMenu, viewBtn);
+
+      // Smart positioning: detect which side of screen sidebar is on
+      const buttonRect = viewBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+
+      // If button is in right half of screen, open menu to the left
+      const openToLeft = buttonRect.left > viewportWidth / 2;
+
+      viewMenu.style.position = 'fixed';
+      viewMenu.style.top = `${buttonRect.bottom + 4}px`;
+
+      if (openToLeft) {
+        // Sidebar on right side - open menu to the left
+        viewMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+        viewMenu.style.left = 'auto';
+      } else {
+        // Sidebar on left side or in own tab - open menu to the right
+        viewMenu.style.left = `${buttonRect.left}px`;
+        viewMenu.style.right = 'auto';
+      }
+
+      viewMenu.style.maxWidth = ''; // Remove width constraint, allow natural sizing
     }
   });
 
@@ -5147,7 +5168,28 @@ function setupEventListeners() {
     if (!wasOpen) {
       menuJustOpened = true;
       zoomMenu.classList.add('show');
-      positionFixedDropdown(zoomMenu, zoomBtn);
+
+      // Smart positioning: detect which side of screen sidebar is on
+      const buttonRect = zoomBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+
+      // If button is in right half of screen, open menu to the left
+      const openToLeft = buttonRect.left > viewportWidth / 2;
+
+      zoomMenu.style.position = 'fixed';
+      zoomMenu.style.top = `${buttonRect.bottom + 4}px`;
+
+      if (openToLeft) {
+        // Sidebar on right side - open menu to the left
+        zoomMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+        zoomMenu.style.left = 'auto';
+      } else {
+        // Sidebar on left side or in own tab - open menu to the right
+        zoomMenu.style.left = `${buttonRect.left}px`;
+        zoomMenu.style.right = 'auto';
+      }
+
+      zoomMenu.style.maxWidth = ''; // Remove width constraint, allow natural sizing
     }
   });
 
@@ -5165,7 +5207,29 @@ function setupEventListeners() {
     if (!wasOpen) {
       menuJustOpened = true;
       settingsMenu.classList.add('show');
-      positionFixedDropdown(settingsMenu, settingsBtn);
+
+      // Smart positioning: detect which side of screen sidebar is on
+      const buttonRect = settingsBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+
+      // If button is in right half of screen, open menu to the left
+      const openToLeft = buttonRect.left > viewportWidth / 2;
+
+      settingsMenu.style.position = 'fixed';
+      settingsMenu.style.top = `${buttonRect.bottom + 4}px`;
+
+      if (openToLeft) {
+        // Sidebar on right side - open menu to the left
+        settingsMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+        settingsMenu.style.left = 'auto';
+      } else {
+        // Sidebar on left side or in own tab - open menu to the right
+        settingsMenu.style.left = `${buttonRect.left}px`;
+        settingsMenu.style.right = 'auto';
+      }
+
+      settingsMenu.style.maxWidth = ''; // Remove width constraint, allow natural sizing
+
       // Update cache size display when menu opens
       await updateCacheSizeDisplay();
     }
