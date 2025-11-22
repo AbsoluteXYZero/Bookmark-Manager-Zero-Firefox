@@ -3090,10 +3090,20 @@ function closeAllMenus() {
     menu.style.maxHeight = '';
     menu.style.overflowY = '';
   });
-  settingsMenu.classList.remove('show');
-  themeMenu.classList.remove('show');
-  viewMenu.classList.remove('show');
-  zoomMenu.classList.remove('show');
+
+  // Close and reset toolbar menus
+  [settingsMenu, themeMenu, viewMenu, zoomMenu].forEach(menu => {
+    if (menu) {
+      menu.classList.remove('show');
+      // Reset inline positioning styles applied by positionFixedDropdown
+      menu.style.position = '';
+      menu.style.top = '';
+      menu.style.bottom = '';
+      menu.style.right = '';
+      menu.style.maxWidth = '';
+      menu.style.zIndex = '';
+    }
+  });
 }
 
 // Check link status using background script
