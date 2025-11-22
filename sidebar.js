@@ -5073,7 +5073,8 @@ function setupEventListeners() {
     if (!wasOpen) {
       menuJustOpened = true;
       themeMenu.classList.add('show');
-      positionFixedDropdown(themeMenu, themeBtn);
+      // Don't use positionFixedDropdown for theme menu - let CSS handle it
+      // positionFixedDropdown(themeMenu, themeBtn);
     }
   });
 
