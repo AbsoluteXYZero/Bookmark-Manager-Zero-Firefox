@@ -1009,15 +1009,25 @@ function applyCustomTextColor(color) {
   }
 
   // Inject a style tag with the custom text color
+  // Use high specificity selectors to override dark-text-mode styles
   styleTag = document.createElement('style');
   styleTag.id = 'custom-text-color-style';
   styleTag.textContent = `
-    .bookmark-title,
-    .folder-title {
+    body .bookmark-title,
+    body .folder-title,
+    body.dark-text-mode .bookmark-title,
+    body.dark-text-mode .folder-title,
+    body.blue-dark.dark-text-mode .bookmark-title,
+    body.blue-dark.dark-text-mode .folder-title,
+    body.dark.dark-text-mode .bookmark-title,
+    body.dark.dark-text-mode .folder-title,
+    body.light.dark-text-mode .bookmark-title,
+    body.light.dark-text-mode .folder-title {
       color: ${color} !important;
     }
 
-    .bookmark-url {
+    body .bookmark-url,
+    body.dark-text-mode .bookmark-url {
       color: ${color} !important;
       opacity: 0.7;
     }
@@ -5073,13 +5083,29 @@ function setupEventListeners() {
     if (!wasOpen) {
       menuJustOpened = true;
       themeMenu.classList.add('show');
-      // Simple positioning with width constraint
+
+      // Smart positioning: detect which side of screen sidebar is on
       const buttonRect = themeBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+
+      // If button is in right half of screen, open menu to the left
+      // This allows menu to extend into browser area instead of being constrained
+      const openToLeft = buttonRect.left > viewportWidth / 2;
+
       themeMenu.style.position = 'fixed';
       themeMenu.style.top = `${buttonRect.bottom + 4}px`;
-      themeMenu.style.left = 'auto';
-      themeMenu.style.right = '20px';
-      themeMenu.style.maxWidth = '280px'; // Constrain width to fit on screen
+
+      if (openToLeft) {
+        // Sidebar on right side - open menu to the left
+        themeMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+        themeMenu.style.left = 'auto';
+      } else {
+        // Sidebar on left side or in own tab - open menu to the right
+        themeMenu.style.left = `${buttonRect.left}px`;
+        themeMenu.style.right = 'auto';
+      }
+
+      themeMenu.style.maxWidth = ''; // Remove width constraint, allow natural sizing
     }
   });
 
