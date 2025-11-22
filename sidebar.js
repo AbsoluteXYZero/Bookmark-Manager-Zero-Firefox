@@ -5067,6 +5067,7 @@ function setupEventListeners() {
     const wasOpen = themeMenu.classList.contains('show');
     closeAllMenus();
     if (!wasOpen) {
+      menuJustOpened = true;
       themeMenu.classList.add('show');
       positionFixedDropdown(themeMenu, themeBtn);
     }
@@ -5087,6 +5088,7 @@ function setupEventListeners() {
     const wasOpen = viewMenu.classList.contains('show');
     closeAllMenus();
     if (!wasOpen) {
+      menuJustOpened = true;
       viewMenu.classList.add('show');
       positionFixedDropdown(viewMenu, viewBtn);
     }
@@ -5107,6 +5109,7 @@ function setupEventListeners() {
     const wasOpen = zoomMenu.classList.contains('show');
     closeAllMenus();
     if (!wasOpen) {
+      menuJustOpened = true;
       zoomMenu.classList.add('show');
       positionFixedDropdown(zoomMenu, zoomBtn);
     }
@@ -5124,6 +5127,7 @@ function setupEventListeners() {
     const wasOpen = settingsMenu.classList.contains('show');
     closeAllMenus();
     if (!wasOpen) {
+      menuJustOpened = true;
       settingsMenu.classList.add('show');
       positionFixedDropdown(settingsMenu, settingsBtn);
       // Update cache size display when menu opens
@@ -5696,8 +5700,17 @@ function setupEventListeners() {
     headerCollapseBtn.title = 'Expand header';
   }
 
+  // Track when menus are opened to prevent immediate closing
+  let menuJustOpened = false;
+
   // Close menus when clicking outside
   document.addEventListener('click', (e) => {
+    // Don't close if menu was just opened
+    if (menuJustOpened) {
+      menuJustOpened = false;
+      return;
+    }
+
     if (!e.target.closest('.bookmark-actions') &&
         !e.target.closest('.bookmark-menu-btn') &&
         !e.target.closest('.bookmark-preview-container') &&
