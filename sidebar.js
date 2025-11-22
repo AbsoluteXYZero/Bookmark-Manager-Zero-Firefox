@@ -2731,6 +2731,8 @@ function repositionMenuIfNeeded(menu, parentElement) {
     // Final safety check - ensure menu is within viewport after positioning
     requestAnimationFrame(() => {
       const finalRect = menu.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
 
       // Check if menu extends beyond top of viewport
       if (finalRect.top < 0) {
@@ -2746,6 +2748,26 @@ function repositionMenuIfNeeded(menu, parentElement) {
         const currentMaxHeight = parseInt(menu.style.maxHeight) || finalRect.height;
         menu.style.maxHeight = `${currentMaxHeight - overflow - 8}px`;
         menu.style.overflowY = 'auto';
+      }
+
+      // Check if menu extends beyond left edge
+      if (finalRect.left < margin) {
+        menu.style.left = `${margin - parentRect.left}px`;
+        menu.style.right = 'auto';
+      }
+
+      // Check if menu extends beyond right edge
+      if (finalRect.right > viewportWidth - margin) {
+        // Position menu so its right edge is at viewport - margin
+        menu.style.left = 'auto';
+        menu.style.right = `${parentRect.right - (viewportWidth - margin)}px`;
+      }
+
+      // Ensure menu width doesn't exceed viewport width minus margins
+      const maxWidth = viewportWidth - (margin * 2);
+      if (finalRect.width > maxWidth) {
+        menu.style.maxWidth = `${maxWidth}px`;
+        menu.style.overflowX = 'hidden';
       }
     });
   });
