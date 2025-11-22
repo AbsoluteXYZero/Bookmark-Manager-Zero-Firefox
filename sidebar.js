@@ -5096,28 +5096,31 @@ function setupEventListeners() {
       menuJustOpened = true;
       themeMenu.classList.add('show');
 
-      // Smart positioning: detect which side of screen sidebar is on
+      // Calculate available width and position menu within sidebar constraints
       const buttonRect = themeBtn.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
 
-      // If button is in right half of screen, open menu to the left
-      // This allows menu to extend into browser area instead of being constrained
+      // Calculate maximum width the menu can be without overflowing
+      const maxWidth = viewportWidth - (margin * 2);
+
+      // Determine if we should align to the left or right of the button
       const openToLeft = buttonRect.left > viewportWidth / 2;
 
       themeMenu.style.position = 'fixed';
       themeMenu.style.top = `${buttonRect.bottom + 4}px`;
+      themeMenu.style.maxWidth = `${maxWidth}px`;
 
       if (openToLeft) {
-        // Sidebar on right side - open menu to the left
-        themeMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+        // Align menu to the right edge of the button, constrained by left margin
+        const rightPosition = viewportWidth - buttonRect.right;
+        themeMenu.style.right = `${Math.max(rightPosition, margin)}px`;
         themeMenu.style.left = 'auto';
       } else {
-        // Sidebar on left side or in own tab - open menu to the right
-        themeMenu.style.left = `${buttonRect.left}px`;
+        // Align menu to the left edge of the button, constrained by right margin
+        themeMenu.style.left = `${Math.max(buttonRect.left, margin)}px`;
         themeMenu.style.right = 'auto';
       }
-
-      themeMenu.style.maxWidth = ''; // Remove width constraint, allow natural sizing
     }
   });
 
@@ -5139,27 +5142,31 @@ function setupEventListeners() {
       menuJustOpened = true;
       viewMenu.classList.add('show');
 
-      // Smart positioning: detect which side of screen sidebar is on
+      // Calculate available width and position menu within sidebar constraints
       const buttonRect = viewBtn.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
 
-      // If button is in right half of screen, open menu to the left
+      // Calculate maximum width the menu can be without overflowing
+      const maxWidth = viewportWidth - (margin * 2);
+
+      // Determine if we should align to the left or right of the button
       const openToLeft = buttonRect.left > viewportWidth / 2;
 
       viewMenu.style.position = 'fixed';
       viewMenu.style.top = `${buttonRect.bottom + 4}px`;
+      viewMenu.style.maxWidth = `${maxWidth}px`;
 
       if (openToLeft) {
-        // Sidebar on right side - open menu to the left
-        viewMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+        // Align menu to the right edge of the button, constrained by left margin
+        const rightPosition = viewportWidth - buttonRect.right;
+        viewMenu.style.right = `${Math.max(rightPosition, margin)}px`;
         viewMenu.style.left = 'auto';
       } else {
-        // Sidebar on left side or in own tab - open menu to the right
-        viewMenu.style.left = `${buttonRect.left}px`;
+        // Align menu to the left edge of the button, constrained by right margin
+        viewMenu.style.left = `${Math.max(buttonRect.left, margin)}px`;
         viewMenu.style.right = 'auto';
       }
-
-      viewMenu.style.maxWidth = ''; // Remove width constraint, allow natural sizing
     }
   });
 
@@ -5181,27 +5188,31 @@ function setupEventListeners() {
       menuJustOpened = true;
       zoomMenu.classList.add('show');
 
-      // Smart positioning: detect which side of screen sidebar is on
+      // Calculate available width and position menu within sidebar constraints
       const buttonRect = zoomBtn.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
 
-      // If button is in right half of screen, open menu to the left
+      // Calculate maximum width the menu can be without overflowing
+      const maxWidth = viewportWidth - (margin * 2);
+
+      // Determine if we should align to the left or right of the button
       const openToLeft = buttonRect.left > viewportWidth / 2;
 
       zoomMenu.style.position = 'fixed';
       zoomMenu.style.top = `${buttonRect.bottom + 4}px`;
+      zoomMenu.style.maxWidth = `${maxWidth}px`;
 
       if (openToLeft) {
-        // Sidebar on right side - open menu to the left
-        zoomMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+        // Align menu to the right edge of the button, constrained by left margin
+        const rightPosition = viewportWidth - buttonRect.right;
+        zoomMenu.style.right = `${Math.max(rightPosition, margin)}px`;
         zoomMenu.style.left = 'auto';
       } else {
-        // Sidebar on left side or in own tab - open menu to the right
-        zoomMenu.style.left = `${buttonRect.left}px`;
+        // Align menu to the left edge of the button, constrained by right margin
+        zoomMenu.style.left = `${Math.max(buttonRect.left, margin)}px`;
         zoomMenu.style.right = 'auto';
       }
-
-      zoomMenu.style.maxWidth = ''; // Remove width constraint, allow natural sizing
     }
   });
 
@@ -5220,27 +5231,31 @@ function setupEventListeners() {
       menuJustOpened = true;
       settingsMenu.classList.add('show');
 
-      // Smart positioning: detect which side of screen sidebar is on
+      // Calculate available width and position menu within sidebar constraints
       const buttonRect = settingsBtn.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
 
-      // If button is in right half of screen, open menu to the left
+      // Calculate maximum width the menu can be without overflowing
+      const maxWidth = viewportWidth - (margin * 2);
+
+      // Determine if we should align to the left or right of the button
       const openToLeft = buttonRect.left > viewportWidth / 2;
 
       settingsMenu.style.position = 'fixed';
       settingsMenu.style.top = `${buttonRect.bottom + 4}px`;
+      settingsMenu.style.maxWidth = `${maxWidth}px`;
 
       if (openToLeft) {
-        // Sidebar on right side - open menu to the left
-        settingsMenu.style.right = `${viewportWidth - buttonRect.right}px`;
+        // Align menu to the right edge of the button, constrained by left margin
+        const rightPosition = viewportWidth - buttonRect.right;
+        settingsMenu.style.right = `${Math.max(rightPosition, margin)}px`;
         settingsMenu.style.left = 'auto';
       } else {
-        // Sidebar on left side or in own tab - open menu to the right
-        settingsMenu.style.left = `${buttonRect.left}px`;
+        // Align menu to the left edge of the button, constrained by right margin
+        settingsMenu.style.left = `${Math.max(buttonRect.left, margin)}px`;
         settingsMenu.style.right = 'auto';
       }
-
-      settingsMenu.style.maxWidth = ''; // Remove width constraint, allow natural sizing
 
       // Update cache size display when menu opens
       await updateCacheSizeDisplay();
