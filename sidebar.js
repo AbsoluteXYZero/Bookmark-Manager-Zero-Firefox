@@ -1035,13 +1035,17 @@ function applyCustomTextColor(color) {
   document.head.appendChild(styleTag);
 }
 
-// Load saved custom text color
+// Load saved custom text color (matches accent color picker pattern)
 function loadCustomTextColor() {
   if (!customTextColorPicker) return;
   const savedColor = localStorage.getItem('customTextColor');
   if (savedColor) {
     customTextColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
+  } else {
+    // Always set the picker value in JavaScript, even if no custom color is saved
+    // This ensures the picker is properly initialized (use HTML default)
+    customTextColorPicker.value = '#6366f1';
   }
 }
 
