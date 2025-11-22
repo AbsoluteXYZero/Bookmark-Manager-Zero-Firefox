@@ -522,7 +522,6 @@ async function init() {
   await expandToStartFolder();
   setupEventListeners();
   renderBookmarks();
-  updateWhitelistUI();
 
   // Automatically check bookmark statuses after initial render
   autoCheckBookmarkStatuses();
