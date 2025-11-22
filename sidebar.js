@@ -469,12 +469,6 @@ const closeDragModeBtn = document.getElementById('closeDragModeBtn');
 const opacityValue = document.getElementById('opacityValue');
 const blurValue = document.getElementById('blurValue');
 const scaleValue = document.getElementById('scaleValue');
-const manageWhitelistBtn = document.getElementById('manageWhitelistBtn');
-const whitelistPanel = document.getElementById('whitelistPanel');
-const closeWhitelistPanel = document.getElementById('closeWhitelistPanel');
-const whitelistList = document.getElementById('whitelistList');
-const whitelistCount = document.getElementById('whitelistCount');
-const emptyWhitelistMessage = document.getElementById('emptyWhitelistMessage');
 const guiScaleSelect = document.getElementById('guiScaleSelect');
 
 // Undo toast DOM elements
@@ -889,100 +883,10 @@ function loadBackgroundImage() {
   loadSavedBackgroundImage();
 }
 
-// Update whitelist count badge
-function updateWhitelistCount() {
-  const count = whitelistedUrls.size;
-  whitelistCount.textContent = count;
-}
-
-// Populate whitelist panel with current entries
-function populateWhitelistPanel() {
-  whitelistList.innerHTML = '';
-
-  if (whitelistedUrls.size === 0) {
-    emptyWhitelistMessage.style.display = 'block';
-    whitelistList.style.display = 'none';
-  } else {
-    emptyWhitelistMessage.style.display = 'none';
-    whitelistList.style.display = 'flex';
-
-    // Sort domains alphabetically
-    const sortedDomains = Array.from(whitelistedUrls).sort();
-
-    sortedDomains.forEach(domain => {
-      const entryDiv = document.createElement('div');
-      entryDiv.style.cssText = `
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 10px;
-        background: var(--md-sys-color-surface);
-        border-radius: 6px;
-        font-size: 12px;
-        color: var(--md-sys-color-on-surface);
-      `;
-
-      const domainSpan = document.createElement('span');
-      domainSpan.textContent = domain;
-      domainSpan.style.cssText = `
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        margin-right: 8px;
-      `;
-
-      const removeBtn = document.createElement('button');
-      removeBtn.textContent = '✕';
-      removeBtn.title = `Remove ${domain} from whitelist`;
-      removeBtn.style.cssText = `
-        background: var(--md-sys-color-error-container);
-        color: var(--md-sys-color-on-error-container);
-        border: none;
-        border-radius: 4px;
-        width: 24px;
-        height: 24px;
-        cursor: pointer;
-        font-size: 14px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        transition: background 0.2s;
-      `;
-
-      removeBtn.addEventListener('mouseover', () => {
-        removeBtn.style.background = 'var(--md-sys-color-error)';
-        removeBtn.style.color = 'var(--md-sys-color-on-error)';
-      });
-
-      removeBtn.addEventListener('mouseout', () => {
-        removeBtn.style.background = 'var(--md-sys-color-error-container)';
-        removeBtn.style.color = 'var(--md-sys-color-on-error-container)';
-      });
-
-      removeBtn.addEventListener('click', async () => {
-        await removeFromWhitelist(domain);
-      });
-
-      entryDiv.appendChild(domainSpan);
-      entryDiv.appendChild(removeBtn);
-      whitelistList.appendChild(entryDiv);
-    });
-  }
-}
-
-// Legacy function name for compatibility
-function updateWhitelistUI() {
-  updateWhitelistCount();
-  populateWhitelistPanel();
-}
-
 // Remove URL from whitelist
 async function removeFromWhitelist(url) {
   whitelistedUrls.delete(url);
   await saveWhitelist();
-  updateWhitelistUI();
 
   // Recheck affected bookmarks
   const affectedBookmarks = bookmarkTree.filter(item =>
@@ -3259,7 +3163,6 @@ async function whitelistBookmark(bookmark) {
     if (remove) {
       whitelistedUrls.delete(hostname);
       await saveWhitelist();
-      updateWhitelistCount();
       alert(`Removed "${hostname}" from whitelist.\n\nIt will be scanned normally on next check.`);
       // Recheck the bookmark
       await recheckBookmarkStatus(bookmark.id);
@@ -3269,7 +3172,6 @@ async function whitelistBookmark(bookmark) {
     if (confirm_add) {
       whitelistedUrls.add(hostname);
       await saveWhitelist();
-      updateWhitelistCount();
       // Update safety status to safe
       updateBookmarkInTree(bookmark.id, {
         safetyStatus: 'safe',
@@ -5022,8 +4924,6 @@ function setupEventListeners() {
       positionFixedDropdown(settingsMenu, settingsBtn);
       // Update cache size display when menu opens
       await updateCacheSizeDisplay();
-      // Update whitelist count when menu opens
-      updateWhitelistCount();
     }
   });
 
@@ -5382,25 +5282,6 @@ function setupEventListeners() {
     // Set up banner close handler
     closeDragModeBtn.addEventListener('click', stopDragging);
   });
-
-  if (manageWhitelistBtn) {
-    manageWhitelistBtn.addEventListener('click', () => {
-      if (whitelistPanel) {
-        const isVisible = whitelistPanel.style.display !== 'none';
-        whitelistPanel.style.display = isVisible ? 'none' : 'block';
-        if (!isVisible) {
-          populateWhitelistPanel();
-        }
-      }
-    });
-  }
-
-  if (closeWhitelistPanel) {
-    closeWhitelistPanel.addEventListener('click', (e) => {
-      e.stopPropagation();
-      whitelistPanel.style.display = 'none';
-    });
-  }
 
   // GUI Scale select
   if (guiScaleSelect) {
