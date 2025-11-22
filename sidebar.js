@@ -473,8 +473,7 @@ const scaleValue = document.getElementById('scaleValue');
 const containerOpacitySlider = document.getElementById('containerOpacity');
 const containerOpacityValue = document.getElementById('containerOpacityValue');
 const darkTextToggle = document.getElementById('darkTextToggle');
-const textColorPickerBtn = document.getElementById('textColorPickerBtn');
-const textColorInput = document.getElementById('textColorInput');
+const textColorPicker = document.getElementById('textColorPicker');
 const resetTextColorBtn = document.getElementById('resetTextColor');
 const guiScaleSelect = document.getElementById('guiScaleSelect');
 const startFolderSelect = document.getElementById('startFolderSelect');
@@ -1038,17 +1037,13 @@ function applyCustomTextColor(color) {
 
 // Load saved custom text color
 function loadCustomTextColor() {
-  if (!textColorInput) return;
+  if (!textColorPicker) return;
   const savedColor = localStorage.getItem('customTextColor');
-  const defaultColor = '#ffffff';
-  const color = savedColor || defaultColor;
-
-  textColorInput.value = color;
-  if (textColorPickerBtn) {
-    textColorPickerBtn.style.background = color;
-  }
   if (savedColor) {
+    textColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
+  } else {
+    textColorPicker.value = '#e8e8e8'; // Light gray default - works with Firefox color picker
   }
 }
 
@@ -5369,22 +5364,12 @@ function setupEventListeners() {
     });
   }
 
-  // Custom text color picker - hex input
-  if (textColorInput) {
-    textColorInput.addEventListener('input', (e) => {
-      let color = e.target.value.trim();
-      // Add # if missing
-      if (color && !color.startsWith('#')) {
-        color = '#' + color;
-      }
-      // Validate hex color (3 or 6 digits)
-      if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(color)) {
-        applyCustomTextColor(color);
-        localStorage.setItem('customTextColor', color);
-        if (textColorPickerBtn) {
-          textColorPickerBtn.style.background = color;
-        }
-      }
+  // Custom text color picker
+  if (textColorPicker) {
+    textColorPicker.addEventListener('input', (e) => {
+      const color = e.target.value;
+      applyCustomTextColor(color);
+      localStorage.setItem('customTextColor', color);
     });
   }
 
@@ -5393,8 +5378,7 @@ function setupEventListeners() {
     resetTextColorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       resetCustomTextColor();
-      if (textColorInput) textColorInput.value = '#ffffff';
-      if (textColorPickerBtn) textColorPickerBtn.style.background = '#ffffff';
+      textColorPicker.value = '#e8e8e8'; // Light gray default
     });
   }
 
