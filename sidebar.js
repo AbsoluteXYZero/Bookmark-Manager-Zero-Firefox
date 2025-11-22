@@ -5050,30 +5050,6 @@ function setupEventListeners() {
     closeAllMenus();
   });
 
-  // TEMPORARY: Test safety alert (REMOVE BEFORE PRODUCTION)
-  // Add test by holding Ctrl and clicking Clear Cache
-  clearCacheBtn.addEventListener('click', (e) => {
-    if (e.ctrlKey) {
-      e.preventDefault();
-      console.log('🧪 Testing safety alert system...');
-
-      // Simulate a safe status first
-      const testUrl = 'https://test-safety-alert.example.com';
-      safetyHistory[testUrl] = [{
-        timestamp: Date.now() - 1000,
-        status: 'safe',
-        sources: ['Initial scan']
-      }];
-
-      // Then trigger the unsafe alert
-      setTimeout(() => {
-        trackSafetyChange(testUrl, 'unsafe', ['URLhaus', 'BlockList Project', 'Test']);
-      }, 500);
-
-      closeAllMenus();
-    }
-  });
-
   // Auto-clear cache setting
   autoClearCacheSelect.addEventListener('change', async (e) => {
     const autoClearDays = e.target.value;
