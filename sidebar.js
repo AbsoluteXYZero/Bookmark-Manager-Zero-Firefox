@@ -520,7 +520,7 @@ async function init() {
   loadBackgroundImage();
   loadContainerOpacity();
   loadDarkTextMode();
-  loadCustomTextColor();
+  // loadCustomTextColor(); // Moved to after event listener setup (line ~5388)
   loadCheckingSettings();
   await loadWhitelist();
   await loadSafetyHistory();
@@ -5383,6 +5383,9 @@ function setupEventListeners() {
       customTextColorPicker.value = '#6366f1'; // Match default value in HTML
     });
   }
+
+  // Initialize text color on page load (matches accent color pattern - load after event listeners)
+  loadCustomTextColor();
 
   // Link checking toggle
   const enableLinkCheckingToggle = document.getElementById('enableLinkChecking');
