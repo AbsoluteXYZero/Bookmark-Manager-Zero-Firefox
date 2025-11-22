@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-1.6.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-1.7.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -118,6 +118,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 ### User Experience
 - 🎨 **3 Themes** - Blue Dark (default), Light, Dark
 - 🎨 **Custom Accent Colors** - Pick any color for theme customization
+- ✍️ **Custom Text Colors** - Customize bookmark text color with visual color picker
 - 🖼️ **Custom Backgrounds** - Upload and position your own background images
 - ⌨️ **Keyboard Navigation** - Full keyboard support with arrow keys
 - ♿ **Accessibility** - Comprehensive ARIA labels and keyboard traps
@@ -200,6 +201,7 @@ Click the gear icon to access:
 Click the theme icon to access:
 - **Theme:** Choose from 3 themes (Blue Dark, Light, Dark)
 - **Accent Color:** Customize theme accent color
+- **Text Color:** Customize bookmark text color with visual color picker
 - **Custom Background:** Upload and position your own background image
 - **Zoom:** Adjust bookmark content size (50% - 200%)
 - **GUI Scale:** Adjust interface element size (80% - 140%)
@@ -441,7 +443,27 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v1.6.0 (Current) - UI Refinements & Custom Navigation
+### v1.7.0 (Current) - Text Color Customization
+
+**New Features:**
+- ✍️ **Custom Text Color Picker** - Customize bookmark and folder text color with visual color picker in Theme menu
+- 🎨 **Light Gray Default** - Text color defaults to light gray (#e8e8e8) which works reliably with Firefox's color picker
+- 🔄 **Reset Text Color** - Reset button returns text to default light gray color
+
+**Improvements:**
+- 🎯 **Reduced Font Sizes** - Accent Color and Text Color labels now use matching 11px font size for consistency
+
+**Bug Fixes:**
+- 🐛 **Firefox Color Picker Workaround** - Fixed Firefox bug where pure white (#ffffff) prevented custom color selection by using light gray default
+
+**Technical Notes:**
+- Firefox's native color picker has a known issue where pure white as the default value prevents the custom color gradient area from initializing properly
+- Using #e8e8e8 (light gray) as default allows full color picker functionality while remaining visually close to white
+- Users can still select pure white if desired after the picker initializes
+
+---
+
+### v1.6.0 - UI Refinements & Custom Navigation
 
 **New Features:**
 - 📁 **Default Start Folder** - Choose which folder to auto-expand when opening the sidebar
