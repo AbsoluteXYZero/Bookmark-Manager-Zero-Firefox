@@ -1035,7 +1035,7 @@ function applyCustomTextColor(color) {
   document.head.appendChild(styleTag);
 }
 
-// Load saved custom text color (matches accent color picker pattern)
+// Load saved custom text color
 function loadCustomTextColor() {
   if (!customTextColorPicker) return;
   const savedColor = localStorage.getItem('customTextColor');
@@ -1043,16 +1043,22 @@ function loadCustomTextColor() {
     customTextColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
   } else {
-    // Always set the picker value in JavaScript, even if no custom color is saved
-    // This ensures the picker is properly initialized (use HTML default)
-    customTextColorPicker.value = '#6366f1';
+    customTextColorPicker.value = '#ffffff';
   }
 
-  // Trigger a synthetic input event to "wake up" the custom color area
-  // Without this, user must click a basic color before custom colors work
+  // Try to wake up the custom color area by simulating value changes
+  // This is a workaround for Firefox color picker requiring interaction before custom colors work
   setTimeout(() => {
-    const event = new Event('input', { bubbles: true, cancelable: true });
-    customTextColorPicker.dispatchEvent(event);
+    const originalValue = customTextColorPicker.value;
+    // Briefly change to a slightly different color and back
+    customTextColorPicker.value = '#fffffe';
+    setTimeout(() => {
+      customTextColorPicker.value = originalValue;
+      // Trigger focus and change events
+      customTextColorPicker.focus();
+      customTextColorPicker.dispatchEvent(new Event('change', { bubbles: true }));
+      customTextColorPicker.blur();
+    }, 10);
   }, 100);
 }
 
@@ -5373,31 +5379,9 @@ function setupEventListeners() {
     });
   }
 
-  // Custom text color picker (matches accent color picker pattern exactly)
+  // Custom text color picker
   if (customTextColorPicker) {
-    let pickerInitialized = false;
-    let isWakingUp = false; // Flag to skip applying color during wake-up
-
-    // Wake up the custom color area on first click
-    customTextColorPicker.addEventListener('click', (e) => {
-      if (!pickerInitialized) {
-        pickerInitialized = true;
-        isWakingUp = true; // Don't apply colors during wake-up
-        // Temporarily change value to wake up custom color area
-        const currentValue = customTextColorPicker.value;
-        customTextColorPicker.value = '#000000'; // Change to black
-        // Immediately change back so user sees their original color
-        setTimeout(() => {
-          customTextColorPicker.value = currentValue;
-          isWakingUp = false; // Re-enable color applying
-        }, 1);
-      }
-    });
-
     customTextColorPicker.addEventListener('input', (e) => {
-      // Skip applying color during wake-up flash
-      if (isWakingUp) return;
-
       const color = e.target.value;
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
