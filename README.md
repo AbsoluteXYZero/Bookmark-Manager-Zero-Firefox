@@ -178,7 +178,7 @@ For development or testing purposes. **Note:** This method requires re-adding th
 - **Search:** Type in the search bar to filter by title/URL
 - **Filter by Status:** Click the filter icon to show filters:
   - **Link Status:** Live, Parked, Dead
-  - **Safety Status:** Safe, Suspicious, Unsafe
+  - **Safety Status:** Safe, Suspicious, Unsafe, Trusted (whitelisted)
 - **Multiple Filters:** Select multiple filters simultaneously
   - Filters in the same category use OR logic (e.g., Live + Dead shows both)
   - Filters across categories use AND logic (e.g., Live + Safe shows only live AND safe bookmarks)
@@ -196,7 +196,6 @@ Click the gear icon to access:
 - **Zoom:** Adjust bookmark display size (50% - 200%)
 - **GUI Scale:** Scale header, toolbar, and filters (80% - 140%)
 - **Customization:** Custom accent colors and background images
-- **Whitelist Management:** View and manage all whitelisted domains
 - **Cache Management:** Configure auto-clear settings
 - **Checking Toggles:** Enable/disable link checking and safety checking
 - **API Keys:** Set up optional security API keys
@@ -371,12 +370,10 @@ Users can whitelist specific URLs to:
 - Whitelist is stored locally and persists across sessions
 
 **Managing the Whitelist:**
-- Access via Settings → "Manage Whitelist" button
-- View count badge showing number of whitelisted domains
-- Expandable panel lists all whitelisted domains
-- Remove button for each domain
-- Automatic recheck of affected bookmarks when domain is removed from whitelist
+- Add/remove domains via bookmark context menu → "Whitelist (Trust Site)"
+- View all whitelisted bookmarks using the "Trusted" filter button
 - Whitelisted bookmarks show a white shield indicator
+- Automatic recheck of affected bookmarks when domain is removed from whitelist
 
 ## Permissions
 
@@ -457,13 +454,26 @@ Contributions welcome! Please:
 **New Features:**
 - 🎨 **Custom Accent Colors** - Pick any color for the Material Design accent theme
 - 🖼️ **Custom Background Images** - Upload your own background image with drag-to-reposition and pinch-to-zoom scaling controls
-- 📋 **Whitelist Management UI** - View and manage whitelisted domains directly from settings menu
+- 🏷️ **Trusted Filter** - New filter button to view all whitelisted bookmarks in one click
+- 📐 **Grid View Icon Row** - Shield, favicon, and chainlink icons now displayed in centered horizontal row at top of each card
 - 📏 **GUI Scaling** - Independent size control for header, toolbar, menus, and status bar (80% - 140% in 10% increments)
 - 🎯 **Improved Menu Positioning** - Context menus and dropdown menus now properly constrain to viewport boundaries
 - 🎨 **Theme-Aware Scrollbars** - Scrollbars now match your selected color theme
 - ⚪ **White Shield Indicator** - Whitelisted bookmarks display white shield instead of green to distinguish user-trusted vs security-scanned sites
 - 🔒 **Menu Mutual Exclusion** - Only one menu can be open at a time for cleaner UX
 - 👆 **Click-Outside Menu Closing** - Menus automatically close when clicking elsewhere
+
+**UI Improvements:**
+- 🎛️ **Streamlined Settings Menu** - Removed redundant Manage Whitelist UI (use Trusted filter instead)
+- 🔄 **Simplified Rescan Button** - Single rescan button in status bar (removed duplicate from settings)
+- 📊 **Optimized Filter Bar** - All 4 shield filters (Safe, Suspicious, Unsafe, Trusted) now fit on one line
+- 📏 **Compact GUI Scale Control** - Dropdown now inline with label, removed description text
+
+**Bug Fixes:**
+- Fixed grid view showing duplicate shield and chainlink icons
+- Fixed missing favicons in grid view top row
+- Fixed white shield not visible in Trusted filter button
+- Fixed filter bar cutting off buttons with overflow:hidden
 
 ---
 
