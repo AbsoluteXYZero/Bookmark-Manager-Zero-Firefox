@@ -3143,13 +3143,17 @@ function closeAllMenus() {
   [settingsMenu, themeMenu, viewMenu, zoomMenu].forEach(menu => {
     if (menu) {
       menu.classList.remove('show');
-      // Reset inline positioning styles applied by positionFixedDropdown
-      menu.style.position = '';
-      menu.style.top = '';
-      menu.style.bottom = '';
-      menu.style.right = '';
-      menu.style.maxWidth = '';
-      menu.style.zIndex = '';
+      // Delay resetting positioning styles until after the close transition completes
+      setTimeout(() => {
+        if (!menu.classList.contains('show')) {
+          menu.style.position = '';
+          menu.style.top = '';
+          menu.style.bottom = '';
+          menu.style.right = '';
+          menu.style.maxWidth = '';
+          menu.style.zIndex = '';
+        }
+      }, 200); // Match CSS transition duration
     }
   });
 }
