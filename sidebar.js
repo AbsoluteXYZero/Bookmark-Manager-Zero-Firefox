@@ -1002,9 +1002,12 @@ function loadDarkTextMode() {
 
 // Apply custom text color
 function applyCustomTextColor(color) {
+  console.log('[Text Color] applyCustomTextColor called with color:', color);
+
   // Remove existing custom text color style if it exists
   let styleTag = document.getElementById('custom-text-color-style');
   if (styleTag) {
+    console.log('[Text Color] Removing existing style tag');
     styleTag.remove();
   }
 
@@ -1033,15 +1036,24 @@ function applyCustomTextColor(color) {
     }
   `;
   document.head.appendChild(styleTag);
+  console.log('[Text Color] Style tag injected into document.head');
 }
 
 // Load saved custom text color
 function loadCustomTextColor() {
-  if (!customTextColorPicker) return;
+  console.log('[Text Color] loadCustomTextColor called');
+  if (!customTextColorPicker) {
+    console.error('[Text Color] customTextColorPicker element not found in loadCustomTextColor');
+    return;
+  }
   const savedColor = localStorage.getItem('customTextColor');
+  console.log('[Text Color] Saved color from localStorage:', savedColor);
   if (savedColor) {
     customTextColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
+    console.log('[Text Color] Applied saved color:', savedColor);
+  } else {
+    console.log('[Text Color] No saved color found');
   }
 }
 
@@ -5309,24 +5321,31 @@ function setupEventListeners() {
   }
 
   // Custom text color picker
+  console.log('[Text Color] Setting up event listeners');
+  console.log('[Text Color] customTextColorPicker element:', customTextColorPicker);
+
   if (customTextColorPicker) {
     // Handle both input (while dragging) and change (on OK click) events
     const handleColorChange = (e) => {
       const color = e.target.value;
-      console.log('Text color changed to:', color);
+      console.log('[Text Color] handleColorChange fired, color:', color);
+      console.log('[Text Color] Event type:', e.type);
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
+      console.log('[Text Color] Saved to localStorage');
     };
 
     customTextColorPicker.addEventListener('input', handleColorChange);
     customTextColorPicker.addEventListener('change', handleColorChange);
+    console.log('[Text Color] Event listeners attached');
 
     // Prevent menu from closing when clicking the color picker
     customTextColorPicker.addEventListener('click', (e) => {
       e.stopPropagation();
+      console.log('[Text Color] Click event - stopPropagation called');
     });
   } else {
-    console.error('customTextColorPicker element not found!');
+    console.error('[Text Color] customTextColorPicker element not found!');
   }
 
   // Reset text color button
