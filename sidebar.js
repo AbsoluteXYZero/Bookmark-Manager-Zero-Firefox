@@ -473,6 +473,8 @@ const scaleValue = document.getElementById('scaleValue');
 const containerOpacitySlider = document.getElementById('containerOpacity');
 const containerOpacityValue = document.getElementById('containerOpacityValue');
 const darkTextToggle = document.getElementById('darkTextToggle');
+const customTextColorPicker = document.getElementById('customTextColor');
+const resetTextColorBtn = document.getElementById('resetTextColor');
 const guiScaleSelect = document.getElementById('guiScaleSelect');
 const startFolderSelect = document.getElementById('startFolderSelect');
 
@@ -518,6 +520,7 @@ async function init() {
   loadBackgroundImage();
   loadContainerOpacity();
   loadDarkTextMode();
+  loadCustomTextColor();
   loadCheckingSettings();
   await loadWhitelist();
   await loadSafetyHistory();
@@ -995,6 +998,51 @@ function loadDarkTextMode() {
   const isEnabled = savedMode === 'true';
   darkTextToggle.checked = isEnabled;
   applyDarkTextMode(isEnabled);
+}
+
+// Apply custom text color
+function applyCustomTextColor(color) {
+  // Remove existing custom text color style if it exists
+  let styleTag = document.getElementById('custom-text-color-style');
+  if (styleTag) {
+    styleTag.remove();
+  }
+
+  // Inject a style tag with the custom text color
+  styleTag = document.createElement('style');
+  styleTag.id = 'custom-text-color-style';
+  styleTag.textContent = `
+    .bookmark-title,
+    .folder-title {
+      color: ${color} !important;
+    }
+
+    .bookmark-url {
+      color: ${color} !important;
+      opacity: 0.7;
+    }
+  `;
+  document.head.appendChild(styleTag);
+}
+
+// Load saved custom text color
+function loadCustomTextColor() {
+  if (!customTextColorPicker) return;
+  const savedColor = localStorage.getItem('customTextColor');
+  if (savedColor) {
+    customTextColorPicker.value = savedColor;
+    applyCustomTextColor(savedColor);
+  }
+}
+
+// Reset custom text color
+function resetCustomTextColor() {
+  // Remove the custom style
+  const styleTag = document.getElementById('custom-text-color-style');
+  if (styleTag) {
+    styleTag.remove();
+  }
+  localStorage.removeItem('customTextColor');
 }
 
 // Remove URL from whitelist
@@ -5141,6 +5189,23 @@ function setupEventListeners() {
       const isEnabled = e.target.checked;
       localStorage.setItem('darkTextMode', isEnabled);
       applyDarkTextMode(isEnabled);
+    });
+  }
+
+  // Custom text color picker
+  if (customTextColorPicker) {
+    customTextColorPicker.addEventListener('input', (e) => {
+      const color = e.target.value;
+      applyCustomTextColor(color);
+      localStorage.setItem('customTextColor', color);
+    });
+  }
+
+  // Reset text color button
+  if (resetTextColorBtn) {
+    resetTextColorBtn.addEventListener('click', () => {
+      resetCustomTextColor();
+      customTextColorPicker.value = '#ffffff';
     });
   }
 
