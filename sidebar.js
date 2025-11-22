@@ -5375,6 +5375,22 @@ function setupEventListeners() {
 
   // Custom text color picker (matches accent color picker pattern exactly)
   if (customTextColorPicker) {
+    let pickerInitialized = false;
+
+    // Wake up the custom color area on first click
+    customTextColorPicker.addEventListener('click', (e) => {
+      if (!pickerInitialized) {
+        pickerInitialized = true;
+        // Temporarily change value to wake up custom color area
+        const currentValue = customTextColorPicker.value;
+        customTextColorPicker.value = '#000000'; // Change to black
+        // Immediately change back so user sees their original color
+        setTimeout(() => {
+          customTextColorPicker.value = currentValue;
+        }, 1);
+      }
+    });
+
     customTextColorPicker.addEventListener('input', (e) => {
       const color = e.target.value;
       applyCustomTextColor(color);
