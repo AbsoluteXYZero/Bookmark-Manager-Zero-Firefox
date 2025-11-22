@@ -2073,8 +2073,9 @@
                 </span>
                 <span style="font-size: 11px;">Text Color</span>
               </div>
-              <div style="display: flex; gap: 6px; align-items: center;">
-                <input type="color" id="textColorPicker" value="#f0f0f0" style="cursor: pointer; width: 32px; height: 24px; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; padding: 0;">
+              <div style="display: flex; gap: 6px; align-items: center; position: relative;">
+                <div id="textColorPickerBtn" style="cursor: pointer; width: 32px; height: 24px; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; background: #ffffff;"></div>
+                <input type="text" id="textColorInput" placeholder="#ffffff" maxlength="7" style="width: 70px; padding: 2px 4px; font-size: 11px; font-family: monospace; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface);">
                 <button id="resetTextColor" style="cursor: pointer; padding: 4px 8px; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 10px; white-space: nowrap;">Reset</button>
               </div>
             </div>

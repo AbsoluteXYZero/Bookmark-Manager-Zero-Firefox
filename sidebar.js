@@ -473,7 +473,8 @@ const scaleValue = document.getElementById('scaleValue');
 const containerOpacitySlider = document.getElementById('containerOpacity');
 const containerOpacityValue = document.getElementById('containerOpacityValue');
 const darkTextToggle = document.getElementById('darkTextToggle');
-const customTextColorPicker = document.getElementById('textColorPicker');
+const textColorPickerBtn = document.getElementById('textColorPickerBtn');
+const textColorInput = document.getElementById('textColorInput');
 const resetTextColorBtn = document.getElementById('resetTextColor');
 const guiScaleSelect = document.getElementById('guiScaleSelect');
 const startFolderSelect = document.getElementById('startFolderSelect');
@@ -1035,15 +1036,19 @@ function applyCustomTextColor(color) {
   document.head.appendChild(styleTag);
 }
 
-// Load saved custom text color (matches accent color picker pattern)
+// Load saved custom text color
 function loadCustomTextColor() {
-  if (!customTextColorPicker) return;
+  if (!textColorInput) return;
   const savedColor = localStorage.getItem('customTextColor');
+  const defaultColor = '#ffffff';
+  const color = savedColor || defaultColor;
+
+  textColorInput.value = color;
+  if (textColorPickerBtn) {
+    textColorPickerBtn.style.background = color;
+  }
   if (savedColor) {
-    customTextColorPicker.value = savedColor;
     applyCustomTextColor(savedColor);
-  } else {
-    customTextColorPicker.value = '#f0f0f0'; // Light gray to avoid Firefox color picker bug with pure white
   }
 }
 
@@ -5364,12 +5369,22 @@ function setupEventListeners() {
     });
   }
 
-  // Custom text color picker
-  if (customTextColorPicker) {
-    customTextColorPicker.addEventListener('input', (e) => {
-      const color = e.target.value;
-      applyCustomTextColor(color);
-      localStorage.setItem('customTextColor', color);
+  // Custom text color picker - hex input
+  if (textColorInput) {
+    textColorInput.addEventListener('input', (e) => {
+      let color = e.target.value.trim();
+      // Add # if missing
+      if (color && !color.startsWith('#')) {
+        color = '#' + color;
+      }
+      // Validate hex color (3 or 6 digits)
+      if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(color)) {
+        applyCustomTextColor(color);
+        localStorage.setItem('customTextColor', color);
+        if (textColorPickerBtn) {
+          textColorPickerBtn.style.background = color;
+        }
+      }
     });
   }
 
@@ -5378,7 +5393,8 @@ function setupEventListeners() {
     resetTextColorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       resetCustomTextColor();
-      customTextColorPicker.value = '#f0f0f0'; // Reset to light gray (avoids Firefox bug with pure white)
+      if (textColorInput) textColorInput.value = '#ffffff';
+      if (textColorPickerBtn) textColorPickerBtn.style.background = '#ffffff';
     });
   }
 
