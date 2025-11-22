@@ -5325,6 +5325,13 @@ function setupEventListeners() {
 
   // Custom text color picker
   if (customTextColorPicker) {
+    // Ensure color picker has a valid initial value to enable custom color area
+    const savedColor = localStorage.getItem('customTextColor');
+    if (!savedColor) {
+      // Set default value explicitly in JavaScript to initialize the picker
+      customTextColorPicker.value = '#ffffff';
+    }
+
     // Handle both input (while dragging) and change (on OK click) events
     const handleColorChange = (e) => {
       const color = e.target.value;
@@ -5334,6 +5341,9 @@ function setupEventListeners() {
 
     customTextColorPicker.addEventListener('input', handleColorChange);
     customTextColorPicker.addEventListener('change', handleColorChange);
+
+    // Also listen to blur event for when color picker dialog closes
+    customTextColorPicker.addEventListener('blur', handleColorChange);
 
     // Prevent menu from closing when clicking the color picker
     customTextColorPicker.addEventListener('click', (e) => {
