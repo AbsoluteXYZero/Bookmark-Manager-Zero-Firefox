@@ -5073,12 +5073,13 @@ function setupEventListeners() {
     if (!wasOpen) {
       menuJustOpened = true;
       themeMenu.classList.add('show');
-      // Simple positioning - align menu right edge with button right edge
+      // Simple positioning with width constraint
       const buttonRect = themeBtn.getBoundingClientRect();
       themeMenu.style.position = 'fixed';
       themeMenu.style.top = `${buttonRect.bottom + 4}px`;
       themeMenu.style.left = 'auto';
-      themeMenu.style.right = '20px'; // Margin from right edge to keep menu on-screen
+      themeMenu.style.right = '20px';
+      themeMenu.style.maxWidth = '280px'; // Constrain width to fit on screen
     }
   });
 
@@ -5222,6 +5223,7 @@ function setupEventListeners() {
     // Handle both input (while dragging) and change (on OK click) events
     const handleColorChange = (e) => {
       const color = e.target.value;
+      console.log('Text color changed to:', color);
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
     };
@@ -5233,6 +5235,8 @@ function setupEventListeners() {
     customTextColorPicker.addEventListener('click', (e) => {
       e.stopPropagation();
     });
+  } else {
+    console.error('customTextColorPicker element not found!');
   }
 
   // Reset text color button
