@@ -5176,19 +5176,31 @@ function setupEventListeners() {
   // Container opacity slider
   if (containerOpacitySlider) {
     containerOpacitySlider.addEventListener('input', (e) => {
+      e.stopPropagation();
       const opacity = e.target.value;
       containerOpacityValue.textContent = `${opacity}%`;
       localStorage.setItem('containerOpacity', opacity);
       applyContainerOpacity(opacity);
+    });
+
+    // Prevent menu from closing when clicking the slider
+    containerOpacitySlider.addEventListener('click', (e) => {
+      e.stopPropagation();
     });
   }
 
   // Dark text toggle
   if (darkTextToggle) {
     darkTextToggle.addEventListener('change', (e) => {
+      e.stopPropagation();
       const isEnabled = e.target.checked;
       localStorage.setItem('darkTextMode', isEnabled);
       applyDarkTextMode(isEnabled);
+    });
+
+    // Prevent menu from closing when clicking the checkbox
+    darkTextToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
     });
   }
 
@@ -5199,11 +5211,17 @@ function setupEventListeners() {
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
     });
+
+    // Prevent menu from closing when clicking the color picker
+    customTextColorPicker.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
   }
 
   // Reset text color button
   if (resetTextColorBtn) {
-    resetTextColorBtn.addEventListener('click', () => {
+    resetTextColorBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       resetCustomTextColor();
       customTextColorPicker.value = '#ffffff';
     });
