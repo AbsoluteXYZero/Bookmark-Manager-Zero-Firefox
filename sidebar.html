@@ -1865,6 +1865,20 @@
             <input type="checkbox" id="enableSafetyChecking" checked style="cursor: pointer;">
           </label>
           <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
+          <label class="action-btn" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="icon">
+                <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/>
+                </svg>
+              </span>
+              <span>Start Folder</span>
+            </div>
+            <select id="startFolderSelect" style="cursor: pointer; padding: 4px 8px; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: 1px solid var(--md-sys-color-outline); border-radius: 4px; font-size: 11px; max-width: 150px;">
+              <option value="">All Bookmarks (Root)</option>
+            </select>
+          </label>
+          <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
           <button class="action-btn" id="setApiKeyBtn">
             <span class="icon">
               <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">

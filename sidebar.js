@@ -417,6 +417,7 @@ let selectedBookmarkIndex = -1; // Currently selected bookmark for keyboard navi
 let visibleBookmarks = []; // Flat list of visible bookmarks for keyboard navigation
 let multiSelectMode = false; // Toggle for multi-select mode
 let selectedItems = new Set(); // IDs of selected bookmarks/folders
+let startFolderId = null; // Default folder to open when sidebar loads (null = root)
 
 // Track open menus to preserve state across re-renders
 let openMenuBookmarkId = null;
@@ -470,6 +471,7 @@ const opacityValue = document.getElementById('opacityValue');
 const blurValue = document.getElementById('blurValue');
 const scaleValue = document.getElementById('scaleValue');
 const guiScaleSelect = document.getElementById('guiScaleSelect');
+const startFolderSelect = document.getElementById('startFolderSelect');
 
 // Undo toast DOM elements
 const undoToast = document.getElementById('undoToast');
@@ -515,6 +517,7 @@ async function init() {
   await loadWhitelist();
   await loadSafetyHistory();
   await loadAutoClearSetting();
+  await loadStartFolder();
   await loadBookmarks();
   setupEventListeners();
   renderBookmarks();
@@ -781,6 +784,47 @@ function applyGuiScale() {
   });
 }
 
+// Load start folder preference
+async function loadStartFolder() {
+  if (isPreviewMode) {
+    startFolderId = null;
+    return;
+  }
+
+  try {
+    const result = await safeStorage.get('startFolderId');
+    startFolderId = result.startFolderId || null;
+    console.log(`Loaded start folder: ${startFolderId || 'Root'}`);
+  } catch (error) {
+    console.error('Error loading start folder preference:', error);
+    startFolderId = null;
+  }
+}
+
+// Populate start folder dropdown with all available folders
+function populateStartFolderDropdown() {
+  if (!startFolderSelect) return;
+
+  // Get all folders from bookmark tree
+  const folders = getAllFolders(bookmarkTree);
+
+  // Clear existing options except the first one (Root)
+  startFolderSelect.innerHTML = '<option value="">All Bookmarks (Root)</option>';
+
+  // Add folder options
+  folders.forEach(folder => {
+    const option = document.createElement('option');
+    option.value = folder.id;
+    option.textContent = folder.path;
+    startFolderSelect.appendChild(option);
+  });
+
+  // Set selected value
+  if (startFolderId) {
+    startFolderSelect.value = startFolderId;
+  }
+}
+
 // Load and apply custom background image
 // Apply background image with all settings
 function applyBackgroundImage(imageData, opacity, blur, size, positionX, positionY, scale) {
@@ -1004,6 +1048,8 @@ async function loadBookmarks() {
     console.log('Loaded bookmarks:', bookmarkTree);
     // Clear checked bookmarks when loading fresh data
     checkedBookmarks.clear();
+    // Update start folder dropdown with current folders
+    populateStartFolderDropdown();
   } catch (error) {
     console.error('Error loading bookmarks:', error);
     showError('Failed to load bookmarks');
@@ -1384,7 +1430,21 @@ function getMockBookmarks() {
 
 // Render bookmarks
 function renderBookmarks() {
-  const filtered = filterAndSearchBookmarks(bookmarkTree);
+  // Determine which nodes to display based on start folder setting
+  let nodesToDisplay = bookmarkTree;
+
+  if (startFolderId) {
+    const startFolder = findFolderById(bookmarkTree, startFolderId);
+    if (startFolder && startFolder.children) {
+      nodesToDisplay = startFolder.children;
+    } else {
+      // If folder not found, fall back to root
+      console.warn(`Start folder ${startFolderId} not found, using root`);
+      nodesToDisplay = bookmarkTree;
+    }
+  }
+
+  const filtered = filterAndSearchBookmarks(nodesToDisplay);
 
   if (filtered.length === 0) {
     bookmarkList.innerHTML = `
@@ -3921,6 +3981,38 @@ function countBookmarks(folder) {
   }, 0);
 }
 
+// Get all folders recursively for start folder dropdown
+function getAllFolders(nodes, path = '', folders = []) {
+  nodes.forEach(node => {
+    if (node.type === 'folder') {
+      const folderPath = path ? `${path} > ${node.title}` : node.title;
+      folders.push({
+        id: node.id,
+        title: node.title,
+        path: folderPath
+      });
+      if (node.children) {
+        getAllFolders(node.children, folderPath, folders);
+      }
+    }
+  });
+  return folders;
+}
+
+// Find a folder by ID in the bookmark tree
+function findFolderById(nodes, folderId) {
+  for (const node of nodes) {
+    if (node.id === folderId && node.type === 'folder') {
+      return node;
+    }
+    if (node.children) {
+      const found = findFolderById(node.children, folderId);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 // Get favicon URL
 function getFaviconUrl(url) {
   try {
@@ -4955,6 +5047,14 @@ function setupEventListeners() {
     if (autoClearDays !== 'never') {
       await clearOldCacheEntries(autoClearDays);
     }
+  });
+
+  // Start folder setting
+  startFolderSelect.addEventListener('change', async (e) => {
+    startFolderId = e.target.value || null;
+    await safeStorage.set({ startFolderId: startFolderId });
+    console.log(`Start folder set to: ${startFolderId || 'Root'}`);
+    renderBookmarks();
   });
 
   // Link checking toggle
