@@ -5376,22 +5376,28 @@ function setupEventListeners() {
   // Custom text color picker (matches accent color picker pattern exactly)
   if (customTextColorPicker) {
     let pickerInitialized = false;
+    let isWakingUp = false; // Flag to skip applying color during wake-up
 
     // Wake up the custom color area on first click
     customTextColorPicker.addEventListener('click', (e) => {
       if (!pickerInitialized) {
         pickerInitialized = true;
+        isWakingUp = true; // Don't apply colors during wake-up
         // Temporarily change value to wake up custom color area
         const currentValue = customTextColorPicker.value;
         customTextColorPicker.value = '#000000'; // Change to black
         // Immediately change back so user sees their original color
         setTimeout(() => {
           customTextColorPicker.value = currentValue;
+          isWakingUp = false; // Re-enable color applying
         }, 1);
       }
     });
 
     customTextColorPicker.addEventListener('input', (e) => {
+      // Skip applying color during wake-up flash
+      if (isWakingUp) return;
+
       const color = e.target.value;
       applyCustomTextColor(color);
       localStorage.setItem('customTextColor', color);
@@ -5403,7 +5409,7 @@ function setupEventListeners() {
     resetTextColorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       resetCustomTextColor();
-      customTextColorPicker.value = '#6366f1'; // Match default value in HTML
+      customTextColorPicker.value = '#ffffff'; // Reset to white
     });
   }
 
