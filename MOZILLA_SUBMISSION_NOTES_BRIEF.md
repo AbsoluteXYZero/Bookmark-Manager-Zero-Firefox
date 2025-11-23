@@ -58,15 +58,6 @@ Free API keys (optional):
 - Safe Browsing: https://developers.google.com/safe-browsing/v4/get-started
 - VirusTotal: https://www.virustotal.com/gui/my-apikey
 
-## VERSIONS
-
-v1.5.0 - Grid view improvements, square card layout, compact collapsed folders
-v1.4.0 - UI overhaul, stacked status icons, clickable status popups, detailed pattern tooltips
-v1.3.0 - Multiple filter selection, Buy Me a Coffee support
-v1.2.0 - HTML/JSON export, code cleanup
-v1.1.0 - Fixed link checking, status indicators
-v1.0.0 - Stable: private browsing, export, accessibility
-
 ## LIMITATIONS
 
 Firefox only (Firefox bookmark API)
