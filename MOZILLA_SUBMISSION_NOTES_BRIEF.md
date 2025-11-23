@@ -1,4 +1,4 @@
-BOOKMARK MANAGER ZERO v1.5.0 - Submission Notes
+BOOKMARK MANAGER ZERO - Submission Notes
 Repository: https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox
 
 ## PERMISSIONS
