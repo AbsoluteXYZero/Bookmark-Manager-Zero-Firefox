@@ -403,6 +403,10 @@ let displayOptions = {
 };
 let currentEditItem = null;
 let zoomLevel = 80;
+let guiScale = 100; // GUI scale for header, toolbar, and filter elements
+let customBackgroundImage = null; // Custom background image data
+let backgroundPosition = { x: 50, y: 50 }; // Background image position (%)
+let backgroundScale = 100; // Background image scale (%)
 let checkedBookmarks = new Set(); // Track which bookmarks have been checked to prevent infinite loops
 let scanCancelled = false; // Flag to cancel ongoing scans
 let linkCheckingEnabled = true; // Toggle for link checking
@@ -413,6 +417,7 @@ let selectedBookmarkIndex = -1; // Currently selected bookmark for keyboard navi
 let visibleBookmarks = []; // Flat list of visible bookmarks for keyboard navigation
 let multiSelectMode = false; // Toggle for multi-select mode
 let selectedItems = new Set(); // IDs of selected bookmarks/folders
+let startFolderId = null; // Default folder to open when sidebar loads (null = root)
 
 // Track open menus to preserve state across re-renders
 let openMenuBookmarkId = null;
@@ -449,8 +454,29 @@ const exportBookmarksBtn = document.getElementById('exportBookmarksBtn');
 const closeExtensionBtn = document.getElementById('closeExtensionBtn');
 const clearCacheBtn = document.getElementById('clearCacheBtn');
 const autoClearCacheSelect = document.getElementById('autoClearCache');
-const rescanBookmarksBtn = document.getElementById('rescanBookmarksBtn');
 const setApiKeyBtn = document.getElementById('setApiKeyBtn');
+const accentColorPicker = document.getElementById('accentColorPicker');
+const resetAccentColorBtn = document.getElementById('resetAccentColor');
+const backgroundImagePicker = document.getElementById('backgroundImagePicker');
+const chooseBackgroundImageBtn = document.getElementById('chooseBackgroundImage');
+const removeBackgroundImageBtn = document.getElementById('removeBackgroundImage');
+const backgroundOpacitySlider = document.getElementById('backgroundOpacity');
+const backgroundBlurSlider = document.getElementById('backgroundBlur');
+const backgroundSizeSelect = document.getElementById('backgroundSize');
+const repositionBackgroundBtn = document.getElementById('repositionBackground');
+const backgroundScaleSlider = document.getElementById('backgroundScale');
+const dragModeOverlay = document.getElementById('dragModeOverlay');
+const closeDragModeBtn = document.getElementById('closeDragModeBtn');
+const opacityValue = document.getElementById('opacityValue');
+const blurValue = document.getElementById('blurValue');
+const scaleValue = document.getElementById('scaleValue');
+const containerOpacitySlider = document.getElementById('containerOpacity');
+const containerOpacityValue = document.getElementById('containerOpacityValue');
+const darkTextToggle = document.getElementById('darkTextToggle');
+const textColorPicker = document.getElementById('textColorPicker');
+const resetTextColorBtn = document.getElementById('resetTextColor');
+const guiScaleSelect = document.getElementById('guiScaleSelect');
+const startFolderSelect = document.getElementById('startFolderSelect');
 
 // Undo toast DOM elements
 const undoToast = document.getElementById('undoToast');
@@ -490,11 +516,18 @@ async function init() {
   loadTheme();
   loadView();
   loadZoom();
+  loadGuiScale();
+  loadBackgroundImage();
+  loadContainerOpacity();
+  loadDarkTextMode();
+  // loadCustomTextColor(); // Moved to after event listener setup (line ~5388)
   loadCheckingSettings();
   await loadWhitelist();
   await loadSafetyHistory();
   await loadAutoClearSetting();
+  await loadStartFolder();
   await loadBookmarks();
+  await expandToStartFolder();
   setupEventListeners();
   renderBookmarks();
 
@@ -548,6 +581,116 @@ function loadTheme() {
   });
 }
 
+// Store current custom accent color globally
+let currentCustomAccentColor = null;
+
+// Apply custom accent color (global function so it can be called from applyTheme)
+function applyCustomAccentColor(color) {
+  currentCustomAccentColor = color;
+  // Convert hex to RGB for variations
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+
+  // Create lighter container color (add 80 to each channel, cap at 255)
+  const containerR = Math.min(255, r + 80);
+  const containerG = Math.min(255, g + 80);
+  const containerB = Math.min(255, b + 80);
+  const containerColor = `#${containerR.toString(16).padStart(2, '0')}${containerG.toString(16).padStart(2, '0')}${containerB.toString(16).padStart(2, '0')}`;
+
+  // Remove existing custom accent style if it exists
+  let styleTag = document.getElementById('custom-accent-style');
+  if (styleTag) {
+    styleTag.remove();
+  }
+
+  // Inject a style tag with higher specificity selectors
+  styleTag = document.createElement('style');
+  styleTag.id = 'custom-accent-style';
+  styleTag.textContent = `
+    /* Use @layer to ensure these rules take priority */
+    @layer custom-accent {
+      html:root {
+        --md-sys-color-primary: ${color} !important;
+        --md-sys-color-primary-container: ${containerColor} !important;
+        --md-sys-color-secondary: ${color} !important;
+      }
+      html body.light,
+      html body.blue-dark,
+      html body.dark {
+        --md-sys-color-primary: ${color} !important;
+        --md-sys-color-primary-container: ${containerColor} !important;
+        --md-sys-color-secondary: ${color} !important;
+      }
+      /* Directly override border-left on folder-children */
+      .folder-children {
+        border-left: 2px solid ${color} !important;
+      }
+    }
+  `;
+  // Append to body instead of head for later cascade position
+  if (document.body) {
+    document.body.appendChild(styleTag);
+  } else {
+    document.head.appendChild(styleTag);
+  }
+
+  // Directly update all existing .folder-children elements
+  // This bypasses CSS variable resolution issues
+  document.querySelectorAll('.folder-children').forEach(element => {
+    element.style.setProperty('border-left-color', color, 'important');
+  });
+}
+
+// Set up MutationObserver to apply custom color to new folder-children elements
+function setupFolderChildrenObserver() {
+  if (typeof window.folderChildrenObserver === 'undefined' && document.body) {
+    window.folderChildrenObserver = new MutationObserver((mutations) => {
+      if (!currentCustomAccentColor) return;
+
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) { // Element node
+            // Check if the node itself is folder-children
+            if (node.classList && node.classList.contains('folder-children')) {
+              node.style.setProperty('border-left-color', currentCustomAccentColor, 'important');
+            }
+            // Check descendants
+            if (node.querySelectorAll) {
+              node.querySelectorAll('.folder-children').forEach(element => {
+                element.style.setProperty('border-left-color', currentCustomAccentColor, 'important');
+              });
+            }
+          }
+        });
+
+        // Also check for class changes (when .show is added)
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          const target = mutation.target;
+          if (target.classList && target.classList.contains('folder-children')) {
+            target.style.setProperty('border-left-color', currentCustomAccentColor, 'important');
+          }
+        }
+      });
+    });
+
+    // Start observing
+    window.folderChildrenObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class']
+    });
+  }
+}
+
+// Call setup when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupFolderChildrenObserver);
+} else {
+  setupFolderChildrenObserver();
+}
+
 // Apply theme
 function applyTheme() {
   // Remove all theme classes
@@ -555,6 +698,12 @@ function applyTheme() {
 
   // Add current theme class
   document.body.classList.add(theme);
+
+  // Reapply custom accent color if one is saved
+  const savedColor = localStorage.getItem('customAccentColor');
+  if (savedColor) {
+    applyCustomAccentColor(savedColor);
+  }
 }
 
 // Set theme
@@ -613,6 +762,327 @@ function loadZoom() {
     applyZoom();
     updateZoomDisplay();
   });
+}
+
+// Load and apply GUI scale
+function loadGuiScale() {
+  const savedScale = localStorage.getItem('guiScale');
+  guiScale = savedScale ? parseInt(savedScale) : 100;
+  applyGuiScale();
+  if (guiScaleSelect) {
+    guiScaleSelect.value = guiScale;
+  }
+}
+
+// Apply GUI scale to header, toolbar, and filter elements
+function applyGuiScale() {
+  const scaleFactor = guiScale / 100;
+  const elements = [
+    document.querySelector('.header'),
+    document.getElementById('collapsibleHeader'),
+    document.getElementById('filterBar'),
+    document.getElementById('displayBar'),
+    document.getElementById('scanStatusBar')
+  ];
+
+  elements.forEach(element => {
+    if (element) {
+      element.style.zoom = scaleFactor;
+    }
+  });
+}
+
+// Load start folder preference
+async function loadStartFolder() {
+  if (isPreviewMode) {
+    startFolderId = null;
+    return;
+  }
+
+  try {
+    const result = await safeStorage.get('startFolderId');
+    startFolderId = result.startFolderId || null;
+    console.log(`Loaded start folder: ${startFolderId || 'Root'}`);
+  } catch (error) {
+    console.error('Error loading start folder preference:', error);
+    startFolderId = null;
+  }
+}
+
+// Populate start folder dropdown with all available folders
+function populateStartFolderDropdown() {
+  if (!startFolderSelect) return;
+
+  // Get all folders from bookmark tree
+  const folders = getAllFolders(bookmarkTree);
+
+  // Clear existing options except the first one (Root)
+  startFolderSelect.innerHTML = '<option value="">All Bookmarks (Root)</option>';
+
+  // Add folder options
+  folders.forEach(folder => {
+    const option = document.createElement('option');
+    option.value = folder.id;
+    option.textContent = folder.title;
+    startFolderSelect.appendChild(option);
+  });
+
+  // Set selected value
+  if (startFolderId) {
+    startFolderSelect.value = startFolderId;
+  }
+}
+
+// Expand to start folder on load
+async function expandToStartFolder() {
+  if (!startFolderId) return;
+
+  // Find the path to this folder (all parent folders)
+  const pathToFolder = [];
+  function findPath(nodes, targetId, path = []) {
+    for (const node of nodes) {
+      if (node.id === targetId) {
+        return [...path, node.id];
+      }
+      if (node.children) {
+        const found = findPath(node.children, targetId, [...path, node.id]);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const path = findPath(bookmarkTree, startFolderId);
+  if (path) {
+    // Expand all folders in the path
+    path.forEach(folderId => {
+      expandedFolders.add(folderId);
+    });
+  }
+}
+
+// Load and apply custom background image
+// Apply background image with all settings
+function applyBackgroundImage(imageData, opacity, blur, size, positionX, positionY, scale) {
+  if (imageData) {
+    // Create or update background overlay
+    let bgOverlay = document.getElementById('background-overlay');
+    if (!bgOverlay) {
+      bgOverlay = document.createElement('div');
+      bgOverlay.id = 'background-overlay';
+      bgOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        pointer-events: none;
+        background-repeat: no-repeat;
+      `;
+      document.body.insertBefore(bgOverlay, document.body.firstChild);
+
+      // Make sure container has higher z-index
+      const content = document.querySelector('.content');
+      if (content && !content.style.position) {
+        content.style.position = 'relative';
+        content.style.zIndex = '1';
+      }
+
+      // Make sure status bar has higher z-index
+      const statusBar = document.getElementById('scanStatusBar');
+      if (statusBar) {
+        statusBar.style.position = 'relative';
+        statusBar.style.zIndex = '2';
+      }
+    }
+
+    bgOverlay.style.backgroundImage = `url(${imageData})`;
+    bgOverlay.style.opacity = opacity / 100;
+    bgOverlay.style.filter = `blur(${blur}px)`;
+    bgOverlay.style.backgroundSize = size || 'cover';
+    bgOverlay.style.backgroundPosition = `${positionX || 50}% ${positionY || 50}%`;
+
+    // Apply scale by using transform
+    if (scale && scale != 100) {
+      const scalePercent = scale / 100;
+      bgOverlay.style.transform = `scale(${scalePercent})`;
+      bgOverlay.style.transformOrigin = 'center center';
+    } else {
+      bgOverlay.style.transform = 'none';
+      bgOverlay.style.transformOrigin = 'center center';
+    }
+  } else {
+    // Remove background overlay
+    const bgOverlay = document.getElementById('background-overlay');
+    if (bgOverlay) {
+      bgOverlay.remove();
+    }
+  }
+}
+
+function loadSavedBackgroundImage() {
+  const savedImage = localStorage.getItem('backgroundImage');
+  const savedOpacity = localStorage.getItem('backgroundOpacity');
+  const savedBlur = localStorage.getItem('backgroundBlur');
+  const savedSize = localStorage.getItem('backgroundSize');
+  const savedPositionX = localStorage.getItem('backgroundPositionX');
+  const savedPositionY = localStorage.getItem('backgroundPositionY');
+  const savedScale = localStorage.getItem('backgroundScale');
+
+  if (savedOpacity) {
+    backgroundOpacitySlider.value = savedOpacity;
+    opacityValue.textContent = `${savedOpacity}%`;
+  }
+  if (savedBlur) {
+    backgroundBlurSlider.value = savedBlur;
+    blurValue.textContent = `${savedBlur}px`;
+  }
+  if (savedSize) {
+    backgroundSizeSelect.value = savedSize;
+  }
+  if (savedScale) {
+    backgroundScaleSlider.value = savedScale;
+    scaleValue.textContent = `${savedScale}%`;
+  }
+
+  if (savedImage) {
+    applyBackgroundImage(
+      savedImage,
+      savedOpacity || 100,
+      savedBlur || 0,
+      savedSize || 'contain',
+      savedPositionX || 50,
+      savedPositionY || 50,
+      savedScale || 200
+    );
+  }
+}
+
+function loadBackgroundImage() {
+  loadSavedBackgroundImage();
+}
+
+// Apply container opacity to bookmark items
+function applyContainerOpacity(opacity) {
+  const opacityValue = opacity / 100;
+  document.documentElement.style.setProperty('--bookmark-container-opacity', opacityValue);
+}
+
+// Load saved container opacity
+function loadContainerOpacity() {
+  if (!containerOpacitySlider) return;
+  const savedOpacity = localStorage.getItem('containerOpacity');
+  if (savedOpacity) {
+    containerOpacitySlider.value = savedOpacity;
+    containerOpacityValue.textContent = `${savedOpacity}%`;
+    applyContainerOpacity(savedOpacity);
+  } else {
+    applyContainerOpacity(100);
+  }
+}
+
+// Apply dark text mode
+function applyDarkTextMode(enabled) {
+  if (enabled) {
+    document.body.classList.add('dark-text-mode');
+  } else {
+    document.body.classList.remove('dark-text-mode');
+  }
+}
+
+// Load saved dark text mode preference
+function loadDarkTextMode() {
+  if (!darkTextToggle) return;
+  const savedMode = localStorage.getItem('darkTextMode');
+  const isEnabled = savedMode === 'true';
+  darkTextToggle.checked = isEnabled;
+  applyDarkTextMode(isEnabled);
+}
+
+// Apply custom text color
+function applyCustomTextColor(color) {
+  // Remove existing custom text color style if it exists
+  let styleTag = document.getElementById('custom-text-color-style');
+  if (styleTag) {
+    styleTag.remove();
+  }
+
+  // Inject a style tag with the custom text color
+  // Use high specificity selectors to override dark-text-mode styles
+  styleTag = document.createElement('style');
+  styleTag.id = 'custom-text-color-style';
+  styleTag.textContent = `
+    body .bookmark-title,
+    body .folder-title,
+    body.dark-text-mode .bookmark-title,
+    body.dark-text-mode .folder-title,
+    body.blue-dark.dark-text-mode .bookmark-title,
+    body.blue-dark.dark-text-mode .folder-title,
+    body.dark.dark-text-mode .bookmark-title,
+    body.dark.dark-text-mode .folder-title,
+    body.light.dark-text-mode .bookmark-title,
+    body.light.dark-text-mode .folder-title {
+      color: ${color} !important;
+    }
+
+    body .bookmark-url,
+    body.dark-text-mode .bookmark-url {
+      color: ${color} !important;
+      opacity: 0.7;
+    }
+  `;
+  document.head.appendChild(styleTag);
+}
+
+// Load saved custom text color
+function loadCustomTextColor() {
+  if (!textColorPicker) return;
+  const savedColor = localStorage.getItem('customTextColor');
+  if (savedColor) {
+    textColorPicker.value = savedColor;
+    applyCustomTextColor(savedColor);
+  } else {
+    textColorPicker.value = '#e8e8e8'; // Light gray default - works with Firefox color picker
+  }
+}
+
+// Reset custom text color
+function resetCustomTextColor() {
+  // Remove the custom style
+  const styleTag = document.getElementById('custom-text-color-style');
+  if (styleTag) {
+    styleTag.remove();
+  }
+  localStorage.removeItem('customTextColor');
+}
+
+// Remove URL from whitelist
+async function removeFromWhitelist(url) {
+  whitelistedUrls.delete(url);
+  await saveWhitelist();
+
+  // Recheck affected bookmarks
+  const affectedBookmarks = bookmarkTree.filter(item =>
+    !item.children && item.url && new URL(item.url).hostname === new URL(url).hostname
+  );
+
+  if (affectedBookmarks.length > 0) {
+    console.log(`Rechecking ${affectedBookmarks.length} bookmarks after removing ${url} from whitelist`);
+    for (const bookmark of affectedBookmarks) {
+      // Clear cached safety status
+      const cached = await safeStorage.get(bookmark.url);
+      if (cached[bookmark.url]) {
+        delete cached[bookmark.url].safety;
+        await safeStorage.set({ [bookmark.url]: cached[bookmark.url] });
+      }
+      // Recheck
+      if (safetyCheckingEnabled) {
+        await checkUrlSafety(bookmark);
+      }
+    }
+    renderBookmarks();
+  }
 }
 
 // Load checking settings from localStorage
@@ -708,6 +1178,8 @@ async function loadBookmarks() {
     console.log('Loaded bookmarks:', bookmarkTree);
     // Clear checked bookmarks when loading fresh data
     checkedBookmarks.clear();
+    // Update start folder dropdown with current folders
+    populateStartFolderDropdown();
   } catch (error) {
     console.error('Error loading bookmarks:', error);
     showError('Failed to load bookmarks');
@@ -1336,8 +1808,24 @@ Not in whitelist or blacklist" data-status-message="${escapedMessage}">
           <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12.5,7V12.5H11V7H12.5M12.5,14V15.5H11V14H12.5Z"/>
         </svg>
       </span>
+    `,
+    'whitelisted': `
+      <span class="shield-indicator shield-whitelisted clickable-status" title="Security Check: Whitelisted
+
+✓ Manually trusted by user
+✓ Bypasses security checks" data-status-message="${escapedMessage}">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24" style="filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));">
+          <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.18L16.59,7.59L18,9L10,17Z" fill="#ffffff"/>
+        </svg>
+      </span>
     `
   };
+
+  // Check if whitelisted
+  const isWhitelisted = safetySources && safetySources.includes('Whitelisted by user');
+  if (isWhitelisted) {
+    return shieldSvgs['whitelisted'];
+  }
 
   return shieldSvgs[safetyStatus] || shieldSvgs['unknown'];
 }
@@ -1515,13 +2003,23 @@ function createBookmarkElement(bookmark) {
   const safetySources = bookmark.safetySources || [];
 
   // Build status indicators HTML based on display options
-  // Shield (safety) on top, chain (link status) below
   let statusIndicatorsHtml = '';
   if (displayOptions.safetyStatus) {
     statusIndicatorsHtml += getShieldHtml(safetyStatus, bookmark.url, safetySources);
   }
   if (displayOptions.liveStatus) {
     statusIndicatorsHtml += getStatusDotHtml(linkStatus);
+  }
+
+  // Also build separate shield and chainlink for grid view
+  let shieldHtml = '';
+  if (displayOptions.safetyStatus) {
+    shieldHtml = getShieldHtml(safetyStatus, bookmark.url, safetySources);
+  }
+
+  let linkStatusHtml = '';
+  if (displayOptions.liveStatus) {
+    linkStatusHtml = getStatusDotHtml(linkStatus);
   }
 
   // Build favicon HTML based on display options
@@ -1550,6 +2048,11 @@ function createBookmarkElement(bookmark) {
       ${statusIndicatorsHtml}
     </div>
     ${faviconHtml}
+    <div class="bookmark-top-row">
+      ${shieldHtml}
+      ${faviconHtml}
+      ${linkStatusHtml}
+    </div>
     <div class="bookmark-info">
       ${bookmarkInfoHtml}
     </div>
@@ -1665,6 +2168,7 @@ function createBookmarkElement(bookmark) {
         e.target.closest('.bookmark-actions') ||
         e.target.closest('.bookmark-preview-container') ||
         e.target.closest('.status-indicators') ||
+        e.target.closest('.bookmark-top-row') ||
         e.target.closest('.item-checkbox')) {
       return;
     }
@@ -2176,8 +2680,13 @@ function repositionMenuIfNeeded(menu, parentElement) {
     const parentRect = parentElement.getBoundingClientRect();
     const menuHeight = menuRect.height;
 
+    // Get toolbar height to ensure menus don't extend behind it
+    const toolbar = document.querySelector('.toolbar');
+    const toolbarHeight = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+
     // Calculate available space above and below the parent element
-    const spaceAbove = parentRect.top;
+    // Space above should not include area behind toolbar
+    const spaceAbove = parentRect.top - toolbarHeight;
     const spaceBelow = viewportHeight - parentRect.bottom;
 
     // Reset styles
@@ -2229,13 +2738,21 @@ function repositionMenuIfNeeded(menu, parentElement) {
     // Final safety check - ensure menu is within viewport after positioning
     requestAnimationFrame(() => {
       const finalRect = menu.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
 
-      // Check if menu extends beyond top of viewport
-      if (finalRect.top < 0) {
-        const overflow = Math.abs(finalRect.top);
+      // Check if menu extends behind toolbar at top
+      if (finalRect.top < toolbarHeight) {
+        const overflow = toolbarHeight - finalRect.top;
         const currentMaxHeight = parseInt(menu.style.maxHeight) || finalRect.height;
         menu.style.maxHeight = `${currentMaxHeight - overflow - 8}px`;
         menu.style.overflowY = 'auto';
+        // Reposition menu to start just below toolbar if positioned above
+        if (positionAbove) {
+          menu.style.top = `${toolbarHeight}px`;
+          menu.style.bottom = 'auto';
+          menu.style.position = 'fixed';
+        }
       }
 
       // Check if menu extends beyond bottom of viewport
@@ -2244,6 +2761,26 @@ function repositionMenuIfNeeded(menu, parentElement) {
         const currentMaxHeight = parseInt(menu.style.maxHeight) || finalRect.height;
         menu.style.maxHeight = `${currentMaxHeight - overflow - 8}px`;
         menu.style.overflowY = 'auto';
+      }
+
+      // Check if menu extends beyond left edge
+      if (finalRect.left < margin) {
+        menu.style.left = `${margin - parentRect.left}px`;
+        menu.style.right = 'auto';
+      }
+
+      // Check if menu extends beyond right edge
+      if (finalRect.right > viewportWidth - margin) {
+        // Position menu so its right edge is at viewport - margin
+        menu.style.left = 'auto';
+        menu.style.right = `${parentRect.right - (viewportWidth - margin)}px`;
+      }
+
+      // Ensure menu width doesn't exceed viewport width minus margins
+      const maxWidth = viewportWidth - (margin * 2);
+      if (finalRect.width > maxWidth) {
+        menu.style.maxWidth = `${maxWidth}px`;
+        menu.style.overflowX = 'hidden';
       }
     });
   });
@@ -2597,6 +3134,42 @@ function adjustDropdownPosition(dropdown) {
   });
 }
 
+// Position dropdown menu with fixed positioning and overflow detection
+function positionFixedDropdown(dropdown, button) {
+  if (!dropdown || !button) return;
+
+  const buttonRect = button.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  // Set max width to prevent horizontal overflow
+  dropdown.style.maxWidth = `${viewportWidth - 16}px`;
+
+  // Position below button by default
+  dropdown.style.position = 'fixed';
+  dropdown.style.top = `${buttonRect.bottom + 4}px`;
+  dropdown.style.right = `${viewportWidth - buttonRect.right}px`;
+  dropdown.style.zIndex = '99999';
+
+  // Wait for next frame to check if menu fits
+  requestAnimationFrame(() => {
+    const dropdownRect = dropdown.getBoundingClientRect();
+
+    // Check if menu overflows bottom
+    if (dropdownRect.bottom > viewportHeight - 8) {
+      // Position above button instead
+      dropdown.style.top = 'auto';
+      dropdown.style.bottom = `${viewportHeight - buttonRect.top + 4}px`;
+    }
+
+    // Check horizontal overflow
+    if (dropdownRect.left < 8) {
+      // Constrain width if needed
+      dropdown.style.maxWidth = `${buttonRect.right - 8}px`;
+    }
+  });
+}
+
 // Close all open menus
 function closeAllMenus() {
   openMenuBookmarkId = null; // Clear tracked menu state
@@ -2610,10 +3183,24 @@ function closeAllMenus() {
     menu.style.maxHeight = '';
     menu.style.overflowY = '';
   });
-  settingsMenu.classList.remove('show');
-  themeMenu.classList.remove('show');
-  viewMenu.classList.remove('show');
-  zoomMenu.classList.remove('show');
+
+  // Close and reset toolbar menus
+  [settingsMenu, themeMenu, viewMenu, zoomMenu].forEach(menu => {
+    if (menu) {
+      menu.classList.remove('show');
+      // Delay resetting positioning styles until after the close transition completes
+      setTimeout(() => {
+        if (!menu.classList.contains('show')) {
+          menu.style.position = '';
+          menu.style.top = '';
+          menu.style.bottom = '';
+          menu.style.right = '';
+          menu.style.maxWidth = '';
+          menu.style.zIndex = '';
+        }
+      }, 200); // Match CSS transition duration
+    }
+  });
 }
 
 // Check link status using background script
@@ -3510,7 +4097,7 @@ function matchesFilter(bookmark) {
 
   // Separate filters by category
   const linkFilters = activeFilters.filter(f => ['live', 'parked', 'dead'].includes(f));
-  const safetyFilters = activeFilters.filter(f => ['safe', 'suspicious', 'unsafe'].includes(f));
+  const safetyFilters = activeFilters.filter(f => ['safe', 'suspicious', 'unsafe', 'whitelisted'].includes(f));
 
   // Check link status (OR within category)
   let matchesLink = true;
@@ -3533,6 +4120,7 @@ function matchesFilter(bookmark) {
         case 'safe': return safetyStatus === 'safe';
         case 'suspicious': return safetyStatus === 'warning';
         case 'unsafe': return safetyStatus === 'unsafe';
+        case 'whitelisted': return bookmark.safetySources && bookmark.safetySources.includes('Whitelisted by user');
         default: return false;
       }
     });
@@ -3554,6 +4142,36 @@ function countBookmarks(folder) {
     }
     return count;
   }, 0);
+}
+
+// Get all folders recursively for start folder dropdown
+function getAllFolders(nodes, depth = 0, folders = []) {
+  nodes.forEach(node => {
+    if (node.children) {
+      const indent = '  '.repeat(depth);
+      folders.push({
+        id: node.id,
+        title: indent + (node.title || 'Unnamed Folder'),
+        depth: depth
+      });
+      getAllFolders(node.children, depth + 1, folders);
+    }
+  });
+  return folders;
+}
+
+// Find a folder by ID in the bookmark tree
+function findFolderById(nodes, folderId) {
+  for (const node of nodes) {
+    if (node.id === folderId && node.children) {
+      return node;
+    }
+    if (node.children) {
+      const found = findFolderById(node.children, folderId);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 // Get favicon URL
@@ -4495,14 +5113,45 @@ function setupEventListeners() {
   // Theme menu
   themeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    themeMenu.classList.toggle('show');
-    if (themeMenu.classList.contains('show')) {
-      adjustDropdownPosition(themeMenu);
+    const wasOpen = themeMenu.classList.contains('show');
+    closeAllMenus();
+    if (!wasOpen) {
+      menuJustOpened = true;
+      themeMenu.classList.add('show');
+
+      // Calculate available width and position menu within sidebar constraints
+      const buttonRect = themeBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
+
+      // Set max-width to fit within margins
+      const maxWidth = viewportWidth - (margin * 2);
+      themeMenu.style.maxWidth = `${maxWidth}px`;
+      themeMenu.style.position = 'fixed';
+      themeMenu.style.top = `${buttonRect.bottom + 4}px`;
+
+      // Position menu to stay within margins on both sides
+      // Start by aligning with button, then adjust if it would overflow
+      let leftPos = buttonRect.left;
+
+      // Ensure menu doesn't overflow left edge
+      if (leftPos < margin) {
+        leftPos = margin;
+      }
+
+      // Ensure menu doesn't overflow right edge
+      // (menu will be maxWidth or less, so check if leftPos + maxWidth exceeds viewport)
+      if (leftPos + maxWidth > viewportWidth - margin) {
+        leftPos = viewportWidth - margin - maxWidth;
+      }
+
+      themeMenu.style.left = `${leftPos}px`;
+      themeMenu.style.right = 'auto';
     }
   });
 
   // Theme selection
-  themeMenu.querySelectorAll('.action-btn').forEach(btn => {
+  themeMenu.querySelectorAll('[data-theme]').forEach(btn => {
     btn.addEventListener('click', () => {
       const selectedTheme = btn.dataset.theme;
       setTheme(selectedTheme);
@@ -4513,9 +5162,38 @@ function setupEventListeners() {
   // View menu
   viewBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    viewMenu.classList.toggle('show');
-    if (viewMenu.classList.contains('show')) {
-      adjustDropdownPosition(viewMenu);
+    const wasOpen = viewMenu.classList.contains('show');
+    closeAllMenus();
+    if (!wasOpen) {
+      menuJustOpened = true;
+      viewMenu.classList.add('show');
+
+      // Calculate available width and position menu within sidebar constraints
+      const buttonRect = viewBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
+
+      // Set max-width to fit within margins
+      const maxWidth = viewportWidth - (margin * 2);
+      viewMenu.style.maxWidth = `${maxWidth}px`;
+      viewMenu.style.position = 'fixed';
+      viewMenu.style.top = `${buttonRect.bottom + 4}px`;
+
+      // Position menu to stay within margins on both sides
+      let leftPos = buttonRect.left;
+
+      // Ensure menu doesn't overflow left edge
+      if (leftPos < margin) {
+        leftPos = margin;
+      }
+
+      // Ensure menu doesn't overflow right edge
+      if (leftPos + maxWidth > viewportWidth - margin) {
+        leftPos = viewportWidth - margin - maxWidth;
+      }
+
+      viewMenu.style.left = `${leftPos}px`;
+      viewMenu.style.right = 'auto';
     }
   });
 
@@ -4531,9 +5209,38 @@ function setupEventListeners() {
   // Zoom menu
   zoomBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    zoomMenu.classList.toggle('show');
-    if (zoomMenu.classList.contains('show')) {
-      adjustDropdownPosition(zoomMenu);
+    const wasOpen = zoomMenu.classList.contains('show');
+    closeAllMenus();
+    if (!wasOpen) {
+      menuJustOpened = true;
+      zoomMenu.classList.add('show');
+
+      // Calculate available width and position menu within sidebar constraints
+      const buttonRect = zoomBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
+
+      // Set max-width to fit within margins
+      const maxWidth = viewportWidth - (margin * 2);
+      zoomMenu.style.maxWidth = `${maxWidth}px`;
+      zoomMenu.style.position = 'fixed';
+      zoomMenu.style.top = `${buttonRect.bottom + 4}px`;
+
+      // Position menu to stay within margins on both sides
+      let leftPos = buttonRect.left;
+
+      // Ensure menu doesn't overflow left edge
+      if (leftPos < margin) {
+        leftPos = margin;
+      }
+
+      // Ensure menu doesn't overflow right edge
+      if (leftPos + maxWidth > viewportWidth - margin) {
+        leftPos = viewportWidth - margin - maxWidth;
+      }
+
+      zoomMenu.style.left = `${leftPos}px`;
+      zoomMenu.style.right = 'auto';
     }
   });
 
@@ -4546,9 +5253,39 @@ function setupEventListeners() {
   // Settings menu
   settingsBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    settingsMenu.classList.toggle('show');
-    if (settingsMenu.classList.contains('show')) {
-      adjustDropdownPosition(settingsMenu);
+    const wasOpen = settingsMenu.classList.contains('show');
+    closeAllMenus();
+    if (!wasOpen) {
+      menuJustOpened = true;
+      settingsMenu.classList.add('show');
+
+      // Calculate available width and position menu within sidebar constraints
+      const buttonRect = settingsBtn.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const margin = 16; // Safety margin from edges
+
+      // Set max-width to fit within margins
+      const maxWidth = viewportWidth - (margin * 2);
+      settingsMenu.style.maxWidth = `${maxWidth}px`;
+      settingsMenu.style.position = 'fixed';
+      settingsMenu.style.top = `${buttonRect.bottom + 4}px`;
+
+      // Position menu to stay within margins on both sides
+      let leftPos = buttonRect.left;
+
+      // Ensure menu doesn't overflow left edge
+      if (leftPos < margin) {
+        leftPos = margin;
+      }
+
+      // Ensure menu doesn't overflow right edge
+      if (leftPos + maxWidth > viewportWidth - margin) {
+        leftPos = viewportWidth - margin - maxWidth;
+      }
+
+      settingsMenu.style.left = `${leftPos}px`;
+      settingsMenu.style.right = 'auto';
+
       // Update cache size display when menu opens
       await updateCacheSizeDisplay();
     }
@@ -4584,6 +5321,70 @@ function setupEventListeners() {
     }
   });
 
+  // Start folder setting
+  startFolderSelect.addEventListener('change', async (e) => {
+    startFolderId = e.target.value || null;
+    await safeStorage.set({ startFolderId: startFolderId });
+    console.log(`Start folder set to: ${startFolderId || 'Root'}`);
+
+    // Clear expanded folders and expand to new start folder
+    expandedFolders.clear();
+    await expandToStartFolder();
+    renderBookmarks();
+  });
+
+  // Container opacity slider
+  if (containerOpacitySlider) {
+    containerOpacitySlider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      const opacity = e.target.value;
+      containerOpacityValue.textContent = `${opacity}%`;
+      localStorage.setItem('containerOpacity', opacity);
+      applyContainerOpacity(opacity);
+    });
+
+    // Prevent menu from closing when clicking the slider
+    containerOpacitySlider.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  // Dark text toggle
+  if (darkTextToggle) {
+    darkTextToggle.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const isEnabled = e.target.checked;
+      localStorage.setItem('darkTextMode', isEnabled);
+      applyDarkTextMode(isEnabled);
+    });
+
+    // Prevent menu from closing when clicking the checkbox
+    darkTextToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  // Custom text color picker
+  if (textColorPicker) {
+    textColorPicker.addEventListener('input', (e) => {
+      const color = e.target.value;
+      applyCustomTextColor(color);
+      localStorage.setItem('customTextColor', color);
+    });
+  }
+
+  // Reset text color button
+  if (resetTextColorBtn) {
+    resetTextColorBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      resetCustomTextColor();
+      textColorPicker.value = '#e8e8e8'; // Light gray default
+    });
+  }
+
+  // Initialize text color on page load (matches accent color pattern - load after event listeners)
+  loadCustomTextColor();
+
   // Link checking toggle
   const enableLinkCheckingToggle = document.getElementById('enableLinkChecking');
   enableLinkCheckingToggle.addEventListener('change', (e) => {
@@ -4600,11 +5401,324 @@ function setupEventListeners() {
     console.log(`Safety checking ${safetyCheckingEnabled ? 'enabled' : 'disabled'}`);
   });
 
-  // Rescan all bookmarks
-  rescanBookmarksBtn.addEventListener('click', async () => {
-    await rescanAllBookmarks();
-    closeAllMenus();
+  // Accent color picker
+  accentColorPicker.addEventListener('input', (e) => {
+    const color = e.target.value;
+    applyAccentColor(color);
+    localStorage.setItem('customAccentColor', color);
   });
+
+  // Reset accent color
+  resetAccentColorBtn.addEventListener('click', () => {
+    const defaultColor = getDefaultAccentColor();
+    accentColorPicker.value = defaultColor;
+    applyAccentColor(defaultColor);
+    localStorage.removeItem('customAccentColor');
+  });
+
+  // Load saved accent color on startup
+  function loadSavedAccentColor() {
+    const savedColor = localStorage.getItem('customAccentColor');
+    if (savedColor) {
+      accentColorPicker.value = savedColor;
+      applyAccentColor(savedColor);
+    } else {
+      const defaultColor = getDefaultAccentColor();
+      accentColorPicker.value = defaultColor;
+    }
+  }
+
+  // Get default accent color based on current theme
+  function getDefaultAccentColor() {
+    const isDarkMode = document.body.classList.contains('blue-dark') || document.body.classList.contains('dark');
+    if (document.body.classList.contains('dark')) {
+      return '#bb86fc'; // Pure dark theme purple
+    } else if (isDarkMode) {
+      return '#818cf8'; // Blue dark theme
+    } else {
+      return '#6366f1'; // Light theme default
+    }
+  }
+
+  // Apply accent color by calling the global function
+  function applyAccentColor(color) {
+    applyCustomAccentColor(color);
+  }
+
+  // Initialize accent color on page load
+  loadSavedAccentColor();
+
+  // Background image controls
+  let isDragging = false;
+
+  // Choose background image
+  chooseBackgroundImageBtn.addEventListener('click', () => {
+    backgroundImagePicker.click();
+  });
+
+  backgroundImagePicker.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const imageData = event.target.result;
+        localStorage.setItem('backgroundImage', imageData);
+        applyBackgroundImage(
+          imageData,
+          backgroundOpacitySlider.value,
+          backgroundBlurSlider.value,
+          backgroundSizeSelect.value,
+          localStorage.getItem('backgroundPositionX') || 50,
+          localStorage.getItem('backgroundPositionY') || 50,
+          backgroundScaleSlider.value
+        );
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // Remove background image
+  removeBackgroundImageBtn.addEventListener('click', () => {
+    localStorage.removeItem('backgroundImage');
+    localStorage.removeItem('backgroundOpacity');
+    localStorage.removeItem('backgroundBlur');
+    localStorage.removeItem('backgroundSize');
+    localStorage.removeItem('backgroundPositionX');
+    localStorage.removeItem('backgroundPositionY');
+    localStorage.removeItem('backgroundScale');
+    applyBackgroundImage(null);
+    backgroundOpacitySlider.value = 100;
+    opacityValue.textContent = '100%';
+    backgroundBlurSlider.value = 0;
+    blurValue.textContent = '0px';
+    backgroundSizeSelect.value = 'contain';
+    backgroundScaleSlider.value = 200;
+    scaleValue.textContent = '200%';
+  });
+
+  // Opacity slider
+  backgroundOpacitySlider.addEventListener('input', (e) => {
+    const opacity = e.target.value;
+    opacityValue.textContent = `${opacity}%`;
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (savedImage) {
+      localStorage.setItem('backgroundOpacity', opacity);
+      applyBackgroundImage(
+        savedImage,
+        opacity,
+        backgroundBlurSlider.value,
+        backgroundSizeSelect.value,
+        localStorage.getItem('backgroundPositionX') || 50,
+        localStorage.getItem('backgroundPositionY') || 50,
+        backgroundScaleSlider.value
+      );
+    }
+  });
+
+  // Blur slider
+  backgroundBlurSlider.addEventListener('input', (e) => {
+    const blur = e.target.value;
+    blurValue.textContent = `${blur}px`;
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (savedImage) {
+      localStorage.setItem('backgroundBlur', blur);
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        blur,
+        backgroundSizeSelect.value,
+        localStorage.getItem('backgroundPositionX') || 50,
+        localStorage.getItem('backgroundPositionY') || 50,
+        backgroundScaleSlider.value
+      );
+    }
+  });
+
+  // Size select
+  backgroundSizeSelect.addEventListener('change', (e) => {
+    const size = e.target.value;
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (savedImage) {
+      localStorage.setItem('backgroundSize', size);
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        backgroundBlurSlider.value,
+        size,
+        localStorage.getItem('backgroundPositionX') || 50,
+        localStorage.getItem('backgroundPositionY') || 50,
+        backgroundScaleSlider.value
+      );
+    }
+  });
+
+  // Scale slider
+  backgroundScaleSlider.addEventListener('input', (e) => {
+    const scale = e.target.value;
+    scaleValue.textContent = `${scale}%`;
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (savedImage) {
+      localStorage.setItem('backgroundScale', scale);
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        backgroundBlurSlider.value,
+        backgroundSizeSelect.value,
+        localStorage.getItem('backgroundPositionX') || 50,
+        localStorage.getItem('backgroundPositionY') || 50,
+        scale
+      );
+    }
+  });
+
+  // Reposition background (drag mode)
+  repositionBackgroundBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const savedImage = localStorage.getItem('backgroundImage');
+    if (!savedImage) {
+      return;
+    }
+
+    const bgOverlay = document.getElementById('background-overlay');
+    if (!bgOverlay) return;
+
+    // Reload current position from localStorage when entering drag mode
+    let currentPosX = parseFloat(localStorage.getItem('backgroundPositionX')) || 50;
+    let currentPosY = parseFloat(localStorage.getItem('backgroundPositionY')) || 50;
+    let dragStartX = 0;
+    let dragStartY = 0;
+
+    // Show the drag mode overlay and close all menus
+    dragModeOverlay.style.display = 'flex';
+    closeAllMenus();
+
+    // Enable dragging - raise z-index above content (50) but below header (100)
+    bgOverlay.style.cursor = 'move';
+    bgOverlay.style.pointerEvents = 'auto';
+    bgOverlay.style.zIndex = '50';
+
+    // Keep banner at same z-index as header
+    dragModeOverlay.style.zIndex = '100';
+
+    const handleMouseDown = (event) => {
+      // Don't start dragging if clicking on the exit button
+      if (event.target === closeDragModeBtn || closeDragModeBtn.contains(event.target)) {
+        return;
+      }
+
+      isDragging = true;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handleMouseMove = (event) => {
+      if (!isDragging) return;
+
+      const deltaX = event.clientX - dragStartX;
+      const deltaY = event.clientY - dragStartY;
+
+      // Convert pixel movement to percentage based on window size
+      const percentX = (deltaX / window.innerWidth) * 100;
+      const percentY = (deltaY / window.innerHeight) * 100;
+
+      // Update positions with stricter limits (-50% to 150%)
+      currentPosX = Math.max(-50, Math.min(150, currentPosX + percentX));
+      currentPosY = Math.max(-50, Math.min(150, currentPosY + percentY));
+
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        backgroundBlurSlider.value,
+        backgroundSizeSelect.value,
+        currentPosX,
+        currentPosY,
+        backgroundScaleSlider.value
+      );
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging) {
+        isDragging = false;
+        localStorage.setItem('backgroundPositionX', currentPosX);
+        localStorage.setItem('backgroundPositionY', currentPosY);
+      }
+    };
+
+    const handleWheel = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Get current scale from slider
+      let currentScale = parseFloat(backgroundScaleSlider.value);
+
+      // Adjust scale based on scroll direction
+      const scaleChange = event.deltaY > 0 ? -5 : 5;
+      currentScale = Math.max(10, Math.min(1000, currentScale + scaleChange));
+
+      // Update slider and display
+      backgroundScaleSlider.value = currentScale;
+      scaleValue.textContent = `${currentScale}%`;
+
+      // Save to localStorage
+      localStorage.setItem('backgroundScale', currentScale);
+
+      // Apply the new scale
+      applyBackgroundImage(
+        savedImage,
+        backgroundOpacitySlider.value,
+        backgroundBlurSlider.value,
+        backgroundSizeSelect.value,
+        currentPosX,
+        currentPosY,
+        currentScale
+      );
+    };
+
+    const stopDragging = () => {
+      // Hide overlay
+      dragModeOverlay.style.display = 'none';
+
+      // Reset background overlay
+      bgOverlay.style.cursor = '';
+      bgOverlay.style.pointerEvents = 'none';
+      bgOverlay.style.zIndex = '0';
+
+      // Remove event listeners
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('wheel', handleWheel);
+      closeDragModeBtn.removeEventListener('click', stopDragging);
+
+      // Save final position
+      localStorage.setItem('backgroundPositionX', currentPosX);
+      localStorage.setItem('backgroundPositionY', currentPosY);
+    };
+
+    // Listen on document instead of bgOverlay to bypass any blocking elements
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('wheel', handleWheel, { passive: false });
+
+    // Set up banner close handler
+    closeDragModeBtn.addEventListener('click', stopDragging);
+  });
+
+  // GUI Scale select
+  if (guiScaleSelect) {
+    guiScaleSelect.addEventListener('change', (e) => {
+      guiScale = parseInt(e.target.value);
+      localStorage.setItem('guiScale', guiScale.toString());
+      applyGuiScale();
+    });
+  }
 
   // Rescan all bookmarks button
   if (rescanAllBtn) {
@@ -4740,8 +5854,17 @@ function setupEventListeners() {
     headerCollapseBtn.title = 'Expand header';
   }
 
+  // Track when menus are opened to prevent immediate closing
+  let menuJustOpened = false;
+
   // Close menus when clicking outside
   document.addEventListener('click', (e) => {
+    // Don't close if menu was just opened
+    if (menuJustOpened) {
+      menuJustOpened = false;
+      return;
+    }
+
     if (!e.target.closest('.bookmark-actions') &&
         !e.target.closest('.bookmark-menu-btn') &&
         !e.target.closest('.bookmark-preview-container') &&

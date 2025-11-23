@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-1.7.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -36,6 +36,7 @@ Other bookmark tools make you choose between organization OR security. Bookmark 
 | Suspicious pattern detection | ✅ | ❌ | ❌ | ❌ |
 | No tracking/analytics | ✅ | ✅ | ✅ | ❌ |
 | Website previews | ✅ | ❌ | ❌ | ❌ |
+| Free (no premium upsell) | ✅ | ❌ | ✅ | ❌ |
 
 Stop blindly clicking old bookmarks. Know which links are dead, parked, or potentially dangerous before you visit them.
 
@@ -105,10 +106,10 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 👆 **Clickable Status Icons** - Click shield or chain icons for full status details popup
 - 🔄 **HTTP Redirect Detection** - Detects when HTTP bookmarks redirect to HTTPS
 - ✅ **Whitelist Support** - Mark trusted URLs to skip safety checks
+- ⚪ **Trusted Filter** - Filter to view only whitelisted bookmarks (white shield)
 - 📜 **Safety History** - Track status changes over time
 
 ### Privacy & Security
-- 🔒 **Private Browsing Support** - Respects incognito mode with memory-only storage
 - 🔐 **Encrypted API Keys** - AES-256-GCM encryption for stored credentials
 - 🚫 **No Tracking** - Zero analytics, no data collection
 - 🌐 **Offline Mode** - Works fully offline when external features disabled
@@ -116,9 +117,14 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 
 ### User Experience
 - 🎨 **3 Themes** - Blue Dark (default), Light, Dark
+- 🎨 **Custom Accent Colors** - Pick any color for theme customization
+- 🎨 **Bookmark Background Opacity** - Adjust bookmark background transparency (0-100%) while keeping text at full opacity
+- ✍️ **Custom Text Colors** - Visual color picker for bookmark and folder text with reset button
+- 🖼️ **Custom Backgrounds** - Upload and position your own background images
 - ⌨️ **Keyboard Navigation** - Full keyboard support with arrow keys
 - ♿ **Accessibility** - Comprehensive ARIA labels and keyboard traps
-- 🔍 **Zoom Control** - 50% - 200% zoom levels
+- 🔍 **Zoom Control** - 50% - 200% zoom levels for bookmark content
+- 📏 **GUI Scaling** - 80% - 140% scaling for interface elements
 - 📱 **Responsive Design** - Adapts to sidebar width
 
 ### Advanced Features
@@ -175,7 +181,7 @@ For development or testing purposes. **Note:** This method requires re-adding th
 - **Search:** Type in the search bar to filter by title/URL
 - **Filter by Status:** Click the filter icon to show filters:
   - **Link Status:** Live, Parked, Dead
-  - **Safety Status:** Safe, Suspicious, Unsafe
+  - **Safety Status:** Safe, Suspicious, Unsafe, Trusted (whitelisted)
 - **Multiple Filters:** Select multiple filters simultaneously
   - Filters in the same category use OR logic (e.g., Live + Dead shows both)
   - Filters across categories use AND logic (e.g., Live + Safe shows only live AND safe bookmarks)
@@ -189,15 +195,21 @@ For development or testing purposes. **Note:** This method requires re-adding th
 Click the gear icon to access:
 - **Display Options:** Toggle title, URL, status indicators, previews
 - **View Mode:** Switch between list and grid layouts
-- **Theme:** Choose from 3 themes
-- **Zoom:** Adjust interface size
+- **Default Start Folder:** Choose which folder to expand on sidebar load
 - **Cache Management:** Configure auto-clear settings
 - **API Keys:** Set up optional security API keys
 
-### Keyboard Shortcuts
+Click the theme icon to access:
+- **Theme:** Choose from 3 themes (Blue Dark, Light, Dark)
+- **Accent Color:** Customize theme accent color
+- **Bookmark Opacity:** Adjust bookmark background transparency (0-100%)
+- **Invert Text Color:** Toggle theme-aware text inversion for better contrast
+- **Text Color:** Customize bookmark text color with visual color picker
+- **Custom Background:** Upload and position your own background image
+- **Zoom:** Adjust bookmark content size (50% - 200%)
+- **GUI Scale:** Adjust interface element size (80% - 140%)
 
-#### Global
-- Sidebar toggle - Can be customized in Firefox (Settings → Extensions & Themes → Manage Extension Shortcuts)
+### Keyboard Shortcuts
 
 #### Navigation (when item selected)
 - `↑/↓` - Navigate bookmarks
@@ -213,7 +225,6 @@ Bookmark Manager Zero respects your privacy:
 - **No tracking or analytics**
 - **No advertisements**
 - **Open source** - audit the code yourself
-- **Private browsing support** - memory-only storage in incognito mode
 
 See [PRIVACY.md](PRIVACY.md) for complete privacy policy.
 
@@ -248,26 +259,21 @@ The extension checks if bookmark URLs are still accessible and categorizes them 
    - **Marketplaces**: Sedo, Dan.com, Afternic, DomainMarket, Squadhelp, BrandBucket, Undeveloped, Atom
    - **Parking Services**: Bodis, ParkingCrew, Above.com, SedoParking
 
-2. **HTTP HEAD Request**: A lightweight HEAD request is sent to the URL with a 10-second timeout
+2. **HTTP HEAD Request**: A lightweight HEAD request is sent with CORS mode to track redirects (10-second timeout)
    - No page content is downloaded
    - Credentials are omitted for privacy
+   - Falls back to no-cors mode if CORS is blocked
 
 3. **Redirect Detection**: If the URL redirects to a different domain, the final destination is checked against parking domain lists
    - Example: `example.com` → `hugedomains.com/domain/example.com` = **Parked**
    - Same-site redirects (www, HTTPS) are not flagged
 
-4. **Content Analysis**: Page HTML is analyzed for parking indicators:
-   - Strong indicators (immediately flagged): "sedo domain parking", "this domain is parked", "domain has expired"
-   - Weak indicators (require 3+ matches on small pages): "domain for sale", "buy this domain", "coming soon"
-
-5. **Response Interpretation**:
+4. **Response Interpretation**:
    - **Successful response** → Live
    - **Redirects to parking domain** → Parked
-   - **Parking content detected** → Parked
-   - **Cloudflare-protected or blocking requests** → Live
-   - **Timeout/Network Error** → Live (slow server) or Dead
+   - **Timeout/Network Error** → Dead
 
-6. **Fallback Strategy**: If HEAD fails, a GET request is attempted with the same detection logic
+5. **Fallback Strategy**: If HEAD fails, a GET request is attempted with the same redirect detection logic
 
 #### Rate Limiting
 Bookmarks are scanned in batches of 5 with a 1-second delay between batches. This prevents overwhelming your network with too many DNS requests at once.
@@ -352,7 +358,6 @@ If all above checks pass, the URL is analyzed for suspicious patterns:
 - Only URLs are sent to external services (no personal data)
 - API keys are encrypted with AES-256-GCM before storage
 - All features can be disabled in settings
-- In private browsing, cache uses memory only (no disk writes)
 
 ---
 
@@ -361,6 +366,9 @@ If all above checks pass, the URL is analyzed for suspicious patterns:
 Users can whitelist specific URLs to:
 - Skip safety checks for trusted sites
 - Override false positives
+- Whitelisted bookmarks display a white shield indicator instead of green
+- Add/remove from whitelist via bookmark context menu (right-click)
+- Use the "Trusted" filter to view all whitelisted bookmarks
 - Whitelist is stored locally and persists across sessions
 
 ## Permissions
@@ -420,7 +428,8 @@ Please report security vulnerabilities via GitHub Issues (mark as security issue
 ## Browser Compatibility
 
 - **Firefox:** ✅ Fully supported (Manifest V3)
-- **Chrome/Edge:** ❌ Not compatible (Firefox-specific APIs)
+- **Chrome:** ❌ Use [Chrome version](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Chrome)
+- **Edge:** ❌ Use [Chrome version](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Chrome) (Chromium-based)
 
 ## Roadmap
 
@@ -437,14 +446,69 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v1.5.0 (Current) - Grid View & Link Detection Improvements
+### v1.7.0 (Current) - Enhanced Theming & Menu Improvements
+
+**New Features:**
+- 🎨 **Bookmark Opacity Slider** - Control bookmark background transparency (0-100%) directly from Theme menu
+- 🌓 **Theme-Aware Text Inversion** - Intelligent text color inversion that adapts to your theme (dark text on dark themes, light text on light theme)
+- ✍️ **Custom Text Color Picker** - Full color customization for bookmark and folder text with visual color picker and reset button
+- 🎨 **Light Gray Default** - Text color defaults to light gray (#e8e8e8) which works reliably with Firefox's color picker
+- ⚡ **Real-Time Color Preview** - Color pickers apply changes instantly as you adjust colors
+
+**Improvements:**
+- 📐 **Improved Menu Positioning** - All menus (Theme, View, Zoom, Settings) now respect 16px margins from viewport edges
+- 🎯 **Enhanced Context Menu** - Bookmark context menus never extend behind toolbar, with better overflow handling
+- 📱 **Better Responsive Menus** - Menus scale properly to viewport width with increased margins for cleaner layout
+- 🎨 **Reorganized Theme Menu** - Bookmark Opacity, Invert Text Color, Accent Color, and Text Color logically grouped for easy access
+- 🎯 **Reduced Font Sizes** - Accent Color and Text Color labels now use matching 11px font size for consistency
+
+**Bug Fixes:**
+- 🐛 **Firefox Color Picker Workaround** - Fixed Firefox bug where pure white (#ffffff) prevented custom color selection by using light gray default
+- 🐛 Fixed inverted text CSS selectors (removed incorrect "theme-" prefix from class names)
+- 🐛 Fixed context menus sometimes positioning behind header/toolbar
+- 🐛 Fixed menu overflow on narrow viewports
+- 🐛 Fixed opacity affecting text readability (now only affects background via CSS pseudo-element)
+- 🐛 Fixed text color not affecting bookmark URLs (now applies to URLs in addition to titles and folder names)
+- 🐛 Fixed menu positioning calculations for edge cases
+
+**Technical Implementation:**
+- **Bookmark Opacity**: Uses CSS `::before` pseudo-element to apply opacity only to the background layer, keeping text and icons at full opacity for better readability. The opacity value is controlled via CSS variable `--bookmark-container-opacity`.
+- **Text Inversion**: Theme-aware CSS selectors apply dark text (#1a1a1a) on dark themes (blue-dark, dark) and light text (#e8e8e8) on light theme, with text-shadow for enhanced contrast.
+- **Text Color**: Uses CSS `custom-text-color-style` that persists across dynamic DOM changes. Targets `.bookmark-title`, `.folder-title`, and `.bookmark-url` elements specifically for precise color control.
+- **Firefox Color Picker**: Pure white (#ffffff) as default value prevents Firefox's native color picker from initializing the custom color gradient area. Using #e8e8e8 (light gray) works around this browser bug while remaining visually close to white. Users can still select pure white after initialization.
+
+---
+
+### v1.6.0 - UI Refinements & Custom Navigation
+
+**New Features:**
+- 📁 **Default Start Folder** - Choose which folder to auto-expand when opening the sidebar
+- ⚪ **Trusted Filter** - New filter chip to view only whitelisted bookmarks (white shield icon at far right)
+- 🎨 **Accent Color in Theme Menu** - Moved accent color picker from settings to theme menu for better organization
+- 📏 **Compact Filter Chips** - Reduced size of safety filter chips so all 4 fit on one line
+
+**Improvements:**
+- 🔄 **Streamlined Whitelist Management** - Removed whitelist panel from settings menu; use Trusted filter instead
+- 🎯 **Simplified Accent Color Picker** - Removed Done button as changes apply instantly
+- 📐 **Compact Background Settings** - Reduced size of background image controls to save screen space
+- 🎯 **Reorganized Settings** - Theme-related settings (theme, accent color, background, zoom, GUI scale) moved to theme menu
+
+**Bug Fixes:**
+- 🐛 Fixed accent color picker triggering theme switch when clicked
+- 🐛 Fixed Safe filter excluding whitelisted bookmarks (now separate Trusted filter)
+
+---
+
+### v1.5.0 - Grid View & Link Detection Improvements
 
 **New Features:**
 - 📐 **Square Card Layout** - Bookmarks display as square cards in grid view with aspect-ratio
 - 🖼️ **Preview Support** - Webpage previews visible in grid view cards
 - 📁 **Compact Folders** - Reduced spacing between collapsed folders in grid view
 - 🔧 **Fixed Column Layout** - Grid columns now properly sized with minmax(0, 1fr)
+- 🔗 **Redirect-Based Parking Detection** - Detects when URLs redirect to known parking domains
 - 🌐 **Expanded Parking Domains** - Now checks 22+ parking services (up from 10)
+- ☠️ **Dead Link Detection** - Properly flags 404, 410, and 451 responses as dead
 
 ---
 
@@ -457,7 +521,13 @@ Contributions welcome! Please:
 - 👆 **Clickable Status Icons** - Click on shield or chain to see full status details in a popup
 - 📐 **Larger Favicons** - Increased favicon size from 16px to 20px for better visibility
 - 🔧 **Context Menu Repositioning** - Menus automatically reposition to stay within viewport
+- 💾 **Improved Caching** - Cache now stores sources with status for better tooltip support
+- 📦 **Centralized Version** - Version now managed from manifest.json as single source of truth
+
+**Bug Fixes:**
 - 🐛 **Zoom Fix** - Fixed gap between content and status bar caused by CSS transform zoom
+- Fixed security warnings not showing specific pattern details
+- Improved cache to handle both old and new format for backwards compatibility
 
 ### v1.3.0 - Multiple Filters & Support
 
