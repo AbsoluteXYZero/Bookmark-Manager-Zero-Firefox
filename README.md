@@ -118,7 +118,8 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 ### User Experience
 - 🎨 **3 Themes** - Blue Dark (default), Light, Dark
 - 🎨 **Custom Accent Colors** - Pick any color for theme customization
-- ✍️ **Custom Text Colors** - Customize bookmark text color with visual color picker
+- 🎨 **Bookmark Background Opacity** - Adjust bookmark background transparency (0-100%) while keeping text at full opacity
+- ✍️ **Custom Text Colors** - Visual color picker for bookmark and folder text with reset button
 - 🖼️ **Custom Backgrounds** - Upload and position your own background images
 - ⌨️ **Keyboard Navigation** - Full keyboard support with arrow keys
 - ♿ **Accessibility** - Comprehensive ARIA labels and keyboard traps
@@ -201,6 +202,8 @@ Click the gear icon to access:
 Click the theme icon to access:
 - **Theme:** Choose from 3 themes (Blue Dark, Light, Dark)
 - **Accent Color:** Customize theme accent color
+- **Bookmark Opacity:** Adjust bookmark background transparency (0-100%)
+- **Invert Text Color:** Toggle theme-aware text inversion for better contrast
 - **Text Color:** Customize bookmark text color with visual color picker
 - **Custom Background:** Upload and position your own background image
 - **Zoom:** Adjust bookmark content size (50% - 200%)
@@ -443,23 +446,36 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v1.7.0 (Current) - Text Color Customization
+### v1.7.0 (Current) - Enhanced Theming & Menu Improvements
 
 **New Features:**
-- ✍️ **Custom Text Color Picker** - Customize bookmark and folder text color with visual color picker in Theme menu
+- 🎨 **Bookmark Opacity Slider** - Control bookmark background transparency (0-100%) directly from Theme menu
+- 🌓 **Theme-Aware Text Inversion** - Intelligent text color inversion that adapts to your theme (dark text on dark themes, light text on light theme)
+- ✍️ **Custom Text Color Picker** - Full color customization for bookmark and folder text with visual color picker and reset button
 - 🎨 **Light Gray Default** - Text color defaults to light gray (#e8e8e8) which works reliably with Firefox's color picker
-- 🔄 **Reset Text Color** - Reset button returns text to default light gray color
+- ⚡ **Real-Time Color Preview** - Color pickers apply changes instantly as you adjust colors
 
 **Improvements:**
+- 📐 **Improved Menu Positioning** - All menus (Theme, View, Zoom, Settings) now respect 16px margins from viewport edges
+- 🎯 **Enhanced Context Menu** - Bookmark context menus never extend behind toolbar, with better overflow handling
+- 📱 **Better Responsive Menus** - Menus scale properly to viewport width with increased margins for cleaner layout
+- 🎨 **Reorganized Theme Menu** - Bookmark Opacity, Invert Text Color, Accent Color, and Text Color logically grouped for easy access
 - 🎯 **Reduced Font Sizes** - Accent Color and Text Color labels now use matching 11px font size for consistency
 
 **Bug Fixes:**
 - 🐛 **Firefox Color Picker Workaround** - Fixed Firefox bug where pure white (#ffffff) prevented custom color selection by using light gray default
+- 🐛 Fixed inverted text CSS selectors (removed incorrect "theme-" prefix from class names)
+- 🐛 Fixed context menus sometimes positioning behind header/toolbar
+- 🐛 Fixed menu overflow on narrow viewports
+- 🐛 Fixed opacity affecting text readability (now only affects background via CSS pseudo-element)
+- 🐛 Fixed text color not affecting bookmark URLs (now applies to URLs in addition to titles and folder names)
+- 🐛 Fixed menu positioning calculations for edge cases
 
-**Technical Notes:**
-- Firefox's native color picker has a known issue where pure white as the default value prevents the custom color gradient area from initializing properly
-- Using #e8e8e8 (light gray) as default allows full color picker functionality while remaining visually close to white
-- Users can still select pure white if desired after the picker initializes
+**Technical Implementation:**
+- **Bookmark Opacity**: Uses CSS `::before` pseudo-element to apply opacity only to the background layer, keeping text and icons at full opacity for better readability. The opacity value is controlled via CSS variable `--bookmark-container-opacity`.
+- **Text Inversion**: Theme-aware CSS selectors apply dark text (#1a1a1a) on dark themes (blue-dark, dark) and light text (#e8e8e8) on light theme, with text-shadow for enhanced contrast.
+- **Text Color**: Uses CSS `custom-text-color-style` that persists across dynamic DOM changes. Targets `.bookmark-title`, `.folder-title`, and `.bookmark-url` elements specifically for precise color control.
+- **Firefox Color Picker**: Pure white (#ffffff) as default value prevents Firefox's native color picker from initializing the custom color gradient area. Using #e8e8e8 (light gray) works around this browser bug while remaining visually close to white. Users can still select pure white after initialization.
 
 ---
 
