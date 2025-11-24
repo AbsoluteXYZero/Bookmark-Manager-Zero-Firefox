@@ -12,7 +12,7 @@
 
 <br>
 
-**[🦊 Get Addon on Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/bookmark-manager-zero/)**
+[![Get the Addon](https://blog.mozilla.org/addons/files/2020/04/get-the-addon-fx-apr-2020.svg)](https://addons.mozilla.org/en-US/firefox/addon/bookmark-manager-zero/)
 
 </div>
 
