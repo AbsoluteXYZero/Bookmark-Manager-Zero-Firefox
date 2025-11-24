@@ -10,6 +10,10 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
+<br>
+
+**[🦊 Get Addon on Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/bookmark-manager-zero/)**
+
 </div>
 
 ## Overview
