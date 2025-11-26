@@ -382,7 +382,7 @@ let activeFilters = [];
 let expandedFolders = new Set();
 let folderScanTimestamps = {}; // Track when each folder was last scanned
 const FOLDER_SCAN_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
-let theme = 'blue-dark';
+let theme = 'enhanced-blue';
 let viewMode = 'list';
 let displayOptions = {
   title: true,
@@ -630,13 +630,13 @@ async function loadAutoClearSetting() {
 // Load theme preference
 function loadTheme() {
   if (isPreviewMode) {
-    theme = 'blue-dark';
+    theme = 'enhanced-blue';
     applyTheme();
     return;
   }
 
   safeStorage.get('theme').then(result => {
-    theme = result.theme || 'blue-dark';
+    theme = result.theme || 'enhanced-blue';
     applyTheme();
 
     // Update dropdown to match loaded theme
@@ -761,7 +761,7 @@ if (document.readyState === 'loading') {
 function applyTheme() {
   // Remove all theme classes
   document.body.classList.remove('dark', 'light', 'blue-dark',
-    'blue-dark-liquid', 'light-liquid', 'dark-liquid',
+    'enhanced-blue', 'enhanced-light', 'enhanced-dark',
     'gray-liquid', 'tinted');
 
   // CRITICAL FIX: Clear tint-related inline styles when switching away from tinted theme

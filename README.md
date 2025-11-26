@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-1.7.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -121,8 +121,8 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 🗑️ **Auto-Clear Cache** - Configurable automatic cache cleanup
 
 ### User Experience
-- 🎨 **9 Themes** - Blue (default), Light, Dark, Blue Liquid, Light Liquid, Dark Liquid, Liquid Glass Dark, Liquid Glass Clear, Liquid Glass Tinted
-- 💧 **Liquid Themes** - Modern rounded containers with enhanced 3D depth effects on search bar and toolbar buttons
+- 🎨 **8 Themes** - Enhanced Blue (default), Enhanced Light, Enhanced Dark, Blue, Light, Dark, Liquid Glass Dark, Liquid Glass Tinted
+- ✨ **Enhanced Themes** - Modern rounded containers with enhanced 3D depth effects on search bar and toolbar buttons
 - 🎨 **Tinted Theme Customization** - Adjust hue, saturation, and background colors for Liquid Glass Tinted theme
 - 🎨 **Custom Accent Colors** - Pick any color for theme customization
 - 🎨 **Bookmark Background Opacity** - Adjust bookmark background transparency (0-100%) while keeping text at full opacity
@@ -485,7 +485,27 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v1.7.0 (Current) - Enhanced Theming & Menu Improvements
+### v2.0.0 (Current) - Major Theme Expansion with Liquid Glass Effects
+
+**New Themes:**
+- 🎨 **5 New Enhanced Themes** - Enhanced Blue (default), Enhanced Light, Enhanced Dark, plus two Liquid Glass variants (Dark, Tinted)
+- 💧 **3D Depth Effects** - Enhanced visual depth with rounded containers, sophisticated shadows, and glassmorphism
+- 🌈 **Tinted Theme Customization** - Full hue and saturation controls for Liquid Glass Tinted theme
+- ✨ **8 Total Themes** - Comprehensive theme collection for every preference
+
+**UI/UX Improvements:**
+- 🎯 **Fixed Display Menu Overlay** - Resolved invisible element blocking folder interactions
+- 📏 **Adaptive Menu Width** - Auto-sizing menus (280-450px) that fit content while staying within viewport
+- 📊 **Improved Opacity Control** - Restructured bookmark opacity slider for better visibility
+- 🔲 **Enhanced Spacing** - 3px margins on header and status bar in liquid themes
+- 🎨 **Removed Invert Text Toggle** - Simplified theme menu (no longer needed)
+
+**Menu System:**
+- 🔄 **Auto-Wrapping Filters** - Better responsive layout for filter toggles
+- 🖱️ **Context-Aware Interactions** - Proper pointer events to prevent UI conflicts
+- 📐 **Wider Menu Items** - Improved readability with content-adaptive width
+
+### v1.7.0 - Enhanced Theming & Menu Improvements
 
 **New Features:**
 - 🎨 **Bookmark Opacity Slider** - Control bookmark background transparency (0-100%) directly from Theme menu
