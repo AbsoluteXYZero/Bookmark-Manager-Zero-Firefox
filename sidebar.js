@@ -1327,6 +1327,9 @@ async function rescanAllBookmarks() {
   // Traverse tree to find ALL bookmarks regardless of folder state or check status
   function traverseAll(nodes) {
     nodes.forEach(node => {
+      // Skip separators
+      if (node.type === 'separator') return;
+
       // Check all bookmarks regardless of folder expansion or previous check status
       if (node.url && !checkedBookmarks.has(node.id)) {
         bookmarksToCheck.push(node);
@@ -1431,6 +1434,9 @@ async function autoCheckBookmarkStatuses() {
   // Traverse tree to find unchecked bookmarks (only in root or expanded folders)
   function traverse(nodes, parentExpanded = true) {
     nodes.forEach(node => {
+      // Skip separators
+      if (node.type === 'separator') return;
+
       // Only check bookmarks if parent is expanded (or at root level)
       if (parentExpanded && node.url && (!node.linkStatus || node.linkStatus === 'unknown') && !checkedBookmarks.has(node.id)) {
         bookmarksToCheck.push(node);
@@ -1560,7 +1566,7 @@ function updateTotalBookmarkCount() {
   let count = 0;
   function countBookmarksRecursive(nodes) {
     nodes.forEach(node => {
-      if (node.type === 'bookmark' && node.url) {
+      if (node.type === 'bookmark' && node.url && node.type !== 'separator') {
         count++;
       } else if (node.type === 'folder' && node.children) {
         countBookmarksRecursive(node.children);
@@ -3091,6 +3097,9 @@ async function rescanFolder(folderId, folderTitle) {
     const collectBookmarks = async (nodeId) => {
       const nodes = await browser.bookmarks.getChildren(nodeId);
       for (const node of nodes) {
+        // Skip separators
+        if (node.type === 'separator') continue;
+
         if (node.url) {
           // It's a bookmark
           bookmarks.push(node);
@@ -4456,6 +4465,11 @@ async function createNewFolder() {
 // Filter and search bookmarks
 function filterAndSearchBookmarks(nodes) {
   return nodes.reduce((acc, node) => {
+    // Skip separators (Firefox toolbar separators have type: 'separator')
+    if (node.type === 'separator') {
+      return acc;
+    }
+
     if (node.type === 'folder') {
       const filteredChildren = filterAndSearchBookmarks(node.children || []);
       if (filteredChildren.length > 0 || (!searchTerm && activeFilters.length === 0)) {
@@ -4533,7 +4547,7 @@ function countBookmarks(folder) {
   return folder.children.reduce((count, child) => {
     if (child.type === 'folder') {
       return count + countBookmarks(child);
-    } else if (child.url) {
+    } else if (child.url && child.type !== 'separator') {
       return count + 1;
     }
     return count;
@@ -4792,6 +4806,9 @@ function getAllBookmarksFlat(tree, parentPath = '') {
   let bookmarks = [];
 
   const processNode = (node, path) => {
+    // Skip separators
+    if (node.type === 'separator') return;
+
     if (node.url) {
       // It's a bookmark
       bookmarks.push({
@@ -5337,6 +5354,9 @@ function getAllBookmarksInFolder(folder) {
   const bookmarks = [];
 
   function traverse(node) {
+    // Skip separators
+    if (node.type === 'separator') return;
+
     if (node.type === 'bookmark') {
       bookmarks.push(node);
     } else if (node.type === 'folder' && node.children) {
