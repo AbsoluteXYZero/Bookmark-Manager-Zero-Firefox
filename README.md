@@ -106,6 +106,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 ### Link & Safety Checking
 - 🔗 **Link Status Checking** - Automatically detects broken/dead links
 - 🛡️ **Security Scanning** - Checks URLs against malware databases
+- 📂 **Folder Rescan** - Right-click any folder to recursively scan all bookmarks in that folder and subfolders with detailed statistics
 - ⚠️ **Safety Indicators** - Visual warnings for suspicious links with detailed tooltips
 - 👆 **Clickable Status Icons** - Click shield or chain icons for full status details popup
 - 🔄 **HTTP Redirect Detection** - Detects when HTTP bookmarks redirect to HTTPS
@@ -120,16 +121,18 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 🗑️ **Auto-Clear Cache** - Configurable automatic cache cleanup
 
 ### User Experience
-- 🎨 **3 Themes** - Blue Dark (default), Light, Dark
+- 🎨 **9 Themes** - Blue (default), Light, Dark, Blue Liquid, Light Liquid, Dark Liquid, Liquid Glass Dark, Liquid Glass Clear, Liquid Glass Tinted
+- 💧 **Liquid Themes** - Modern rounded containers with enhanced 3D depth effects on search bar and toolbar buttons
+- 🎨 **Tinted Theme Customization** - Adjust hue, saturation, and background colors for Liquid Glass Tinted theme
 - 🎨 **Custom Accent Colors** - Pick any color for theme customization
 - 🎨 **Bookmark Background Opacity** - Adjust bookmark background transparency (0-100%) while keeping text at full opacity
 - ✍️ **Custom Text Colors** - Visual color picker for bookmark and folder text with reset button
-- 🖼️ **Custom Backgrounds** - Upload and position your own background images
+- 🖼️ **Custom Backgrounds** - Upload and position your own background images with drag-to-reposition
 - ⌨️ **Keyboard Navigation** - Full keyboard support with arrow keys
 - ♿ **Accessibility** - Comprehensive ARIA labels and keyboard traps
 - 🔍 **Zoom Control** - 50% - 200% zoom levels for bookmark content
 - 📏 **GUI Scaling** - 80% - 140% scaling for interface elements
-- 📱 **Responsive Design** - Adapts to sidebar width
+- 📱 **Responsive Design** - Adapts to sidebar width with auto-wrapping filters and wider menus (280-450px)
 
 ### Advanced Features
 - 🖼️ **Website Previews** - Screenshot thumbnails of bookmarks
@@ -242,13 +245,13 @@ The extension can optionally use external services for enhanced features. **All 
 
 ### Default Services (can be disabled)
 - **WordPress mshots** - Website screenshot previews
-- **URLhaus** - Malware URL database
-- **BlockList Project** - Known malicious domains
+- **8 Blocklist Sources** - Dual URLhaus coverage (Active + Historical), BlockList Project (Malware/Phishing/Scam), HaGeZi TIF, Phishing-Filter, OISD Big
 - **Google Favicons** - Website icons
 
 ### User-Configured Services (require API keys)
-- **Google Safe Browsing** - Additional malware protection
-- **VirusTotal** - Comprehensive threat scanning
+- **Google Safe Browsing** - Additional malware protection (10K requests/day)
+- **Yandex Safe Browsing** - Geographic threat diversity (100K requests/day)
+- **VirusTotal** - Comprehensive threat scanning from 70+ AV engines (500 requests/day)
 
 All external service usage is disclosed in [PRIVACY.md](PRIVACY.md).
 
@@ -297,19 +300,33 @@ The extension checks URLs against multiple threat databases to identify maliciou
 
 #### Phase 1: Blocklist Lookup (Free, No API Key Required)
 
-URLs are checked against four community-maintained blocklists:
+URLs are checked against eight community-maintained blocklists with dual URLhaus coverage:
 
-| Source | Type | Description |
-|--------|------|-------------|
-| **[URLhaus](https://urlhaus.abuse.ch/)** | Malware URLs | Database by abuse.ch tracking malware distribution sites |
-| **[BlockList Project - Malware](https://github.com/blocklistproject/Lists)** | Malware Domains | Community-maintained malware domain list |
-| **[BlockList Project - Phishing](https://github.com/blocklistproject/Lists)** | Phishing Domains | Known phishing sites |
-| **[BlockList Project - Scam](https://github.com/blocklistproject/Lists)** | Scam Domains | Known scam websites |
+| Source | Type | Description | Entries |
+|--------|------|-------------|---------|
+| **[URLhaus (Active)](https://urlhaus.abuse.ch/)** | Malware URLs | Official abuse.ch list - actively distributing malware (updated every 5 min) | ~107K |
+| **[URLhaus (Historical)](https://urlhaus.abuse.ch/)** | Malware Domains | Historical threats via CDN mirror (updated every 12 hours) | ~37K |
+| **[BlockList Project - Malware](https://github.com/blocklistproject/Lists)** | Malware Domains | Community-maintained malware domain list | 435K |
+| **[BlockList Project - Phishing](https://github.com/blocklistproject/Lists)** | Phishing Domains | Known phishing sites | 190K |
+| **[BlockList Project - Scam](https://github.com/blocklistproject/Lists)** | Scam Domains | Known scam websites | 1.3K |
+| **[HaGeZi TIF](https://github.com/hagezi/dns-blocklists)** | Threat Intel Feeds | Comprehensive malware, phishing, and scam domains | 608K |
+| **[Phishing-Filter](https://gitlab.com/malware-filter/phishing-filter)** | Phishing URLs | Aggregated phishing database from OpenPhish & PhishTank | ~21K |
+| **[OISD Big](https://oisd.nl/)** | Multi-source | Comprehensive blocklist aggregator covering malware, ads, trackers | ~215K |
 
-- Blocklists are downloaded and cached locally
-- Updated every 24 hours
-- Both full URLs and domains are checked
-- **Any match → Unsafe** (shows which source flagged it)
+**Total Coverage**: **~1.35M unique malicious domains** after deduplication (from 1.6M total entries)
+
+**Implementation Details:**
+- Blocklists are downloaded and cached locally in IndexedDB
+- Updated every 24 hours automatically
+- URLhaus Active uses CORS proxy to access official abuse.ch list with full URL context
+- URLhaus Historical uses GitHub mirror for redundancy and historical coverage
+- OISD Big uses GitHub mirror to avoid CORS restrictions
+- Both full URLs and domain:port combinations are checked
+- Dual URLhaus sources provide complementary coverage (active threats + historical data)
+- Domain-level matching catches malicious IPs even if specific path differs
+- **Any match → Unsafe** (tooltip shows all sources that flagged it)
+- All scanning continues through every layer to aggregate findings
+- Suspicious pattern detection provides additional coverage for IP-based threats
 
 #### Phase 2: Google Safe Browsing (Optional, Requires Free API Key)
 
@@ -318,15 +335,24 @@ If configured, URLs are checked against Google's threat database:
 - **Threat Types Checked**: Malware, Social Engineering, Unwanted Software, Potentially Harmful Applications
 - **Method**: POST request to Safe Browsing API v4
 - **Rate Limit**: 10,000 requests/day (free tier)
-- **Any match → Unsafe**
+- **Results aggregated** with other findings (doesn't stop scanning)
 
-#### Phase 3: VirusTotal (Optional, Requires Free API Key)
+#### Phase 3: Yandex Safe Browsing (Optional, Requires Free API Key)
+
+If configured, provides geographic threat diversity:
+
+- **Coverage**: Russian and Eastern European threats
+- **Method**: POST request to Yandex Safe Browsing API
+- **Rate Limit**: 100,000 requests/day (free tier)
+- **Results aggregated** with other findings
+
+#### Phase 4: VirusTotal (Optional, Requires Free API Key)
 
 If configured, URLs are submitted to VirusTotal's multi-engine scanner:
 
 1. URL is submitted for analysis
 2. Results are retrieved after 2 seconds
-3. Multiple antivirus engines analyze the URL
+3. 70+ antivirus engines analyze the URL
 
 **Threat Determination**:
 - **2+ engines flag as malicious → Unsafe**
@@ -335,9 +361,9 @@ If configured, URLs are submitted to VirusTotal's multi-engine scanner:
 
 **Rate Limit**: 500 requests/day, 4 requests/minute (free tier)
 
-#### Phase 4: Suspicious Pattern Detection
+#### Phase 5: Suspicious Pattern Detection
 
-If all above checks pass, the URL is analyzed for suspicious patterns:
+The URL is analyzed for suspicious patterns (scanning continues regardless of previous results):
 
 | Pattern | Detection | Result |
 |---------|-----------|--------|
@@ -351,14 +377,19 @@ If all above checks pass, the URL is analyzed for suspicious patterns:
 
 #### Final Status Determination
 
-| Check Result | Final Status |
-|--------------|--------------|
-| Blocklist match | **Unsafe** (red shield) |
-| Google Safe Browsing match | **Unsafe** (red shield) |
-| VirusTotal 2+ malicious | **Unsafe** (red shield) |
-| VirusTotal 1 malicious or 2+ suspicious | **Warning** (yellow shield) |
-| Suspicious patterns found | **Warning** (yellow shield) |
-| All checks pass | **Safe** (green shield) |
+**Scanning Methodology**: All layers are checked sequentially, and results are aggregated. The extension does NOT stop at the first flag—it continues through all enabled layers to provide comprehensive threat intelligence.
+
+| Check Result | Final Status | Priority |
+|--------------|--------------|----------|
+| Blocklist match (any source) | **Unsafe** (red shield) | Highest |
+| Google Safe Browsing match | **Unsafe** (red shield) | Highest |
+| Yandex Safe Browsing match | **Unsafe** (red shield) | Highest |
+| VirusTotal 2+ malicious | **Unsafe** (red shield) | Highest |
+| VirusTotal 1 malicious or 2+ suspicious | **Warning** (yellow shield) | Medium |
+| Suspicious patterns found | **Warning** (yellow shield) | Medium |
+| All checks pass | **Safe** (green shield) | Normal |
+
+**Multi-Source Attribution**: Tooltips display all sources that flagged a URL (e.g., "Detected by: URLhaus, Google Safe Browsing, Suspicious TLD"). This provides transparency and helps identify false positives.
 
 #### Caching & Privacy
 
@@ -611,10 +642,15 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **Firefox WebExtensions** - Mozilla Firefox team
 
 ### Security & Malware Detection
-- **[URLhaus](https://urlhaus.abuse.ch/)** - Malware URL database by abuse.ch
-- **[BlockList Project](https://github.com/blocklistproject/Lists)** - Community-maintained malware, phishing, and scam domain lists
+- **[URLhaus](https://urlhaus.abuse.ch/)** - Dual coverage: Active list (~107K entries, updated every 5 min) + Historical mirror (~37K entries)
+- **[BlockList Project](https://github.com/blocklistproject/Lists)** - Community-maintained malware, phishing, and scam domain lists (626K+ entries)
+- **[HaGeZi TIF](https://github.com/hagezi/dns-blocklists)** - Threat Intelligence Feeds blocklist (608K entries)
+- **[Phishing-Filter](https://gitlab.com/malware-filter/phishing-filter)** - OpenPhish & PhishTank aggregated database (~21K entries)
+- **[OISD Big](https://oisd.nl/)** - Comprehensive blocklist aggregator (~215K entries)
+- **[corsproxy.io](https://corsproxy.io/)** - CORS proxy service enabling access to abuse.ch official list
 - **[Google Safe Browsing API](https://developers.google.com/safe-browsing)** - Optional threat intelligence (requires API key)
-- **[VirusTotal](https://www.virustotal.com/)** - Optional multi-engine malware scanning (requires API key)
+- **[Yandex Safe Browsing](https://yandex.com/dev/safebrowsing/)** - Optional geographic threat diversity (requires API key)
+- **[VirusTotal](https://www.virustotal.com/)** - Optional multi-engine malware scanning from 70+ AV engines (requires API key)
 
 ### Services
 - **WordPress mShots** - Website screenshot preview service

@@ -14,10 +14,13 @@
   "permissions": [
     "bookmarks",
     "storage",
-    "tabs"
+    "tabs",
+    "webRequest"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "<all_urls>",
+    "https://urlhaus.abuse.ch/*",
+    "https://big.oisd.nl/*"
   ],
   "incognito": "spanning",
   "action": {

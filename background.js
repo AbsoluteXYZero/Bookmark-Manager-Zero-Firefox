@@ -436,6 +436,7 @@ const checkLinkStatus = async (url) => {
 // Malicious URL/domain database (aggregated from multiple sources)
 let maliciousUrlsSet = new Set();
 let domainSourceMap = new Map(); // Track which source(s) flagged each domain
+let domainOnlyMap = new Map(); // Map of domain:port -> sources (for entries with paths like "1.2.3.4:80/malware")
 let blocklistLastUpdate = 0;
 let blocklistLoading = false; // Flag to prevent duplicate loads
 const BLOCKLIST_UPDATE_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
@@ -443,24 +444,48 @@ const BLOCKLIST_UPDATE_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 // Blocklist sources - all free, no API keys required
 const BLOCKLIST_SOURCES = [
   {
-    name: 'https://urlhaus.abuse.ch',
-    url: 'https://urlhaus.abuse.ch/downloads/text/',
-    format: 'urlhaus' // Plain text with # comments
+    name: 'URLhaus (Active)',
+    // Official abuse.ch list - actively distributing malware URLs (updated every 5 minutes)
+    // Using corsproxy.io since abuse.ch doesn't send CORS headers and Firefox MV3 won't bypass
+    url: 'https://corsproxy.io/?' + encodeURIComponent('https://urlhaus.abuse.ch/downloads/text/'),
+    format: 'urlhaus_text' // Full URLs with paths
   },
   {
-    name: 'https://github.com/blocklistproject/Lists (Malware)',
+    name: 'URLhaus (Historical)',
+    // Using GitLab Pages CDN mirror with CORS support (updates every 12 hours from abuse.ch)
+    url: 'https://curbengh.github.io/malware-filter/urlhaus-filter.txt',
+    format: 'domains' // Domain list (one per line)
+  },
+  {
+    name: 'BlockList Project (Malware)',
     url: 'https://blocklistproject.github.io/Lists/malware.txt',
     format: 'hosts' // Hosts file format (0.0.0.0 domain.com)
   },
   {
-    name: 'https://github.com/blocklistproject/Lists (Phishing)',
+    name: 'BlockList Project (Phishing)',
     url: 'https://blocklistproject.github.io/Lists/phishing.txt',
     format: 'hosts'
   },
   {
-    name: 'https://github.com/blocklistproject/Lists (Scam)',
+    name: 'BlockList Project (Scam)',
     url: 'https://blocklistproject.github.io/Lists/scam.txt',
     format: 'hosts'
+  },
+  {
+    name: 'HaGeZi TIF',
+    url: 'https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/tif.txt',
+    format: 'domains' // Plain domain list (one per line)
+  },
+  {
+    name: 'Phishing-Filter',
+    url: 'https://malware-filter.gitlab.io/malware-filter/phishing-filter-hosts.txt',
+    format: 'hosts'
+  },
+  {
+    name: 'OISD Big',
+    // Using GitHub mirror to avoid CORS issues with oisd.nl direct download
+    url: 'https://raw.githubusercontent.com/sjhgvr/oisd/refs/heads/main/domainswild2_big.txt',
+    format: 'domains' // Wildcard domains format
   }
 ];
 
@@ -638,12 +663,74 @@ const checkVirusTotal = async (url) => {
   }
 };
 
+// Check URL using Yandex Safe Browsing API
+// Register at: https://yandex.com/dev/
+// Free tier: 100,000 requests per day
+// API key is stored in browser.storage.local.yandexApiKey
+const checkYandexSafeBrowsing = async (url) => {
+  try {
+    // Get encrypted API key from storage and decrypt it
+    const apiKey = await getDecryptedApiKey('yandexApiKey');
+
+    if (!apiKey || apiKey.trim() === '') {
+      console.log(`[Yandex SB] API key not configured, skipping`);
+      return 'unknown';
+    }
+
+    console.log(`[Yandex SB] Checking ${url}...`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+    const response = await fetch(
+      `https://sba.yandex.net/v4/threatMatches:find?key=${apiKey}`,
+      {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          threatInfo: {
+            threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE'],
+            platformTypes: ['ANY_PLATFORM'],
+            threatEntryTypes: ['URL'],
+            threatEntries: [{ url }]
+          }
+        })
+      }
+    );
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      console.error(`[Yandex SB] API error: ${response.status}`);
+      return 'unknown';
+    }
+
+    const data = await response.json();
+
+    // If matches found, URL is unsafe
+    if (data.matches && data.matches.length > 0) {
+      console.log(`[Yandex SB] ⚠️ Threat detected:`, data.matches[0].threatType);
+      return 'unsafe';
+    }
+
+    console.log(`[Yandex SB] ✓ No threats found`);
+    return 'safe';
+
+  } catch (error) {
+    console.error(`[Yandex SB] Error:`, error.message);
+    return 'unknown';
+  }
+};
+
 // Parse different blocklist formats
 const parseBlocklistLine = (line, format) => {
   const trimmed = line.trim();
 
-  // Skip empty lines and comments
-  if (!trimmed || trimmed.startsWith('#')) {
+  // Skip empty lines and comments (# for most lists, ! for adblock-style lists)
+  if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('!')) {
     return null;
   }
 
@@ -655,8 +742,23 @@ const parseBlocklistLine = (line, format) => {
     if (parts.length >= 2) {
       domain = parts[1]; // Second part is the domain
     }
+  } else if (format === 'urlhaus_text') {
+    // URLhaus text format: full URLs like "http://malicious.com/path/file.exe"
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      try {
+        const urlObj = new URL(trimmed);
+        domain = urlObj.hostname.toLowerCase();
+      } catch {
+        return null; // Invalid URL, skip
+      }
+    } else {
+      return null; // Not a valid URL format
+    }
   } else if (format === 'urlhaus') {
     // URLhaus format: plain URLs/domains
+    domain = trimmed;
+  } else if (format === 'domains') {
+    // Plain domain list format
     domain = trimmed;
   } else {
     // Default: assume plain domain
@@ -667,10 +769,11 @@ const parseBlocklistLine = (line, format) => {
     return null;
   }
 
-  // Normalize: lowercase, remove protocol, remove trailing slash
+  // Normalize: lowercase, remove protocol, remove trailing slash, remove wildcard prefix
   const normalized = domain.toLowerCase()
     .replace(/^https?:\/\//, '')
-    .replace(/\/$/, '');
+    .replace(/\/$/, '')
+    .replace(/^\*\./, ''); // Remove wildcard prefix for OISD format
 
   // Skip localhost and invalid entries
   if (normalized === 'localhost' || normalized.startsWith('127.') || normalized.startsWith('0.0.0.0')) {
@@ -682,24 +785,31 @@ const parseBlocklistLine = (line, format) => {
 
 // Download from a single blocklist source
 const downloadBlocklistSource = async (source) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
-
   try {
     console.log(`[Blocklist] Downloading ${source.name}...`);
 
+    // Use fetch API for better CORS handling in extensions
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
     const response = await fetch(source.url, {
-      signal: controller.signal
+      method: 'GET',
+      signal: controller.signal,
+      mode: 'cors', // Use CORS mode but extensions can bypass via host_permissions
+      cache: 'no-store',
+      credentials: 'omit'
     });
 
-    clearTimeout(timeout);
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.error(`[Blocklist] ${source.name} failed: ${response.status}`);
+      console.error(`[Blocklist] ${source.name} failed: HTTP ${response.status}`);
       return { domains: [], count: 0 };
     }
 
     const text = await response.text();
+    console.log(`[Blocklist] ${source.name}: ${text.length} bytes downloaded`);
+
     const lines = text.split('\n');
     const domains = [];
 
@@ -714,7 +824,6 @@ const downloadBlocklistSource = async (source) => {
     return { domains, count: domains.length };
 
   } catch (error) {
-    clearTimeout(timeout);
     console.error(`[Blocklist] ${source.name} error:`, error.message);
     return { domains: [], count: 0 };
   }
@@ -733,13 +842,35 @@ const updateBlocklistDatabase = async () => {
   try {
     console.log(`[Blocklist] Starting update from ${BLOCKLIST_SOURCES.length} sources...`);
 
+    // Notify UI that blocklist download is starting
+    browser.runtime.sendMessage({
+      type: 'blocklistProgress',
+      current: 0,
+      total: BLOCKLIST_SOURCES.length,
+      status: 'starting'
+    }).catch(() => {}); // Ignore if no listeners
+
     // Clear existing data
     maliciousUrlsSet.clear();
     domainSourceMap.clear();
 
-    // Download all sources in parallel for speed
-    const downloadPromises = BLOCKLIST_SOURCES.map(source => downloadBlocklistSource(source));
-    const results = await Promise.all(downloadPromises);
+    // Download sources sequentially to report progress
+    const results = [];
+    for (let i = 0; i < BLOCKLIST_SOURCES.length; i++) {
+      const source = BLOCKLIST_SOURCES[i];
+
+      // Notify UI of current download
+      browser.runtime.sendMessage({
+        type: 'blocklistProgress',
+        current: i + 1,
+        total: BLOCKLIST_SOURCES.length,
+        sourceName: source.name,
+        status: 'downloading'
+      }).catch(() => {});
+
+      const result = await downloadBlocklistSource(source);
+      results.push(result);
+    }
 
     // Combine all domains into the Set and track sources
     let totalCount = 0;
@@ -760,6 +891,19 @@ const updateBlocklistDatabase = async () => {
         } else {
           domainSourceMap.set(domain, [sourceName]);
         }
+
+        // Build domain-only index for fast lookups (handles entries with paths like "1.2.3.4:80/malware")
+        const domainPart = domain.split('/')[0]; // Extract domain:port before any path
+        if (domainPart !== domain) { // Only index if there's a path component
+          if (domainOnlyMap.has(domainPart)) {
+            const sources = domainOnlyMap.get(domainPart);
+            if (!sources.includes(sourceName)) {
+              sources.push(sourceName);
+            }
+          } else {
+            domainOnlyMap.set(domainPart, [sourceName]);
+          }
+        }
       }
       totalCount += result.count;
     }
@@ -767,12 +911,21 @@ const updateBlocklistDatabase = async () => {
     blocklistLastUpdate = Date.now();
 
     console.log(`[Blocklist] ✓ Database updated: ${maliciousUrlsSet.size} unique domains from ${totalCount} total entries`);
-    console.log(`[Blocklist] Sources: URLhaus + BlockList Project (Malware, Phishing, Scam)`);
+    const sourceNames = BLOCKLIST_SOURCES.map(s => s.name).join(', ');
+    console.log(`[Blocklist] Sources: ${sourceNames}`);
 
     // Store update timestamp
     await browser.storage.local.set({
       blocklistLastUpdate: blocklistLastUpdate
     });
+
+    // Notify UI that blocklist download is complete
+    browser.runtime.sendMessage({
+      type: 'blocklistComplete',
+      domains: maliciousUrlsSet.size,
+      totalEntries: totalCount,
+      sources: BLOCKLIST_SOURCES.length
+    }).catch(() => {});
 
     blocklistLoading = false;
     return true;
@@ -934,56 +1087,88 @@ const checkURLSafety = async (url) => {
       return resultObj;
     }
 
+    // Check if domain:port appears in domainOnlyMap (for IP:port cases where blocklist has paths)
+    // Example: If blocklist has "61.163.146.63:34343/i", catch "61.163.146.63:34343/bin.sh"
+    if (domainOnlyMap.has(domain)) {
+      const sources = domainOnlyMap.get(domain);
+      console.log(`[Blocklist] ⚠️ Domain:port found in malicious database (via path-based entry)!`);
+      console.log(`[Blocklist] Detected by: ${sources.join(', ')}`);
+      const resultObj = { status: 'unsafe', sources };
+      console.log(`[Safety Check] Final result for ${url}: ${resultObj.status}`);
+      await setCachedResult(url, resultObj, 'safetyStatusCache');
+      return resultObj;
+    }
+
     console.log(`[Blocklist] ✓ Neither full URL nor domain found in malicious database`);
 
-    // Blocklists say safe - check Google Safe Browsing and VirusTotal as redundancy if API keys are configured
-    const storage = await browser.storage.local.get(['googleSafeBrowsingApiKey', 'virusTotalApiKey']);
+    // Continue scanning through ALL layers and aggregate findings
+    // Priority: unsafe > warning > safe
+    let finalStatus = 'safe';
+    let allSources = [];
+
+    // Blocklists say safe - check Google Safe Browsing, Yandex, and VirusTotal as redundancy if API keys are configured
+    const storage = await browser.storage.local.get(['googleSafeBrowsingApiKey', 'yandexApiKey', 'virusTotalApiKey']);
     const hasGoogleKey = storage.googleSafeBrowsingApiKey && storage.googleSafeBrowsingApiKey.trim() !== '';
+    const hasYandexKey = storage.yandexApiKey && storage.yandexApiKey.trim() !== '';
     const hasVTKey = storage.virusTotalApiKey && storage.virusTotalApiKey.trim() !== '';
 
-    // Check Google Safe Browsing
+    // Check Google Safe Browsing (continue even if flagged)
     if (hasGoogleKey) {
       console.log(`[Safety Check] Blocklists say safe, checking Google Safe Browsing as redundancy...`);
       const googleResult = await checkGoogleSafeBrowsing(url);
 
       if (googleResult === 'unsafe') {
         console.log(`[Safety Check] Google Safe Browsing flagged URL as unsafe!`);
-        const resultObj = { status: 'unsafe', sources: ['Google Safe Browsing'] };
-        await setCachedResult(url, resultObj, 'safetyStatusCache');
-        return resultObj;
+        finalStatus = 'unsafe'; // Escalate to unsafe
+        allSources.push('Google Safe Browsing');
       }
     }
 
-    // Check VirusTotal
+    // Check Yandex Safe Browsing (continue even if flagged)
+    if (hasYandexKey) {
+      console.log(`[Safety Check] Blocklists say safe, checking Yandex Safe Browsing as redundancy...`);
+      const yandexResult = await checkYandexSafeBrowsing(url);
+
+      if (yandexResult === 'unsafe') {
+        console.log(`[Safety Check] Yandex Safe Browsing flagged URL as unsafe!`);
+        finalStatus = 'unsafe'; // Escalate to unsafe
+        allSources.push('Yandex Safe Browsing');
+      }
+    }
+
+    // Check VirusTotal (continue even if flagged)
     if (hasVTKey) {
       console.log(`[Safety Check] Blocklists say safe, checking VirusTotal...`);
       const vtResult = await checkVirusTotal(url);
 
       if (vtResult === 'unsafe') {
         console.log(`[Safety Check] VirusTotal flagged URL as unsafe!`);
-        const resultObj = { status: 'unsafe', sources: ['VirusTotal'] };
-        await setCachedResult(url, resultObj, 'safetyStatusCache');
-        return resultObj;
+        finalStatus = 'unsafe'; // Escalate to unsafe
+        allSources.push('VirusTotal');
       } else if (vtResult === 'warning') {
         console.log(`[Safety Check] VirusTotal flagged URL as suspicious!`);
-        const resultObj = { status: 'warning', sources: ['VirusTotal'] };
-        await setCachedResult(url, resultObj, 'safetyStatusCache');
-        return resultObj;
+        // Only set to warning if not already unsafe
+        if (finalStatus !== 'unsafe') {
+          finalStatus = 'warning';
+        }
+        allSources.push('VirusTotal');
       }
     }
 
-    // Not malicious, but check for suspicious patterns
+    // Check for suspicious patterns (always check, even if already flagged)
     const suspiciousPatterns = await checkSuspiciousPatterns(url, domain);
     if (suspiciousPatterns.length > 0) {
       console.log(`[Safety Check] Suspicious patterns detected: ${suspiciousPatterns.join(', ')}`);
-      const resultObj = { status: 'warning', sources: suspiciousPatterns };
-      await setCachedResult(url, resultObj, 'safetyStatusCache');
-      return resultObj;
+      // Only set to warning if not already unsafe
+      if (finalStatus !== 'unsafe') {
+        finalStatus = 'warning';
+      }
+      allSources.push(...suspiciousPatterns);
     }
 
-    // Both checks passed (or Google SB not configured) and no suspicious patterns
-    const resultObj = { status: 'safe', sources: [] };
-    console.log(`[Safety Check] Final result for ${url}: ${resultObj.status}`);
+    // Return aggregated result with all sources
+    const resultObj = { status: finalStatus, sources: allSources };
+    console.log(`[Safety Check] Final result for ${url}: ${resultObj.status} (sources: ${allSources.join(', ')})`);
     await setCachedResult(url, resultObj, 'safetyStatusCache');
     return resultObj;
 
