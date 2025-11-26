@@ -484,7 +484,19 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.0.0 (Current) - Major Theme Expansion with Enhanced Themes
+### v2.0.0 (Current) - Enhanced Themes & Expanded Security
+
+**Security Enhancements:**
+- 🔒 **5 Additional Blocklist Sources** - Expanded from 3 to 8 total sources for comprehensive malware protection
+  - HaGeZi TIF (608K+ threat intel domains)
+  - Phishing-Filter (21K+ phishing URLs from OpenPhish & PhishTank)
+  - OISD Big (215K+ multi-source blocklist)
+  - BlockList Project: Malware (435K+ domains), Phishing (190K+ domains), Scam (1.3K+ domains)
+- 🌍 **Yandex Safe Browsing API** - Optional geographic threat diversity for Russian/Eastern European threats (100K requests/day free tier)
+- 📊 **Total Coverage: ~1.35M unique malicious domains** (deduplicated from 1.6M entries)
+- 🏷️ **Source Attribution** - Malware detection tooltips now show which blocklist(s) flagged the URL
+- ⚠️ **Warning Status** - Suspicious URL patterns now display yellow warning shield
+- 🔧 **Toggle Controls** - Added ability to disable link checking and safety checking independently
 
 **New Themes:**
 - 🎨 **5 New Enhanced Themes** - Enhanced Blue (default), Enhanced Light, Enhanced Dark, Enhanced Gray, plus Tinted
@@ -498,11 +510,17 @@ Contributions welcome! Please:
 - 📊 **Improved Opacity Control** - Restructured bookmark opacity slider for better visibility
 - 🔲 **Enhanced Spacing** - 3px margins on header and status bar in enhanced themes
 - 🎨 **Removed Invert Text Toggle** - Simplified theme menu (no longer needed)
+- 🗂️ **Cleaner Folder Design** - Removed "▶" chevron symbols for streamlined appearance
 
 **Menu System:**
 - 🔄 **Auto-Wrapping Filters** - Better responsive layout for filter toggles
 - 🖱️ **Context-Aware Interactions** - Proper pointer events to prevent UI conflicts
 - 📐 **Wider Menu Items** - Improved readability with content-adaptive width
+
+**Technical:**
+- Parallel blocklist downloads with unified Set for O(1) lookups
+- Multiple format parsing (plain text, hosts files, URLhaus format, wildcard domains)
+- Updated all theme CSS classes from "liquid/glass" to "Enhanced" naming
 
 ### v1.7.0 - Enhanced Theming & Menu Improvements
 
