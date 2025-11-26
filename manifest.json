@@ -14,8 +14,7 @@
   "permissions": [
     "bookmarks",
     "storage",
-    "tabs",
-    "webRequest"
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>",
