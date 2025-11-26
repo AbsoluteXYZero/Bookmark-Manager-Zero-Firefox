@@ -211,7 +211,7 @@ Click the gear icon to access:
 - **API Keys:** Set up optional security API keys
 
 Click the theme icon to access:
-- **Theme:** Choose from 3 themes (Blue Dark, Light, Dark)
+- **Theme:** Choose from 8 themes (Enhanced Blue, Enhanced Light, Enhanced Dark, Enhanced Gray, Blue, Light, Dark, Tinted)
 - **Accent Color:** Customize theme accent color
 - **Bookmark Opacity:** Adjust bookmark background transparency (0-100%)
 - **Text Color:** Customize bookmark text color with visual color picker
@@ -305,9 +305,9 @@ URLs are checked against eight community-maintained blocklists with dual URLhaus
 |--------|------|-------------|---------|
 | **[URLhaus (Active)](https://urlhaus.abuse.ch/)** | Malware URLs | Official abuse.ch list - actively distributing malware (updated every 5 min) | ~107K |
 | **[URLhaus (Historical)](https://urlhaus.abuse.ch/)** | Malware Domains | Historical threats via CDN mirror (updated every 12 hours) | ~37K |
-| **[BlockList Project - Malware](https://github.com/blocklistproject/Lists)** | Malware Domains | Community-maintained malware domain list | 435K |
-| **[BlockList Project - Phishing](https://github.com/blocklistproject/Lists)** | Phishing Domains | Known phishing sites | 190K |
-| **[BlockList Project - Scam](https://github.com/blocklistproject/Lists)** | Scam Domains | Known scam websites | 1.3K |
+| **[BlockList Project - Malware](https://github.com/blocklistproject/Lists)** | Malware Domains | Community-maintained malware domain list | ~300K |
+| **[BlockList Project - Phishing](https://github.com/blocklistproject/Lists)** | Phishing Domains | Known phishing sites | ~214K |
+| **[BlockList Project - Scam](https://github.com/blocklistproject/Lists)** | Scam Domains | Known scam websites | ~112K |
 | **[HaGeZi TIF](https://github.com/hagezi/dns-blocklists)** | Threat Intel Feeds | Comprehensive malware, phishing, and scam domains | 608K |
 | **[Phishing-Filter](https://gitlab.com/malware-filter/phishing-filter)** | Phishing URLs | Aggregated phishing database from OpenPhish & PhishTank | ~21K |
 | **[OISD Big](https://oisd.nl/)** | Multi-source | Comprehensive blocklist aggregator covering malware, ads, trackers | ~215K |
