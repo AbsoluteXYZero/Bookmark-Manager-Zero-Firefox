@@ -17,9 +17,7 @@
     "tabs"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "https://urlhaus.abuse.ch/*",
-    "https://big.oisd.nl/*"
+    "<all_urls>"
   ],
   "incognito": "spanning",
   "action": {
