@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.1.1-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -483,7 +483,20 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.1.0 (Current) - Permission Cleanup & Documentation
+### v2.1.1 (Current) - Separator Fix
+
+**Bug Fixes:**
+- 🐛 **Fixed Separator Display** - Firefox bookmark toolbar separators no longer appear as "data:" entries in the extension
+- ✅ **No More False Positives** - Separators are now properly filtered out and won't trigger malware warnings
+- 📊 **Accurate Counts** - Bookmark counts now exclude separators for accurate totals
+
+**Technical Details:**
+- Added separator filtering in all bookmark traversal functions
+- Separators (`type: 'separator'`) are now skipped in rendering, counting, and scanning operations
+
+---
+
+### v2.1.0 - Permission Cleanup & Documentation
 
 **Permission Improvements:**
 - 🔒 **Removed Unnecessary Permissions** - Eliminated unused `webRequest` permission for better privacy
