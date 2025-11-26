@@ -463,7 +463,6 @@ const blurValue = document.getElementById('blurValue');
 const scaleValue = document.getElementById('scaleValue');
 const containerOpacitySlider = document.getElementById('containerOpacity');
 const containerOpacityValue = document.getElementById('containerOpacityValue');
-const darkTextToggle = document.getElementById('darkTextToggle');
 const textColorPicker = document.getElementById('textColorPicker');
 const resetTextColorBtn = document.getElementById('resetTextColor');
 const guiScaleSelect = document.getElementById('guiScaleSelect');
@@ -577,7 +576,6 @@ async function init() {
   loadGuiScale();
   loadBackgroundImage();
   loadContainerOpacity();
-  loadDarkTextMode();
   // loadCustomTextColor(); // Moved to after event listener setup (line ~5388)
   loadCheckingSettings();
   await loadWhitelist();
@@ -761,8 +759,8 @@ if (document.readyState === 'loading') {
 function applyTheme() {
   // Remove all theme classes
   document.body.classList.remove('dark', 'light', 'blue-dark',
-    'enhanced-blue', 'enhanced-light', 'enhanced-dark',
-    'gray-liquid', 'tinted');
+    'enhanced-blue', 'enhanced-light', 'enhanced-dark', 'enhanced-gray',
+    'tinted');
 
   // CRITICAL FIX: Clear tint-related inline styles when switching away from tinted theme
   if (theme !== 'tinted') {
@@ -1128,22 +1126,7 @@ function loadContainerOpacity() {
 }
 
 // Apply dark text mode
-function applyDarkTextMode(enabled) {
-  if (enabled) {
-    document.body.classList.add('dark-text-mode');
-  } else {
-    document.body.classList.remove('dark-text-mode');
-  }
-}
-
-// Load saved dark text mode preference
-function loadDarkTextMode() {
-  if (!darkTextToggle) return;
-  const savedMode = localStorage.getItem('darkTextMode');
-  const isEnabled = savedMode === 'true';
-  darkTextToggle.checked = isEnabled;
-  applyDarkTextMode(isEnabled);
-}
+// Dark text mode functions removed - no longer needed
 
 // Apply custom text color
 function applyCustomTextColor(color) {
@@ -2093,7 +2076,7 @@ function createFolderElement(folder) {
   folderDiv.innerHTML = `
     <div class="folder-header" draggable="true" role="button" aria-expanded="${isExpanded}" aria-label="${escapeHtml(folderTitle)} folder with ${childCount} items">
       ${multiSelectMode ? `<input type="checkbox" class="item-checkbox" data-id="${folder.id}" ${selectedItems.has(folder.id) ? 'checked' : ''} aria-label="Select ${escapeHtml(folderTitle)} folder">` : ''}
-      <div class="folder-toggle ${isExpanded ? 'expanded' : ''}" aria-hidden="true">▶</div>
+      <div class="folder-toggle ${isExpanded ? 'expanded' : ''}" aria-hidden="true"></div>
       <div class="folder-icon-container" aria-hidden="true">
         <svg class="folder-icon-outline" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M3 7C3 5.89543 3.89543 5 5 5H9L11 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z"/>
@@ -5730,20 +5713,7 @@ function setupEventListeners() {
     });
   }
 
-  // Dark text toggle
-  if (darkTextToggle) {
-    darkTextToggle.addEventListener('change', (e) => {
-      e.stopPropagation();
-      const isEnabled = e.target.checked;
-      localStorage.setItem('darkTextMode', isEnabled);
-      applyDarkTextMode(isEnabled);
-    });
-
-    // Prevent menu from closing when clicking the checkbox
-    darkTextToggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
-  }
+  // Dark text toggle removed - no longer needed
 
   // Custom text color picker
   if (textColorPicker) {

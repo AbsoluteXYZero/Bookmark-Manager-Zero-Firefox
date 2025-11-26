@@ -121,9 +121,9 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 🗑️ **Auto-Clear Cache** - Configurable automatic cache cleanup
 
 ### User Experience
-- 🎨 **8 Themes** - Enhanced Blue (default), Enhanced Light, Enhanced Dark, Blue, Light, Dark, Liquid Glass Dark, Liquid Glass Tinted
+- 🎨 **8 Themes** - Enhanced Blue (default), Enhanced Light, Enhanced Dark, Enhanced Gray, Blue, Light, Dark, Tinted
 - ✨ **Enhanced Themes** - Modern rounded containers with enhanced 3D depth effects on search bar and toolbar buttons
-- 🎨 **Tinted Theme Customization** - Adjust hue, saturation, and background colors for Liquid Glass Tinted theme
+- 🎨 **Tinted Theme Customization** - Adjust hue, saturation, and background colors for Tinted theme
 - 🎨 **Custom Accent Colors** - Pick any color for theme customization
 - 🎨 **Bookmark Background Opacity** - Adjust bookmark background transparency (0-100%) while keeping text at full opacity
 - ✍️ **Custom Text Colors** - Visual color picker for bookmark and folder text with reset button
@@ -214,7 +214,6 @@ Click the theme icon to access:
 - **Theme:** Choose from 3 themes (Blue Dark, Light, Dark)
 - **Accent Color:** Customize theme accent color
 - **Bookmark Opacity:** Adjust bookmark background transparency (0-100%)
-- **Invert Text Color:** Toggle theme-aware text inversion for better contrast
 - **Text Color:** Customize bookmark text color with visual color picker
 - **Custom Background:** Upload and position your own background image
 - **Zoom:** Adjust bookmark content size (50% - 200%)
@@ -485,19 +484,19 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.0.0 (Current) - Major Theme Expansion with Liquid Glass Effects
+### v2.0.0 (Current) - Major Theme Expansion with Enhanced Themes
 
 **New Themes:**
-- 🎨 **5 New Enhanced Themes** - Enhanced Blue (default), Enhanced Light, Enhanced Dark, plus two Liquid Glass variants (Dark, Tinted)
-- 💧 **3D Depth Effects** - Enhanced visual depth with rounded containers, sophisticated shadows, and glassmorphism
-- 🌈 **Tinted Theme Customization** - Full hue and saturation controls for Liquid Glass Tinted theme
+- 🎨 **5 New Enhanced Themes** - Enhanced Blue (default), Enhanced Light, Enhanced Dark, Enhanced Gray, plus Tinted
+- 💧 **3D Depth Effects** - Enhanced visual depth with rounded containers, sophisticated shadows, and modern effects
+- 🌈 **Tinted Theme Customization** - Full hue and saturation controls for Tinted theme
 - ✨ **8 Total Themes** - Comprehensive theme collection for every preference
 
 **UI/UX Improvements:**
 - 🎯 **Fixed Display Menu Overlay** - Resolved invisible element blocking folder interactions
 - 📏 **Adaptive Menu Width** - Auto-sizing menus (280-450px) that fit content while staying within viewport
 - 📊 **Improved Opacity Control** - Restructured bookmark opacity slider for better visibility
-- 🔲 **Enhanced Spacing** - 3px margins on header and status bar in liquid themes
+- 🔲 **Enhanced Spacing** - 3px margins on header and status bar in enhanced themes
 - 🎨 **Removed Invert Text Toggle** - Simplified theme menu (no longer needed)
 
 **Menu System:**
@@ -509,7 +508,6 @@ Contributions welcome! Please:
 
 **New Features:**
 - 🎨 **Bookmark Opacity Slider** - Control bookmark background transparency (0-100%) directly from Theme menu
-- 🌓 **Theme-Aware Text Inversion** - Intelligent text color inversion that adapts to your theme (dark text on dark themes, light text on light theme)
 - ✍️ **Custom Text Color Picker** - Full color customization for bookmark and folder text with visual color picker and reset button
 - 🎨 **Light Gray Default** - Text color defaults to light gray (#e8e8e8) which works reliably with Firefox's color picker
 - ⚡ **Real-Time Color Preview** - Color pickers apply changes instantly as you adjust colors
@@ -518,12 +516,11 @@ Contributions welcome! Please:
 - 📐 **Improved Menu Positioning** - All menus (Theme, View, Zoom, Settings) now respect 16px margins from viewport edges
 - 🎯 **Enhanced Context Menu** - Bookmark context menus never extend behind toolbar, with better overflow handling
 - 📱 **Better Responsive Menus** - Menus scale properly to viewport width with increased margins for cleaner layout
-- 🎨 **Reorganized Theme Menu** - Bookmark Opacity, Invert Text Color, Accent Color, and Text Color logically grouped for easy access
+- 🎨 **Reorganized Theme Menu** - Bookmark Opacity, Accent Color, and Text Color logically grouped for easy access
 - 🎯 **Reduced Font Sizes** - Accent Color and Text Color labels now use matching 11px font size for consistency
 
 **Bug Fixes:**
 - 🐛 **Firefox Color Picker Workaround** - Fixed Firefox bug where pure white (#ffffff) prevented custom color selection by using light gray default
-- 🐛 Fixed inverted text CSS selectors (removed incorrect "theme-" prefix from class names)
 - 🐛 Fixed context menus sometimes positioning behind header/toolbar
 - 🐛 Fixed menu overflow on narrow viewports
 - 🐛 Fixed opacity affecting text readability (now only affects background via CSS pseudo-element)
@@ -532,7 +529,6 @@ Contributions welcome! Please:
 
 **Technical Implementation:**
 - **Bookmark Opacity**: Uses CSS `::before` pseudo-element to apply opacity only to the background layer, keeping text and icons at full opacity for better readability. The opacity value is controlled via CSS variable `--bookmark-container-opacity`.
-- **Text Inversion**: Theme-aware CSS selectors apply dark text (#1a1a1a) on dark themes (blue-dark, dark) and light text (#e8e8e8) on light theme, with text-shadow for enhanced contrast.
 - **Text Color**: Uses CSS `custom-text-color-style` that persists across dynamic DOM changes. Targets `.bookmark-title`, `.folder-title`, and `.bookmark-url` elements specifically for precise color control.
 - **Firefox Color Picker**: Pure white (#ffffff) as default value prevents Firefox's native color picker from initializing the custom color gradient area. Using #e8e8e8 (light gray) works around this browser bug while remaining visually close to white. Users can still select pure white after initialization.
 

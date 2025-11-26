@@ -174,8 +174,8 @@
       border: 0.5px solid rgba(255, 255, 255, 0.12);
     }
 
-    /* Liquid Glass Dark - Opaque dark sidebar (no blur on sidebar) */
-    .gray-liquid {
+    /* Enhanced Gray - Opaque dark sidebar (no blur on sidebar) */
+    .enhanced-gray {
       --md-sys-color-primary: #818cf8;
       --md-sys-color-on-primary: #1e1b4b;
       --md-sys-color-primary-container: rgba(49, 46, 129, 0.88);
@@ -226,9 +226,9 @@
     }
 
     /* Context menu blur - ONLY when .show class is active */
-    .gray-liquid .bookmark-actions.show,
+    .enhanced-gray .bookmark-actions.show,
     .tinted .bookmark-actions.show,
-    .gray-liquid .settings-menu,
+    .enhanced-gray .settings-menu,
     .tinted .settings-menu {
       backdrop-filter: blur(40px) saturate(180%) !important;
       -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
@@ -241,7 +241,7 @@
     .enhanced-blue .header,
     .enhanced-light .header,
     .enhanced-dark .header,
-    .gray-liquid .header,
+    .enhanced-gray .header,
     .tinted .header {
       border-radius: 14px;
       padding: 5px;
@@ -251,7 +251,7 @@
       border: 0.5px solid rgba(255, 255, 255, 0.12);
     }
 
-    .gray-liquid .header,
+    .enhanced-gray .header,
     .tinted .header {
       background: var(--header-background);
       backdrop-filter: blur(30px) saturate(150%);
@@ -261,7 +261,7 @@
     .enhanced-blue .scan-status-bar,
     .enhanced-light .scan-status-bar,
     .enhanced-dark .scan-status-bar,
-    .gray-liquid .scan-status-bar,
+    .enhanced-gray .scan-status-bar,
     .tinted .scan-status-bar {
       border-radius: 14px;
       padding: 5px;
@@ -271,7 +271,7 @@
       border: 0.5px solid rgba(255, 255, 255, 0.12);
     }
 
-    .gray-liquid .scan-status-bar,
+    .enhanced-gray .scan-status-bar,
     .tinted .scan-status-bar {
       background: var(--footer-background);
       backdrop-filter: blur(30px) saturate(150%);
@@ -282,7 +282,7 @@
     .enhanced-blue .search-container input,
     .enhanced-light .search-container input,
     .enhanced-dark .search-container input,
-    .gray-liquid .search-container input,
+    .enhanced-gray .search-container input,
     .tinted .search-container input {
       box-shadow:
         0 2px 4px rgba(0, 0, 0, 0.2),
@@ -294,7 +294,7 @@
     .enhanced-blue .toolbar button,
     .enhanced-light .toolbar button,
     .enhanced-dark .toolbar button,
-    .gray-liquid .toolbar button,
+    .enhanced-gray .toolbar button,
     .tinted .toolbar button {
       box-shadow:
         0 3px 6px rgba(0, 0, 0, 0.25),
@@ -308,7 +308,7 @@
     .enhanced-blue .toolbar button:hover,
     .enhanced-light .toolbar button:hover,
     .enhanced-dark .toolbar button:hover,
-    .gray-liquid .toolbar button:hover,
+    .enhanced-gray .toolbar button:hover,
     .tinted .toolbar button:hover {
       box-shadow:
         0 4px 8px rgba(0, 0, 0, 0.3),
@@ -321,7 +321,7 @@
     .enhanced-blue .toolbar button:active,
     .enhanced-light .toolbar button:active,
     .enhanced-dark .toolbar button:active,
-    .gray-liquid .toolbar button:active,
+    .enhanced-gray .toolbar button:active,
     .tinted .toolbar button:active {
       box-shadow:
         0 1px 2px rgba(0, 0, 0, 0.2),
@@ -1168,15 +1168,7 @@
     }
 
     .folder-toggle {
-      font-size: 10px;
-      color: var(--md-sys-color-on-surface-variant);
-      transition: transform 0.2s;
-      width: 14px;
-      text-align: center;
-    }
-
-    .folder-toggle.expanded {
-      transform: rotate(90deg);
+      display: none;
     }
 
     .folder-icon-container {
@@ -2312,10 +2304,10 @@
                   <option value="enhanced-blue">✨ Enhanced Blue (Default)</option>
                   <option value="enhanced-light">✨ Enhanced Light</option>
                   <option value="enhanced-dark">✨ Enhanced Dark</option>
+                  <option value="enhanced-gray">✨ Enhanced Gray</option>
                   <option value="blue-dark">🌙 Blue</option>
                   <option value="light">☀️ Light</option>
                   <option value="dark">🌑 Dark</option>
-                  <option value="gray-liquid">🌑 Gray Liquid</option>
                   <option value="tinted">🎨 Tinted</option>
                 </select>
               </label>
