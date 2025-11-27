@@ -394,6 +394,7 @@ let displayOptions = {
 };
 let currentEditItem = null;
 let zoomLevel = 80;
+let fontSize = 100; // Font size for bookmark/folder text (70-150%)
 let guiScale = 100; // GUI scale for header, toolbar, and filter elements
 let customBackgroundImage = null; // Custom background image data
 let backgroundPosition = { x: 50, y: 50 }; // Background image position (%)
@@ -438,6 +439,8 @@ const zoomBtn = document.getElementById('zoomBtn');
 const zoomMenu = document.getElementById('zoomMenu');
 const zoomSlider = document.getElementById('zoomSlider');
 const zoomValue = document.getElementById('zoomValue');
+const fontSizeSlider = document.getElementById('fontSizeSlider');
+const fontSizeValue = document.getElementById('fontSizeValue');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsMenu = document.getElementById('settingsMenu');
 const openInTabBtn = document.getElementById('openInTabBtn');
@@ -573,6 +576,7 @@ async function init() {
   loadTheme();
   loadView();
   loadZoom();
+  loadFontSize();
   loadGuiScale();
   loadBackgroundImage();
   loadContainerOpacity();
@@ -904,6 +908,21 @@ function loadZoom() {
     zoomLevel = result.zoomLevel || 80;
     applyZoom();
     updateZoomDisplay();
+  });
+}
+
+// Load font size preference
+function loadFontSize() {
+  if (isPreviewMode) {
+    fontSize = 100;
+    applyFontSize();
+    return;
+  }
+
+  safeStorage.get('fontSize').then(result => {
+    fontSize = result.fontSize || 100;
+    applyFontSize();
+    updateFontSizeDisplay();
   });
 }
 
@@ -1254,6 +1273,28 @@ function setZoom(newZoom) {
 function updateZoomDisplay() {
   if (zoomSlider) zoomSlider.value = zoomLevel;
   if (zoomValue) zoomValue.textContent = `${zoomLevel}%`;
+}
+
+// Apply font size
+function applyFontSize() {
+  const fontSizeFactor = fontSize / 100;
+  document.documentElement.style.setProperty('--font-size-scale', fontSizeFactor);
+}
+
+// Set font size
+function setFontSize(newSize) {
+  fontSize = newSize;
+  applyFontSize();
+  updateFontSizeDisplay();
+  if (!isPreviewMode) {
+    safeStorage.set({ fontSize });
+  }
+}
+
+// Update font size display
+function updateFontSizeDisplay() {
+  if (fontSizeSlider) fontSizeSlider.value = fontSize;
+  if (fontSizeValue) fontSizeValue.textContent = `${fontSize}%`;
 }
 
 // Load bookmarks from Firefox API
@@ -5632,6 +5673,12 @@ function setupEventListeners() {
   zoomSlider.addEventListener('input', (e) => {
     const newZoom = parseInt(e.target.value);
     setZoom(newZoom);
+  });
+
+  // Font size slider
+  fontSizeSlider.addEventListener('input', (e) => {
+    const newSize = parseInt(e.target.value);
+    setFontSize(newSize);
   });
 
   // Settings menu
