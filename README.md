@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-2.1.1-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -483,7 +483,22 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.1.1 (Current) - Separator Fix
+### v2.2.0 (Current) - Font Size Control
+
+**New Feature:**
+- 🔤 **Independent Font Size Slider** - Adjust text size (70-150%) without affecting container sizes
+- 📐 **Content Zoom Renamed** - First slider clarified as "Content Zoom" for better understanding
+- 🎯 **Precise Text Control** - Scale bookmark titles, URLs, and folder names independently from layout
+
+**Implementation:**
+- New Font Size slider in zoom menu (between Content Zoom and GUI Scale)
+- Applies to all view modes (list and grid 2-6 columns)
+- Persistent preference storage
+- Works independently from content zoom
+
+---
+
+### v2.1.1 - Separator Fix
 
 **Bug Fixes:**
 - 🐛 **Fixed Separator Display** - Firefox bookmark toolbar separators no longer appear as "data:" entries in the extension
