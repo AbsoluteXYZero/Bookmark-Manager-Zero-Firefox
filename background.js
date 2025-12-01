@@ -118,6 +118,75 @@ const PARKING_DOMAINS = [
   'sedoparking.com',
 ];
 
+// Trusted domains that should never be flagged as unsafe by local blocklists
+// These are well-known, trusted platforms that may have false positives in URLhaus/blocklists
+// API-based scanners (Google, Yandex, VirusTotal) are NOT affected by this allow-list
+const TRUSTED_DOMAINS = [
+  'archive.org',
+  'github.io',
+  'githubusercontent.com',
+  'github.com',
+  'gitlab.com',
+  'gitlab.io',
+  'docs.google.com',
+  'sites.google.com',
+  'drive.google.com',
+];
+
+// Domains that should never be flagged as "parked" (for link status checking)
+// These are legitimate hosting platforms, not parking services
+const PARKING_EXEMPTIONS = [
+  'github.io',
+  'github.com',
+  'githubusercontent.com',
+  'gitlab.io',
+  'gitlab.com',
+  'pages.dev', // Cloudflare Pages
+  'netlify.app',
+  'vercel.app',
+  'herokuapp.com',
+];
+
+// Helper function to check if a domain matches the trusted list (supports subdomains)
+function isTrustedDomain(hostname) {
+  if (!hostname) return false;
+
+  const lowerHost = hostname.toLowerCase();
+
+  for (const trustedDomain of TRUSTED_DOMAINS) {
+    // Exact match
+    if (lowerHost === trustedDomain) {
+      return true;
+    }
+    // Subdomain match (e.g., "user.github.io" matches "github.io")
+    if (lowerHost.endsWith('.' + trustedDomain)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Helper function to check if a domain should be exempt from parking detection
+function isParkingExempt(hostname) {
+  if (!hostname) return false;
+
+  const lowerHost = hostname.toLowerCase();
+
+  for (const exemptDomain of PARKING_EXEMPTIONS) {
+    // Exact match
+    if (lowerHost === exemptDomain) {
+      return true;
+    }
+    // Subdomain match (e.g., "user.github.io" matches "github.io")
+    if (lowerHost.endsWith('.' + exemptDomain)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // Cache for link and safety checks (7 days TTL)
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
@@ -159,12 +228,16 @@ const setCachedResult = async (url, result, cacheKey) => {
  * @param {string} url The URL to check.
  * @returns {Promise<'live' | 'dead' | 'parked'>} The status of the link.
  */
-const checkLinkStatus = async (url) => {
-  // Check cache first
-  const cached = await getCachedResult(url, 'linkStatusCache');
-  if (cached) {
-    console.log(`[Link Check] Using cached result for ${url}: ${cached}`);
-    return cached;
+const checkLinkStatus = async (url, bypassCache = false) => {
+  // Check cache first (unless bypassed for rescan)
+  if (!bypassCache) {
+    const cached = await getCachedResult(url, 'linkStatusCache');
+    if (cached) {
+      console.log(`[Link Check] Using cached result for ${url}: ${cached}`);
+      return cached;
+    }
+  } else {
+    console.log(`[Link Check] Bypassing cache for rescan of ${url}`);
   }
 
   let result;
@@ -172,7 +245,8 @@ const checkLinkStatus = async (url) => {
   // Check if the URL itself is on a parking domain
   try {
     const urlHost = new URL(url).hostname.toLowerCase();
-    if (PARKING_DOMAINS.some(domain => urlHost.includes(domain))) {
+    // Skip parking check for exempt hosting platforms
+    if (!isParkingExempt(urlHost) && PARKING_DOMAINS.some(domain => urlHost.includes(domain))) {
       result = 'parked';
       await setCachedResult(url, result, 'linkStatusCache');
       return result;
@@ -204,7 +278,8 @@ const checkLinkStatus = async (url) => {
     // Check if redirected to parking domain
     if (response.redirected || response.url !== url) {
       const finalHost = new URL(response.url).hostname.toLowerCase();
-      if (PARKING_DOMAINS.some(domain => finalHost.includes(domain))) {
+      // Skip parking check for exempt hosting platforms
+      if (!isParkingExempt(finalHost) && PARKING_DOMAINS.some(domain => finalHost.includes(domain))) {
         result = 'parked';
         await setCachedResult(url, result, 'linkStatusCache');
         return result;
@@ -213,6 +288,14 @@ const checkLinkStatus = async (url) => {
 
     // Check for successful status codes
     if (response.ok || (response.status >= 300 && response.status < 400)) {
+      // Skip content-based parking detection for exempt hosting platforms
+      const urlHost = new URL(url).hostname.toLowerCase();
+      if (isParkingExempt(urlHost)) {
+        result = 'live';
+        await setCachedResult(url, result, 'linkStatusCache');
+        return result;
+      }
+
       // Try lightweight content check for parking indicators (with robust error handling)
       try {
         const contentController = new AbortController();
@@ -1011,16 +1094,20 @@ const checkSuspiciousPatterns = async (url, domain) => {
 };
 
 // Check URL safety using aggregated blocklist database
-const checkURLSafety = async (url) => {
-  // Check cache first
-  const cached = await getCachedResult(url, 'safetyStatusCache');
-  if (cached) {
-    console.log(`[Safety Check] Using cached result for ${url}:`, cached);
-    // Handle both old format (string) and new format (object with sources)
-    if (typeof cached === 'string') {
-      return { status: cached, sources: [] };
+const checkURLSafety = async (url, bypassCache = false) => {
+  // Check cache first (unless bypassed for rescan)
+  if (!bypassCache) {
+    const cached = await getCachedResult(url, 'safetyStatusCache');
+    if (cached) {
+      console.log(`[Safety Check] Using cached result for ${url}:`, cached);
+      // Handle both old format (string) and new format (object with sources)
+      if (typeof cached === 'string') {
+        return { status: cached, sources: [] };
+      }
+      return { status: cached.status, sources: cached.sources || [] };
     }
-    return { status: cached.status, sources: cached.sources || [] };
+  } else {
+    console.log(`[Safety Check] Bypassing cache for rescan of ${url}`);
   }
 
   console.log(`[Safety Check] Starting safety check for ${url}`);
@@ -1061,6 +1148,69 @@ const checkURLSafety = async (url) => {
 
     // Extract domain (hostname with port, no path)
     const domain = normalizedUrl.split('/')[0];
+
+    // Extract hostname without port for trusted domain check
+    const hostname = domain.split(':')[0];
+
+    // Check if domain is in trusted allow-list (bypass blocklist checks only)
+    if (isTrustedDomain(hostname)) {
+      console.log(`[Safety Check] Domain ${hostname} is in trusted allow-list, skipping local blocklist checks`);
+
+      // Skip blocklist checks but continue with API-based scanners and suspicious pattern detection
+      let finalStatus = 'safe';
+      let allSources = [];
+
+      // Check API-based scanners if configured
+      const storage = await browser.storage.local.get(['googleSafeBrowsingApiKey', 'yandexApiKey', 'virusTotalApiKey']);
+      const hasGoogleKey = storage.googleSafeBrowsingApiKey && storage.googleSafeBrowsingApiKey.trim() !== '';
+      const hasYandexKey = storage.yandexApiKey && storage.yandexApiKey.trim() !== '';
+      const hasVTKey = storage.virusTotalApiKey && storage.virusTotalApiKey.trim() !== '';
+
+      // Check Google Safe Browsing
+      if (hasGoogleKey) {
+        console.log(`[Safety Check] Checking Google Safe Browsing for trusted domain...`);
+        const googleResult = await checkGoogleSafeBrowsing(url);
+        if (googleResult === 'unsafe') {
+          finalStatus = 'unsafe';
+          allSources.push('Google Safe Browsing');
+        }
+      }
+
+      // Check Yandex Safe Browsing
+      if (hasYandexKey) {
+        console.log(`[Safety Check] Checking Yandex Safe Browsing for trusted domain...`);
+        const yandexResult = await checkYandexSafeBrowsing(url);
+        if (yandexResult === 'unsafe') {
+          finalStatus = 'unsafe';
+          allSources.push('Yandex Safe Browsing');
+        }
+      }
+
+      // Check VirusTotal
+      if (hasVTKey) {
+        console.log(`[Safety Check] Checking VirusTotal for trusted domain...`);
+        const vtResult = await checkVirusTotal(url);
+        if (vtResult === 'unsafe') {
+          finalStatus = 'unsafe';
+          allSources.push('VirusTotal');
+        } else if (vtResult === 'warning' && finalStatus !== 'unsafe') {
+          finalStatus = 'warning';
+          allSources.push('VirusTotal');
+        }
+      }
+
+      // Check for suspicious patterns
+      const suspiciousPatterns = await checkSuspiciousPatterns(url, domain);
+      if (suspiciousPatterns.length > 0 && finalStatus !== 'unsafe') {
+        finalStatus = 'warning';
+        allSources.push(...suspiciousPatterns);
+      }
+
+      const resultObj = { status: finalStatus, sources: allSources };
+      console.log(`[Safety Check] Final result for trusted domain ${url}: ${resultObj.status}`);
+      await setCachedResult(url, resultObj, 'safetyStatusCache');
+      return resultObj;
+    }
 
     console.log(`[Blocklist] Checking full URL: ${normalizedUrl}`);
     console.log(`[Blocklist] Checking domain: ${domain}`);
@@ -1190,7 +1340,8 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
     }
 
-    checkLinkStatus(safeUrl).then(status => {
+    const bypassCache = request.bypassCache || false;
+    checkLinkStatus(safeUrl, bypassCache).then(status => {
       sendResponse({ status });
     });
     return true; // Required to indicate an asynchronous response.
@@ -1204,7 +1355,8 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
     }
 
-    checkURLSafety(safeUrl).then(result => {
+    const bypassCache = request.bypassCache || false;
+    checkURLSafety(safeUrl, bypassCache).then(result => {
       // Handle both old cache format (string) and new format (object)
       if (typeof result === 'string') {
         sendResponse({ status: result, sources: [] });

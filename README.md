@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.3.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -327,6 +327,20 @@ URLs are checked against eight community-maintained blocklists with dual URLhaus
 - All scanning continues through every layer to aggregate findings
 - Suspicious pattern detection provides additional coverage for IP-based threats
 
+**Trusted Domain Exceptions:**
+To prevent false positives, certain well-known trusted platforms are exempted from local blocklist checks (but still scanned by API-based services):
+- `archive.org` - Internet Archive
+- `*.github.io` - GitHub Pages (all subdomains)
+- `*.githubusercontent.com` - GitHub raw content (all subdomains)
+- `*.github.com` - GitHub domains (all subdomains)
+- `*.gitlab.com` - GitLab domains (all subdomains)
+- `*.gitlab.io` - GitLab Pages (all subdomains)
+- `docs.google.com` - Google Docs
+- `sites.google.com` - Google Sites
+- `drive.google.com` - Google Drive
+
+These domains bypass URLhaus and other local blocklists but are still checked by Google Safe Browsing, Yandex, and VirusTotal if API keys are configured.
+
 #### Phase 2: Google Safe Browsing (Optional, Requires Free API Key)
 
 If configured, URLs are checked against Google's threat database:
@@ -483,7 +497,39 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.2.0 (Current) - Font Size Control
+### v2.3.0 (Current) - Cache Persistence & Trusted Domains
+
+**Cache Restoration:**
+- 💾 **Persistent Scan Indicators** - Bookmark scan results now persist across sidebar reopens
+- ⚡ **Instant Icon Display** - Shield and link status icons appear immediately from cache (7-day TTL)
+- 🔄 **Smart Auto-Check** - Only scans bookmarks without cached results, reducing network requests
+- 🎯 **Better UX** - No more "grey unknown" resets when closing/reopening sidebar
+
+**Trusted Domain System:**
+- ✅ **Platform Allow-List** - Prevent false positives for trusted hosting platforms and services
+- 🌐 **9 Trusted Domains** - GitHub, GitLab, Archive.org, Google services bypass local blocklists
+- 🔍 **API Scanning Still Active** - Trusted domains still checked by Google/Yandex/VirusTotal if configured
+- 📋 **Documented Exemptions** - Clear documentation of which domains bypass blocklist checks
+
+**Parking Detection Improvements:**
+- 🏠 **Hosting Platform Exemptions** - GitHub Pages, GitLab Pages, Netlify, Vercel, Heroku no longer flagged as "parked"
+- 🎯 **3-Layer Protection** - Exemptions apply to domain-based, redirect-based, AND content-based parking detection
+- 🚫 **No More False Positives** - Legitimate static hosting platforms correctly show as "live"
+
+**Rescan Improvements:**
+- 🔄 **Cache Bypass on Rescan** - All manual rescan operations now force fresh checks
+- 📊 **Applies to All Rescans** - Individual bookmark, folder, and "Rescan All" button all bypass cache
+- ✅ **Guaranteed Fresh Results** - No more stale cached results on manual recheck
+
+**Technical Implementation:**
+- Cache restoration function (`restoreCachedBookmarkStatuses()`) runs after bookmark load
+- `bypassCache` parameter propagates through entire message chain for rescans
+- Trusted domains checked before blocklist lookups (security scanning still active)
+- Parking exemptions skip all 3 detection layers (domain, redirect, content)
+
+---
+
+### v2.2.0 - Font Size Control
 
 **New Feature:**
 - 🔤 **Independent Font Size Slider** - Adjust text size (70-150%) without affecting container sizes
