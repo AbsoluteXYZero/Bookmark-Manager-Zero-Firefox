@@ -1891,7 +1891,7 @@ function getMockBookmarks() {
  * For privileged schemes (about:, moz-extension:, etc.), use anchor click.
  * For regular HTTP(S) URLs, use browser tab APIs for better control.
  */
-function openBookmarkUrl(url, openInNewTab = false) {
+async function openBookmarkUrl(url, openInNewTab = false) {
   try {
     const urlObj = new URL(url);
     const scheme = urlObj.protocol.replace(':', '').toLowerCase();
@@ -1900,10 +1900,11 @@ function openBookmarkUrl(url, openInNewTab = false) {
     const privilegedSchemes = ['about', 'moz-extension', 'chrome', 'view-source', 'jar', 'resource'];
 
     if (privilegedSchemes.includes(scheme)) {
-      // Use anchor click for privileged URLs
+      // For privileged URLs, always open in new tab (browser security restriction)
       const link = document.createElement('a');
       link.href = url;
-      link.target = openInNewTab ? '_blank' : '_self';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
       link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
@@ -1913,21 +1914,21 @@ function openBookmarkUrl(url, openInNewTab = false) {
       if (openInNewTab) {
         browser.tabs.create({ url: url });
       } else {
-        browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
-          if (tabs[0]) {
-            browser.tabs.update(tabs[0].id, { url: url });
-          } else {
-            browser.tabs.create({ url: url });
-          }
-        });
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs[0]) {
+          browser.tabs.update(tabs[0].id, { url: url });
+        } else {
+          browser.tabs.create({ url: url });
+        }
       }
     }
   } catch (error) {
     console.error('Failed to open URL:', url, error);
-    // Fallback: try anchor click anyway
+    // Fallback: try anchor click in new tab
     const link = document.createElement('a');
     link.href = url;
-    link.target = openInNewTab ? '_blank' : '_self';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
