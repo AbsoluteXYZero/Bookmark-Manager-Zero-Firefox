@@ -686,7 +686,12 @@ function applyCustomAccentColor(color) {
       }
       html body.light,
       html body.blue-dark,
-      html body.dark {
+      html body.dark,
+      html body.enhanced-blue,
+      html body.enhanced-light,
+      html body.enhanced-dark,
+      html body.enhanced-gray,
+      html body.tinted {
         --md-sys-color-primary: ${color} !important;
         --md-sys-color-primary-container: ${containerColor} !important;
         --md-sys-color-secondary: ${color} !important;
