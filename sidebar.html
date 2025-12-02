@@ -275,14 +275,22 @@
 
     /* Context menu blur - ONLY when .show class is active */
     .enhanced-gray .bookmark-actions.show,
-    .tinted .bookmark-actions.show,
-    .enhanced-gray .settings-menu,
-    .tinted .settings-menu {
+    .enhanced-gray .settings-menu {
       backdrop-filter: blur(40px) saturate(180%) !important;
       -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
       background: rgba(28, 28, 30, 0.95) !important;
       border: 0.5px solid rgba(255, 255, 255, 0.18) !important;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    }
+
+    /* Tinted theme context menus - light style like header */
+    .tinted .bookmark-actions.show,
+    .tinted .settings-menu {
+      backdrop-filter: blur(40px) saturate(180%) !important;
+      -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+      background: hsla(var(--tint-hue), var(--tint-saturation), 75%, 0.95) !important;
+      border: 0.5px solid rgba(0, 0, 0, 0.12) !important;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
     }
 
     /* Rounded header and footer - iOS card style */
