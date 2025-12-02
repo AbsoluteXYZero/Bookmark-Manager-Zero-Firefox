@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-2.3.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.4.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -135,7 +135,10 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 📱 **Responsive Design** - Adapts to sidebar width with auto-wrapping filters and wider menus (280-450px)
 
 ### Advanced Features
-- 🖼️ **Website Previews** - Screenshot thumbnails of bookmarks
+- 🖼️ **Website Previews** - Screenshot thumbnails of bookmarks with hover preview popup
+- 🔍 **High-Quality Preview Popups** - Hover over thumbnails to see 800x600 high-resolution preview
+- 📌 **Smart Popup Positioning** - Preview popups appear above/below bookmarks to avoid covering content
+- 💬 **URL Tooltips** - Hover over bookmark title/URL to see full URL in tooltip
 - 📝 **Text-Only View** - View bookmark pages in text-only mode
 - 🔄 **Bulk Operations** - Multi-select mode for batch editing/deletion
 - 📋 **Duplicate Detection** - Find and manage duplicate bookmarks
@@ -204,7 +207,7 @@ For development or testing purposes. **Note:** This method requires re-adding th
 
 ### Settings
 Click the gear icon to access:
-- **Display Options:** Toggle title, URL, status indicators, previews
+- **Display Options:** Toggle title, URL, status indicators, previews, preview popup
 - **View Mode:** Switch between list and grid layouts
 - **Default Start Folder:** Choose which folder to expand on sidebar load
 - **Cache Management:** Configure auto-clear settings
@@ -515,7 +518,29 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.3.0 (Current) - Cache Persistence & Trusted Domains
+### v2.4.0 (Current) - Interactive Preview & UI Enhancements
+
+**Preview System Improvements:**
+- 🖼️ **High-Quality Preview Popups** - Hover over bookmark thumbnails to see 800x600 high-resolution preview (2.5x larger than thumbnails)
+- 📌 **Smart Positioning** - Preview popups intelligently position above/below bookmarks to avoid covering content
+- 💬 **URL Tooltips** - Full bookmark URL displayed on hover over title/URL text
+- ⚙️ **Preview Popup Toggle** - New setting to enable/disable preview popups in Display Options
+
+**Theme Fixes:**
+- 🎨 **Accent Color Fix** - Accent color picker now correctly applies to folder icons in Enhanced and Tinted themes
+- 🌈 **Tinted Theme Improvements** - Context menus now use light backgrounds for better readability
+- 🎨 **Vibrant Hue Slider** - Tinted theme hue slider now displays full-saturation rainbow gradient
+
+**Technical Implementation:**
+- Preview popups load dedicated 800x600 images from mshots service (not upscaled thumbnails)
+- Smart positioning algorithm calculates available space and chooses optimal placement
+- 10px gap between bookmark and popup for visual clarity
+- Graceful fallback to low-res thumbnail if high-quality image fails to load
+- Settings persisted to browser storage with checkbox state management
+
+---
+
+### v2.3.0 - Cache Persistence & Trusted Domains
 
 **Cache Restoration:**
 - 💾 **Persistent Scan Indicators** - Bookmark scan results now persist across sidebar reopens
