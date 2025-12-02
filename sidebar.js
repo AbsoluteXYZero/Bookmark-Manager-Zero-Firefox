@@ -2507,10 +2507,10 @@ function createBookmarkElement(bookmark) {
   // Build bookmark info HTML based on display options
   let bookmarkInfoHtml = '';
   if (displayOptions.title) {
-    bookmarkInfoHtml += `<div class="bookmark-title">${escapeHtml(bookmark.title || bookmark.url)}</div>`;
+    bookmarkInfoHtml += `<div class="bookmark-title" title="${escapeHtml(bookmark.url)}">${escapeHtml(bookmark.title || bookmark.url)}</div>`;
   }
   if (displayOptions.url) {
-    bookmarkInfoHtml += `<div class="bookmark-url">${escapeHtml(new URL(bookmark.url).hostname)}</div>`;
+    bookmarkInfoHtml += `<div class="bookmark-url" title="${escapeHtml(bookmark.url)}">${escapeHtml(new URL(bookmark.url).hostname)}</div>`;
   }
 
   const bookmarkTitle = bookmark.title || bookmark.url;
@@ -2763,6 +2763,15 @@ function createBookmarkElement(bookmark) {
       e.preventDefault();
     });
 
+    // Preview popup on hover
+    previewImage.addEventListener('mouseenter', (e) => {
+      showPreviewPopup(previewImage, e);
+    });
+
+    previewImage.addEventListener('mouseleave', () => {
+      hidePreviewPopup();
+    });
+
     bookmarkDiv.addEventListener('mouseenter', () => {
       if (!loadedPreviews.has(previewKey) && bookmark.url) {
         const previewUrl = getPreviewUrl(bookmark.url);
@@ -2805,6 +2814,139 @@ function getPreviewUrl(url) {
     return '';
   }
 }
+
+// Preview popup handling
+let previewPopup = null;
+let previewPopupEnabled = true; // Will be loaded from settings
+
+// Create preview popup element
+function createPreviewPopup() {
+  if (!previewPopup) {
+    previewPopup = document.createElement('div');
+    previewPopup.className = 'preview-popup';
+    previewPopup.innerHTML = '<img alt="Preview" />';
+    document.body.appendChild(previewPopup);
+  }
+  return previewPopup;
+}
+
+// Show preview popup
+function showPreviewPopup(previewImage, mouseEvent) {
+  if (!previewPopupEnabled || !previewImage.classList.contains('loaded')) {
+    return;
+  }
+
+  const popup = createPreviewPopup();
+  const popupImg = popup.querySelector('img');
+
+  // Get the bookmark URL from the preview image's data attribute
+  const bookmarkUrl = previewImage.dataset.url;
+
+  // Load high-quality preview (800x600 instead of 320x180)
+  try {
+    const encodedUrl = encodeURIComponent(bookmarkUrl);
+    popupImg.src = `https://s.wordpress.com/mshots/v1/${encodedUrl}?w=800&h=600`;
+  } catch (error) {
+    console.error('Error loading high-quality preview:', error);
+    popupImg.src = previewImage.src; // Fallback to low-res
+  }
+
+  // Position the popup with smart positioning
+  const sidebar = document.body;
+  const sidebarRect = sidebar.getBoundingClientRect();
+  const header = document.querySelector('.header');
+  const statusBar = document.querySelector('.scan-status-bar');
+
+  // Get the bookmark element that contains the preview image
+  const bookmarkElement = previewImage.closest('.bookmark-item, .folder-item');
+  const bookmarkRect = bookmarkElement ? bookmarkElement.getBoundingClientRect() : null;
+
+  // Calculate available space
+  const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+  const statusBarTop = statusBar ? statusBar.getBoundingClientRect().top : sidebarRect.bottom;
+
+  // Set max width to 90% of sidebar minus margins
+  const maxWidth = sidebarRect.width * 0.9;
+  popup.style.maxWidth = `${maxWidth}px`;
+
+  // Show popup to calculate dimensions
+  popup.classList.add('show');
+
+  // Wait for image to load dimensions
+  if (popupImg.complete) {
+    positionPopup();
+  } else {
+    popupImg.onload = positionPopup;
+  }
+
+  function positionPopup() {
+    const popupRect = popup.getBoundingClientRect();
+
+    // Center horizontally in sidebar
+    const left = sidebarRect.left + (sidebarRect.width - popupRect.width) / 2;
+
+    // Position vertically - above or below bookmark to avoid covering it
+    let top;
+    if (bookmarkRect) {
+      // Calculate space above and below the bookmark
+      const spaceAbove = bookmarkRect.top - headerBottom - 20;
+      const spaceBelow = statusBarTop - bookmarkRect.bottom - 20;
+
+      // Try to position below first, then above if not enough space
+      if (spaceBelow >= popupRect.height) {
+        // Position below bookmark
+        top = bookmarkRect.bottom + 10;
+      } else if (spaceAbove >= popupRect.height) {
+        // Position above bookmark
+        top = bookmarkRect.top - popupRect.height - 10;
+      } else {
+        // Not enough space either way, use the side with more space
+        if (spaceBelow > spaceAbove) {
+          top = bookmarkRect.bottom + 10;
+          // Might extend past status bar, but that's okay
+        } else {
+          top = Math.max(headerBottom + 20, bookmarkRect.top - popupRect.height - 10);
+        }
+      }
+    } else {
+      // Fallback: center on mouse position
+      top = mouseEvent.clientY - popupRect.height / 2;
+      const minTop = headerBottom + 20;
+      const maxTop = statusBarTop - popupRect.height - 20;
+      top = Math.max(minTop, Math.min(top, maxTop));
+    }
+
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+  }
+}
+
+// Hide preview popup
+function hidePreviewPopup() {
+  if (previewPopup) {
+    previewPopup.classList.remove('show');
+  }
+}
+
+// Load preview popup setting
+async function loadPreviewPopupSetting() {
+  try {
+    const result = await safeStorage.get('previewPopupEnabled');
+    if (result.previewPopupEnabled !== undefined) {
+      previewPopupEnabled = result.previewPopupEnabled;
+      // Update checkbox state
+      const checkbox = document.getElementById('displayPreviewPopup');
+      if (checkbox) {
+        checkbox.checked = previewPopupEnabled;
+      }
+    }
+  } catch (error) {
+    console.error('Error loading preview popup setting:', error);
+  }
+}
+
+// Initialize preview popup setting
+loadPreviewPopupSetting();
 
 // Drag and drop helper functions
 function handleDragOver(e, targetElement) {
@@ -5674,6 +5816,15 @@ function setupEventListeners() {
   displayPreview.addEventListener('change', (e) => {
     displayOptions.preview = e.target.checked;
     renderBookmarks();
+  });
+
+  const displayPreviewPopup = document.getElementById('displayPreviewPopup');
+  displayPreviewPopup.addEventListener('change', async (e) => {
+    previewPopupEnabled = e.target.checked;
+    await safeStorage.set({ previewPopupEnabled: previewPopupEnabled });
+    if (!previewPopupEnabled) {
+      hidePreviewPopup();
+    }
   });
 
   // Filter chips
