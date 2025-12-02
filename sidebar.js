@@ -1896,19 +1896,27 @@ async function openBookmarkUrl(url, openInNewTab = false) {
     const urlObj = new URL(url);
     const scheme = urlObj.protocol.replace(':', '').toLowerCase();
 
-    // List of privileged schemes that can't be opened via tab APIs
-    const privilegedSchemes = ['about', 'moz-extension', 'chrome', 'view-source', 'jar', 'resource'];
+    // List of privileged schemes that Firefox blocks from extensions
+    const blockedSchemes = ['about'];
+
+    if (blockedSchemes.includes(scheme)) {
+      // Firefox security blocks extensions from opening about: URLs
+      // Copy to clipboard and notify user
+      try {
+        await navigator.clipboard.writeText(url);
+        alert(`Firefox security prevents extensions from opening ${scheme}: URLs.\n\nThe URL has been copied to your clipboard:\n${url}\n\nPlease paste it into the address bar manually.`);
+      } catch (clipboardError) {
+        alert(`Firefox security prevents extensions from opening ${scheme}: URLs.\n\nPlease copy and paste this URL manually:\n${url}`);
+      }
+      return;
+    }
+
+    // List of other privileged schemes that may work with window.open
+    const privilegedSchemes = ['moz-extension', 'chrome', 'view-source', 'jar', 'resource'];
 
     if (privilegedSchemes.includes(scheme)) {
-      // For privileged URLs, always open in new tab (browser security restriction)
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Try window.open for other privileged URLs
+      window.open(url, '_blank');
     } else {
       // Use browser APIs for regular URLs (better control)
       if (openInNewTab) {
@@ -1924,15 +1932,13 @@ async function openBookmarkUrl(url, openInNewTab = false) {
     }
   } catch (error) {
     console.error('Failed to open URL:', url, error);
-    // Fallback: try anchor click in new tab
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Fallback: try window.open anyway
+    try {
+      window.open(url, '_blank');
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError);
+      alert(`Unable to open URL: ${url}\n\nPlease copy and paste it into the address bar manually.`);
+    }
   }
 }
 
@@ -2054,8 +2060,65 @@ function renderNodes(nodes, container, parentId = 'root________') {
   });
 }
 
+/**
+ * Check if a URL is a browser privileged/internal URL
+ * @param {string} url The URL to check
+ * @returns {object|null} Object with type and label if privileged, null otherwise
+ */
+function isPrivilegedUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    const scheme = urlObj.protocol.replace(':', '').toLowerCase();
+
+    // Browser internal pages
+    if (scheme === 'about') {
+      return { type: 'browser-internal', label: 'Browser internal page' };
+    }
+    if (scheme === 'chrome') {
+      return { type: 'browser-internal', label: 'Browser internal page' };
+    }
+
+    // Extension pages
+    if (scheme === 'moz-extension') {
+      return { type: 'extension', label: 'Extension page' };
+    }
+    if (scheme === 'chrome-extension') {
+      return { type: 'extension', label: 'Extension page' };
+    }
+
+    // Developer/debugging schemes
+    if (scheme === 'view-source') {
+      return { type: 'developer', label: 'View source page' };
+    }
+    if (scheme === 'jar') {
+      return { type: 'developer', label: 'JAR resource' };
+    }
+    if (scheme === 'resource') {
+      return { type: 'developer', label: 'Browser resource' };
+    }
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Get status icon HTML based on link status
-function getStatusDotHtml(linkStatus) {
+function getStatusDotHtml(linkStatus, url) {
+  // Check if privileged URL
+  const privilegedInfo = isPrivilegedUrl(url);
+  if (privilegedInfo && linkStatus === 'live') {
+    const privilegedTooltip = `Link Status: ${privilegedInfo.label}\n\nThis is a ${privilegedInfo.label.toLowerCase()}`;
+    const escapedTooltip = privilegedTooltip.replace(/"/g, '&quot;');
+    return `
+      <span class="status-icon status-live clickable-status" title="${escapedTooltip}" data-status-message="${escapedTooltip}">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M3.9,12C3.9,10.29 5.29,8.9 7,8.9H11V7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H11V15.1H7C5.29,15.1 3.9,13.71 3.9,12M8,13H16V11H8V13M17,7H13V8.9H17C18.71,8.9 20.1,10.29 20.1,12C20.1,13.71 18.71,15.1 17,15.1H13V17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7Z"/>
+        </svg>
+      </span>
+    `;
+  }
+
   const tooltips = {
     'live': 'Link Status: Live\n\n✓ Link is live and accessible\n✓ Returns successful HTTP response',
     'dead': 'Link Status: Dead\n\n✗ Link is dead or unreachable\n✗ Error, timeout, or connection failed',
@@ -2120,6 +2183,25 @@ Redirects to domain parking service" data-status-message="${escapedTooltip}">
 // Get shield indicator HTML based on safety status
 function getShieldHtml(safetyStatus, url, safetySources = []) {
   const encodedUrl = encodeURIComponent(url);
+
+  // Check if privileged URL
+  const privilegedInfo = isPrivilegedUrl(url);
+  if (privilegedInfo && safetyStatus === 'safe') {
+    // Check if sources indicate this is privileged
+    const isPrivilegedSource = safetySources && safetySources.length > 0 &&
+                                safetySources[0].includes('not scanned');
+    if (isPrivilegedSource) {
+      const privilegedMessage = `Security Check: ${privilegedInfo.label}\n\n✓ ${privilegedInfo.label}\n✓ Not scanned (trusted browser page)`;
+      const escapedMessage = privilegedMessage.replace(/"/g, '&quot;');
+      return `
+        <span class="shield-indicator shield-safe clickable-status" title="${escapedMessage}" data-url="${encodedUrl}" data-status-message="${escapedMessage}">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z"/>
+          </svg>
+        </span>
+      `;
+    }
+  }
 
   // Build sources text for unsafe tooltip
   const sourcesText = safetySources && safetySources.length > 0
@@ -2394,7 +2476,7 @@ function createBookmarkElement(bookmark) {
     statusIndicatorsHtml += getShieldHtml(safetyStatus, bookmark.url, safetySources);
   }
   if (displayOptions.liveStatus) {
-    statusIndicatorsHtml += getStatusDotHtml(linkStatus);
+    statusIndicatorsHtml += getStatusDotHtml(linkStatus, bookmark.url);
   }
 
   // Also build separate shield and chainlink for grid view
@@ -2405,7 +2487,7 @@ function createBookmarkElement(bookmark) {
 
   let linkStatusHtml = '';
   if (displayOptions.liveStatus) {
-    linkStatusHtml = getStatusDotHtml(linkStatus);
+    linkStatusHtml = getStatusDotHtml(linkStatus, bookmark.url);
   }
 
   // Build favicon HTML based on display options
@@ -3913,7 +3995,7 @@ function updateBookmarkStatusInDOM(bookmarkId, linkStatus, safetyStatus, safetyS
     statusIndicatorsHtml += getShieldHtml(safetyStatus, url, safetySources);
   }
   if (displayOptions.liveStatus && linkStatus) {
-    statusIndicatorsHtml += getStatusDotHtml(linkStatus);
+    statusIndicatorsHtml += getStatusDotHtml(linkStatus, url);
   }
 
   statusIndicators.innerHTML = statusIndicatorsHtml;

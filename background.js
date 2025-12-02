@@ -47,7 +47,8 @@ async function getDecryptedApiKey(keyName) {
 }
 
 // URL validation utilities inlined to avoid module loading issues
-const BLOCKED_SCHEMES = ['file', 'javascript', 'data', 'vbscript', 'about'];
+const BLOCKED_SCHEMES = ['file', 'javascript', 'data', 'vbscript'];
+const PRIVILEGED_SCHEMES = ['about', 'chrome', 'moz-extension', 'chrome-extension', 'view-source', 'jar', 'resource'];
 const PRIVATE_IP_RANGES = [
   /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./,
   /^169\.254\./, /^::1$/, /^fe80:/i, /^fc00:/i, /^fd00:/i, /^localhost$/i
@@ -64,12 +65,22 @@ function validateUrl(urlString) {
     return { valid: false, error: 'Invalid URL format' };
   }
   const scheme = url.protocol.replace(':', '').toLowerCase();
+
+  // Allow privileged schemes (browser internal pages, extensions, etc.)
+  if (PRIVILEGED_SCHEMES.includes(scheme)) {
+    return { valid: true, url: url.href, privileged: true };
+  }
+
+  // Block dangerous schemes
   if (BLOCKED_SCHEMES.includes(scheme)) {
     return { valid: false, error: `Blocked URL scheme: ${scheme}` };
   }
+
+  // Only allow HTTP/HTTPS for regular URLs
   if (scheme !== 'http' && scheme !== 'https') {
     return { valid: false, error: `Only HTTP and HTTPS URLs are allowed` };
   }
+
   const hostname = url.hostname.toLowerCase();
   for (const range of PRIVATE_IP_RANGES) {
     if (range.test(hostname)) {
@@ -222,6 +233,49 @@ const setCachedResult = async (url, result, cacheKey) => {
 };
 
 /**
+ * Check if a URL is a browser privileged/internal URL that should not be scanned
+ * @param {string} url The URL to check
+ * @returns {object|null} Object with type and label if privileged, null otherwise
+ */
+function isPrivilegedUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    const scheme = urlObj.protocol.replace(':', '').toLowerCase();
+
+    // Browser internal pages
+    if (scheme === 'about') {
+      return { type: 'browser-internal', label: 'Browser internal page' };
+    }
+    if (scheme === 'chrome') {
+      return { type: 'browser-internal', label: 'Browser internal page' };
+    }
+
+    // Extension pages
+    if (scheme === 'moz-extension') {
+      return { type: 'extension', label: 'Extension page' };
+    }
+    if (scheme === 'chrome-extension') {
+      return { type: 'extension', label: 'Extension page' };
+    }
+
+    // Developer/debugging schemes
+    if (scheme === 'view-source') {
+      return { type: 'developer', label: 'View source page' };
+    }
+    if (scheme === 'jar') {
+      return { type: 'developer', label: 'JAR resource' };
+    }
+    if (scheme === 'resource') {
+      return { type: 'developer', label: 'Browser resource' };
+    }
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
  * Checks if a URL is reachable and resolves to the expected domain.
  * This function runs in the background script, which has broader permissions
  * than content scripts, allowing it to bypass CORS restrictions.
@@ -229,6 +283,13 @@ const setCachedResult = async (url, result, cacheKey) => {
  * @returns {Promise<'live' | 'dead' | 'parked'>} The status of the link.
  */
 const checkLinkStatus = async (url, bypassCache = false) => {
+  // Check if this is a privileged URL that should not be scanned
+  const privilegedInfo = isPrivilegedUrl(url);
+  if (privilegedInfo) {
+    console.log(`[Link Check] Privileged URL detected: ${privilegedInfo.label}`);
+    return 'live'; // Privileged URLs are always considered "live"
+  }
+
   // Check cache first (unless bypassed for rescan)
   if (!bypassCache) {
     const cached = await getCachedResult(url, 'linkStatusCache');
@@ -1095,6 +1156,13 @@ const checkSuspiciousPatterns = async (url, domain) => {
 
 // Check URL safety using aggregated blocklist database
 const checkURLSafety = async (url, bypassCache = false) => {
+  // Check if this is a privileged URL that should not be scanned
+  const privilegedInfo = isPrivilegedUrl(url);
+  if (privilegedInfo) {
+    console.log(`[Safety Check] Privileged URL detected: ${privilegedInfo.label}`);
+    return { status: 'safe', sources: [privilegedInfo.label + ' (not scanned)'] };
+  }
+
   // Check cache first (unless bypassed for rescan)
   if (!bypassCache) {
     const cached = await getCachedResult(url, 'safetyStatusCache');
