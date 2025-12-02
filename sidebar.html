@@ -226,6 +226,53 @@
       -webkit-backdrop-filter: blur(20px) saturate(180%);
     }
 
+    /* Vibrant hue slider for tinted theme */
+    .tinted #tintHue {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 8px;
+      border-radius: 4px;
+      background: linear-gradient(to right,
+        hsl(0, 100%, 50%),
+        hsl(30, 100%, 50%),
+        hsl(60, 100%, 50%),
+        hsl(90, 100%, 50%),
+        hsl(120, 100%, 50%),
+        hsl(150, 100%, 50%),
+        hsl(180, 100%, 50%),
+        hsl(210, 100%, 50%),
+        hsl(240, 100%, 50%),
+        hsl(270, 100%, 50%),
+        hsl(300, 100%, 50%),
+        hsl(330, 100%, 50%),
+        hsl(360, 100%, 50%)
+      );
+      outline: none;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .tinted #tintHue::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+      border: 2px solid rgba(0, 0, 0, 0.2);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .tinted #tintHue::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+      border: 2px solid rgba(0, 0, 0, 0.2);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
     /* Context menu blur - ONLY when .show class is active */
     .enhanced-gray .bookmark-actions.show,
     .tinted .bookmark-actions.show,
@@ -233,7 +280,7 @@
     .tinted .settings-menu {
       backdrop-filter: blur(40px) saturate(180%) !important;
       -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
-      background: rgba(28, 28, 30, 0.88) !important;
+      background: rgba(28, 28, 30, 0.95) !important;
       border: 0.5px solid rgba(255, 255, 255, 0.18) !important;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
     }
