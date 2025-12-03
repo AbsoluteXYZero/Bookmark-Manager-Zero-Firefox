@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-2.4.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.5.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -143,6 +143,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 🔄 **Bulk Operations** - Multi-select mode for batch editing/deletion
 - 📋 **Duplicate Detection** - Find and manage duplicate bookmarks
 - ⏮️ **Undo System** - Restore recently deleted bookmarks
+- 📜 **Bookmark Changelog** - Track all bookmark and folder changes (creates, moves, deletes, renames) with persistent history
 - 🌍 **Favicon Display** - Show website icons
 
 ## Installation
@@ -210,6 +211,7 @@ Click the gear icon to access:
 - **Display Options:** Toggle title, URL, status indicators, previews, preview popup
 - **View Mode:** Switch between list and grid layouts
 - **Default Start Folder:** Choose which folder to expand on sidebar load
+- **Bookmark Changelog:** View all bookmark and folder changes with clickable URLs
 - **Cache Management:** Configure auto-clear settings
 - **API Keys:** Set up optional security API keys
 
@@ -518,7 +520,34 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.4.0 (Current) - Interactive Preview & UI Enhancements
+### v2.5.0 (Current) - Bookmark Changelog & History Tracking
+
+**New Features:**
+- 📜 **Bookmark Changelog** - Comprehensive history tracking for all bookmark and folder operations
+  - Tracks creates, updates, moves, and deletes for both bookmarks and folders
+  - Accessible via "View Bookmark Changelog" button in settings menu (just under Export Bookmarks)
+  - Persistent storage survives browser restarts and sidebar closes
+  - Maximum 1000 entries to prevent unlimited growth
+- 🎨 **Modern SVG Icons** - Color-coded operation icons matching app aesthetic
+  - Green: Create operations
+  - Red: Delete operations
+  - Blue: Move operations
+  - Orange: Update/rename operations
+- 📋 **Clickable URLs** - Click any bookmark URL in changelog to copy to clipboard with visual feedback
+- 🕒 **Human-Readable Timestamps** - "5 minutes ago", "2 hours ago", etc.
+- 📁 **Folder Path Tracking** - Shows full folder hierarchy for moved items
+- 🔄 **Rename Tracking** - Displays old and new names for renamed items
+- 🗑️ **Clear History** - Option to clear all changelog entries
+
+**Implementation Details:**
+- Uses browser.storage.local for persistent storage across sessions
+- Automatic folder path reconstruction using recursive traversal
+- Detailed move tracking shows "from → to" folder paths
+- Modal interface with scrollable history and clear action buttons
+
+---
+
+### v2.4.0 - Interactive Preview & UI Enhancements
 
 **Preview System Improvements:**
 - 🖼️ **High-Quality Preview Popups** - Hover over bookmark thumbnails to see 800x600 high-resolution preview (2.5x larger than thumbnails)

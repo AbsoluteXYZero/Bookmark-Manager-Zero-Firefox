@@ -304,6 +304,94 @@ async function getDecryptedApiKey(keyName) {
   return null;
 }
 
+// ============================================================================
+// CHANGELOG UTILITIES
+// ============================================================================
+
+// Maximum number of changelog entries to keep
+const MAX_CHANGELOG_ENTRIES = 1000;
+
+// Add an entry to the changelog
+async function addChangelogEntry(type, itemType, title, url = null, details = {}) {
+  try {
+    const result = await safeStorage.get('changelogEntries');
+    let changelogEntries = result.changelogEntries || [];
+
+    const entry = {
+      id: Date.now(),
+      type, // 'create', 'update', 'move', 'delete'
+      itemType, // 'bookmark', 'folder'
+      timestamp: Date.now(),
+      title,
+      url,
+      details
+    };
+
+    // Add new entry at the beginning (most recent first)
+    changelogEntries.unshift(entry);
+
+    // Keep only the latest entries
+    if (changelogEntries.length > MAX_CHANGELOG_ENTRIES) {
+      changelogEntries = changelogEntries.slice(0, MAX_CHANGELOG_ENTRIES);
+    }
+
+    await safeStorage.set({ changelogEntries });
+    console.log('[Changelog] Added entry:', entry);
+  } catch (error) {
+    console.error('[Changelog] Failed to add entry:', error);
+  }
+}
+
+// Get all changelog entries
+async function getChangelogEntries() {
+  try {
+    const result = await safeStorage.get('changelogEntries');
+    return result.changelogEntries || [];
+  } catch (error) {
+    console.error('[Changelog] Failed to get entries:', error);
+    return [];
+  }
+}
+
+// Clear all changelog entries
+async function clearChangelog() {
+  try {
+    await safeStorage.set({ changelogEntries: [] });
+    console.log('[Changelog] Cleared all entries');
+  } catch (error) {
+    console.error('[Changelog] Failed to clear entries:', error);
+  }
+}
+
+// Get folder path for a bookmark/folder
+async function getFolderPath(itemId) {
+  try {
+    const parents = [];
+    let currentId = itemId;
+
+    while (currentId) {
+      const items = await browser.bookmarks.get(currentId);
+      if (!items || items.length === 0) break;
+
+      const item = items[0];
+      if (!item.parentId) break;
+
+      const parentItems = await browser.bookmarks.get(item.parentId);
+      if (!parentItems || parentItems.length === 0) break;
+
+      const parent = parentItems[0];
+      if (!parent.title) break;
+
+      parents.unshift(parent.title);
+      currentId = parent.parentId;
+    }
+
+    return parents.join(' > ') || 'Root';
+  } catch (error) {
+    return 'Unknown';
+  }
+}
+
 // Focus trap utility for modal accessibility
 let previouslyFocusedElement = null;
 let focusTrapListener = null;
@@ -3021,11 +3109,18 @@ async function handleDropToRoot(draggedId) {
   }
 
   try {
+    // Get old parent folder path before moving
+    const oldParent = await getFolderPath(draggedItem.parentId);
+
     // Move to root at the last position
     await browser.bookmarks.move(draggedId, {
       parentId: undefined,
       index: bookmarkTree.length
     });
+
+    // Add to changelog
+    const itemType = draggedItem.url ? 'bookmark' : 'folder';
+    await addChangelogEntry('move', itemType, draggedItem.title, draggedItem.url, { oldParent, newParent: 'Root' });
 
     await loadBookmarks();
     renderBookmarks();
@@ -3081,10 +3176,20 @@ async function handleDropToPosition(draggedId, targetParentId, targetIndex) {
   }
 
   try {
+    // Get old parent folder path before moving
+    const oldParent = await getFolderPath(draggedItem.parentId);
+
     await browser.bookmarks.move(draggedId, {
       parentId: targetParentId === 'root________' ? undefined : targetParentId,
       index: targetIndex
     });
+
+    // Get new parent folder path after moving
+    const newParent = await getFolderPath(targetParentId === 'root________' ? undefined : targetParentId);
+
+    // Add to changelog
+    const itemType = draggedItem.url ? 'bookmark' : 'folder';
+    await addChangelogEntry('move', itemType, draggedItem.title, draggedItem.url, { oldParent, newParent });
 
     await loadBookmarks();
     renderBookmarks();
@@ -3197,10 +3302,20 @@ async function handleDrop(draggedId, targetId, targetElement, dropState) {
     }
 
     // Move the bookmark using Firefox API
+    // Get old parent folder path before moving
+    const oldParent = await getFolderPath(draggedItem.parentId);
+
     await browser.bookmarks.move(draggedId, {
       parentId: targetParentId,
       index: newIndex
     });
+
+    // Get new parent folder path after moving
+    const newParent = await getFolderPath(targetParentId);
+
+    // Add to changelog
+    const itemType = draggedItem.url ? 'bookmark' : 'folder';
+    await addChangelogEntry('move', itemType, draggedItem.title, draggedItem.url, { oldParent, newParent });
 
     // Reload and re-render
     await loadBookmarks();
@@ -3704,6 +3819,9 @@ async function deleteFolder(id) {
     // Get folder details before deleting for undo functionality
     const folderInfo = await browser.bookmarks.getSubTree(id);
     const folder = folderInfo[0];
+
+    // Add to changelog before deleting
+    await addChangelogEntry('delete', 'folder', folder.title || 'Untitled');
 
     // Delete the folder
     await browser.bookmarks.removeTree(id);
@@ -4467,7 +4585,28 @@ async function saveEditModal() {
   }
 
   try {
+    // Log changes
+    const oldTitle = currentEditItem.title;
+    const oldUrl = currentEditItem.url;
+    const itemType = isFolder ? 'folder' : 'bookmark';
+
     await browser.bookmarks.update(currentEditItem.id, updates);
+
+    // Add to changelog
+    const changeDetails = {};
+    if (oldTitle !== updates.title) {
+      changeDetails.oldTitle = oldTitle;
+      changeDetails.newTitle = updates.title;
+    }
+    if (!isFolder && oldUrl !== updates.url) {
+      changeDetails.oldUrl = oldUrl;
+      changeDetails.newUrl = updates.url;
+    }
+
+    if (Object.keys(changeDetails).length > 0) {
+      await addChangelogEntry('update', itemType, updates.title, updates.url, changeDetails);
+    }
+
     await loadBookmarks();
     renderBookmarks();
     closeEditModal();
@@ -4526,6 +4665,9 @@ async function deleteBookmark(id) {
     // Get bookmark details before deleting for undo functionality
     const bookmarks = await browser.bookmarks.get(id);
     const bookmark = bookmarks[0];
+
+    // Add to changelog before deleting
+    await addChangelogEntry('delete', 'bookmark', bookmark.title || 'Untitled', bookmark.url);
 
     // Delete the bookmark
     await browser.bookmarks.remove(id);
@@ -4703,11 +4845,14 @@ async function saveNewBookmark() {
       }
     }
 
-    await browser.bookmarks.create({
+    const newBookmark = await browser.bookmarks.create({
       title: title || url,
       url,
       parentId
     });
+
+    // Add to changelog
+    await addChangelogEntry('create', 'bookmark', newBookmark.title, newBookmark.url);
 
     // Remember the selected folder for next time
     if (parentId) {
@@ -4797,11 +4942,14 @@ async function saveNewFolder() {
   }
 
   try {
-    await browser.bookmarks.create({
+    const newFolder = await browser.bookmarks.create({
       title,
       type: 'folder',
       parentId
     });
+
+    // Add to changelog
+    await addChangelogEntry('create', 'folder', newFolder.title);
 
     // Remember the selected parent folder for next time
     if (parentId) {
@@ -5417,6 +5565,152 @@ async function viewErrorLogs() {
   }
 }
 
+// Open changelog modal
+async function openChangelogModal() {
+  const modal = document.getElementById('changelogModal');
+  const changelogList = document.getElementById('changelogList');
+  const changelogCount = document.getElementById('changelogCount');
+
+  // Load changelog entries
+  const entries = await getChangelogEntries();
+
+  // Update count
+  changelogCount.textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
+
+  // Render entries
+  if (entries.length === 0) {
+    changelogList.innerHTML = `
+      <div style="text-align: center; padding: 40px 20px; color: var(--md-sys-color-on-surface-variant);">
+        <svg width="48" height="48" fill="currentColor" viewBox="0 0 24 24" style="opacity: 0.3; margin-bottom: 12px;">
+          <path d="M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3Z"/>
+        </svg>
+        <p style="font-size: 14px;">No changes recorded yet.</p>
+        <p style="font-size: 12px; opacity: 0.7; margin-top: 8px;">Your bookmark changes will appear here.</p>
+      </div>
+    `;
+  } else {
+    let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+
+    entries.forEach(entry => {
+      const date = new Date(entry.timestamp);
+      const timeAgo = getTimeAgo(entry.timestamp);
+      const iconColor = entry.type === 'create' ? '#10b981' : entry.type === 'delete' ? '#ef4444' : entry.type === 'move' ? '#3b82f6' : '#f59e0b';
+
+      // SVG icons for operation types
+      let icon;
+      if (entry.type === 'create') {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>`;
+      } else if (entry.type === 'delete') {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/></svg>`;
+      } else if (entry.type === 'move') {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18M20,6H10A2,2 0 0,0 8,8V11H10V8H20V20H10V17H8V20A2,2 0 0,0 10,22H20A2,2 0 0,0 22,20V8A2,2 0 0,0 20,6Z"/></svg>`;
+      } else {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg>`;
+      }
+
+      // SVG icons for item types
+      let itemIcon;
+      if (entry.itemType === 'folder') {
+        itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-primary);"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg>`;
+      } else {
+        itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-secondary);"><path d="M17,3H7A2,2 0 0,0 5,5V21L12,18L19,21V5C19,3.89 18.1,3 17,3Z"/></svg>`;
+      }
+
+      let detailsHtml = '';
+      if (entry.type === 'move' && entry.details.oldParent && entry.details.newParent) {
+        detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">From: ${entry.details.oldParent} → ${entry.details.newParent}</div>`;
+      } else if (entry.type === 'update') {
+        if (entry.details.oldTitle && entry.details.newTitle && entry.details.oldTitle !== entry.details.newTitle) {
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Renamed from: ${entry.details.oldTitle}</div>`;
+        }
+        if (entry.details.oldUrl && entry.details.newUrl && entry.details.oldUrl !== entry.details.newUrl) {
+          detailsHtml += `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 2px;">URL changed</div>`;
+        }
+      }
+
+      const urlHtml = entry.url ? `<div class="changelog-url" data-url="${entry.url}" style="font-size: 11px; color: var(--md-sys-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: underline;" title="Click to copy: ${entry.url}">${entry.url}</div>` : '';
+
+      html += `
+        <div style="padding: 12px; background: var(--md-sys-color-surface-variant); border-radius: 8px; border-left: 3px solid ${iconColor};">
+          <div style="display: flex; align-items: start; gap: 8px;">
+            <div style="font-size: 20px; flex-shrink: 0;">${icon}</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                <span style="font-size: 14px;">${itemIcon}</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--md-sys-color-on-surface);">${entry.title || 'Untitled'}</span>
+              </div>
+              ${urlHtml}
+              ${detailsHtml}
+              <div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 6px; opacity: 0.7;">${timeAgo}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div>';
+    changelogList.innerHTML = html;
+
+    // Add click handlers to URLs for copying to clipboard
+    const urlElements = changelogList.querySelectorAll('.changelog-url');
+    urlElements.forEach(urlEl => {
+      urlEl.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const url = urlEl.getAttribute('data-url');
+        try {
+          await navigator.clipboard.writeText(url);
+          // Show visual feedback
+          const originalText = urlEl.textContent;
+          const originalColor = urlEl.style.color;
+          urlEl.textContent = '✓ Copied!';
+          urlEl.style.color = '#10b981';
+          setTimeout(() => {
+            urlEl.textContent = originalText;
+            urlEl.style.color = originalColor;
+          }, 1500);
+        } catch (error) {
+          console.error('Failed to copy URL:', error);
+          alert('Failed to copy URL to clipboard');
+        }
+      });
+    });
+  }
+
+  // Show modal
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+  trapFocus(modal);
+}
+
+// Close modal (generic)
+function closeModal(modal) {
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+  releaseFocusTrap();
+}
+
+// Helper to get relative time
+function getTimeAgo(timestamp) {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+
+  if (seconds < 60) return 'Just now';
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days !== 1 ? 's' : ''} ago`;
+
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`;
+
+  const years = Math.floor(months / 12);
+  return `${years} year${years !== 1 ? 's' : ''} ago`;
+}
+
 // Close extension
 async function closeExtension() {
   if (isPreviewMode) {
@@ -5669,7 +5963,17 @@ async function bulkMoveItems() {
   try {
     // Move each selected item
     for (const itemId of selectedItems) {
+      // Get item details before moving
+      const items = await browser.bookmarks.get(itemId);
+      const item = items[0];
+      const oldParent = await getFolderPath(item.parentId);
+
       await browser.bookmarks.move(itemId, { parentId: destinationFolder.id });
+
+      // Add to changelog
+      const itemType = item.url ? 'bookmark' : 'folder';
+      const newParent = await getFolderPath(destinationFolder.id);
+      await addChangelogEntry('move', itemType, item.title, item.url, { oldParent, newParent });
     }
 
     selectedItems.clear();
@@ -6638,6 +6942,35 @@ function setupEventListeners() {
       browser.tabs.create({ url: coffeeUrl });
     }
     closeAllMenus();
+  });
+
+  // View Changelog
+  const viewChangelogBtn = document.getElementById('viewChangelogBtn');
+  const changelogModal = document.getElementById('changelogModal');
+  const changelogModalClose = document.getElementById('changelogModalClose');
+  const changelogModalOk = document.getElementById('changelogModalOk');
+  const clearChangelogBtn = document.getElementById('clearChangelogBtn');
+  const changelogList = document.getElementById('changelogList');
+  const changelogCount = document.getElementById('changelogCount');
+
+  viewChangelogBtn.addEventListener('click', async () => {
+    await openChangelogModal();
+    closeAllMenus();
+  });
+
+  changelogModalClose.addEventListener('click', () => {
+    closeModal(changelogModal);
+  });
+
+  changelogModalOk.addEventListener('click', () => {
+    closeModal(changelogModal);
+  });
+
+  clearChangelogBtn.addEventListener('click', async () => {
+    if (confirm('Are you sure you want to clear all changelog history? This action cannot be undone.')) {
+      await clearChangelog();
+      await openChangelogModal(); // Refresh the display
+    }
   });
 
   // Close extension

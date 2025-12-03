@@ -1181,9 +1181,38 @@
       left: 0;
       opacity: 0;
       transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      pointer-events: none;
+      pointer-events: auto;
+      cursor: pointer;
       user-select: none;
       -webkit-user-drag: none;
+    }
+
+    /* Large preview popup */
+    .preview-popup {
+      position: fixed;
+      z-index: 10000;
+      background: var(--md-sys-color-surface);
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      padding: 8px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      max-width: 90%;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    .preview-popup.show {
+      opacity: 1;
+    }
+
+    .preview-popup img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
     }
 
     .bookmark-preview-container .preview-image.loaded {
@@ -2123,6 +2152,14 @@
             </span>
             <span>Export Bookmarks (Backup)</span>
           </button>
+          <button class="action-btn" id="viewChangelogBtn">
+            <span class="icon">
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3Z"/>
+              </svg>
+            </span>
+            <span>View Bookmark Changelog</span>
+          </button>
           <div style="padding: 8px 16px; font-size: 11px; color: var(--md-sys-color-on-surface-variant); line-height: 1.4;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
               <span style="color: var(--md-sys-color-on-surface); font-weight: 500;">Cache Size:</span>
@@ -2644,6 +2681,10 @@
       <input type="checkbox" id="displayPreview" checked>
       <span>Preview</span>
     </label>
+    <label class="display-toggle" title="Show/hide preview popup on hover">
+      <input type="checkbox" id="displayPreviewPopup" checked>
+      <span>Preview Popup</span>
+    </label>
   </div>
 
   <!-- Bulk Actions Bar -->
@@ -2862,6 +2903,39 @@
         </div>
       </div>
       <button id="closeDragModeBtn" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.2); color: var(--md-sys-color-on-primary); border: none; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background 0.2s; pointer-events: auto;">Exit</button>
+    </div>
+  </div>
+
+  <!-- Changelog Modal -->
+  <div id="changelogModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle" aria-hidden="true">
+    <div class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content" style="max-width: 800px; max-height: 80vh;">
+      <div class="modal-header">
+        <h3 id="changelogModalTitle">Bookmark Changes History</h3>
+        <button class="modal-close" id="changelogModalClose" aria-label="Close dialog">×</button>
+      </div>
+      <div class="modal-body" style="max-height: 60vh; overflow-y: auto; padding: 0;">
+        <div style="padding: 12px 16px; background: var(--md-sys-color-surface-variant); border-bottom: 1px solid var(--md-sys-color-outline-variant); display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-on-surface-variant);">
+              <path d="M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3Z"/>
+            </svg>
+            <span style="font-size: 13px; color: var(--md-sys-color-on-surface-variant);" id="changelogCount">Loading...</span>
+          </div>
+          <button class="btn" id="clearChangelogBtn" style="font-size: 11px; padding: 6px 12px;">Clear History</button>
+        </div>
+        <div id="changelogList" style="padding: 16px;">
+          <div style="text-align: center; padding: 40px 20px; color: var(--md-sys-color-on-surface-variant);">
+            <svg width="48" height="48" fill="currentColor" viewBox="0 0 24 24" style="opacity: 0.3; margin-bottom: 12px;">
+              <path d="M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3Z"/>
+            </svg>
+            <p style="font-size: 14px;">Loading changelog...</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="changelogModalOk">Close</button>
+      </div>
     </div>
   </div>
 
