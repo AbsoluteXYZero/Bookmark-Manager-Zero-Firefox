@@ -676,6 +676,7 @@ async function init() {
   await loadAutoClearSetting();
   await loadStartFolder();
   await loadBookmarks();
+  cleanupSafetyHistory(); // Clean up stale entries on sidebar load
   await restoreCachedBookmarkStatuses();
   await expandToStartFolder();
   setupEventListeners();
@@ -1544,7 +1545,7 @@ async function rescanAllBookmarks() {
   if (rescanAllBtn) rescanAllBtn.style.display = 'none';
 
   // Process bookmarks in batches
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 10;
   const BATCH_DELAY = 300;
 
   // Update status bar
@@ -1563,8 +1564,8 @@ async function rescanAllBookmarks() {
 
     const batch = bookmarksToCheck.slice(i, i + BATCH_SIZE);
 
-    // Check each bookmark in the batch
-    for (const node of batch) {
+    // Check each bookmark in the batch in parallel
+    const batchPromises = batch.map(async (node) => {
       const results = {};
 
       if (linkCheckingEnabled) {
@@ -1578,7 +1579,11 @@ async function rescanAllBookmarks() {
 
       // Update the node in the tree
       updateBookmarkInTree(node.id, results);
-    }
+      return results;
+    });
+
+    // Wait for all checks in the batch to complete
+    await Promise.all(batchPromises);
 
     scannedCount += batch.length;
     if (scanProgress) scanProgress.textContent = `Scanning: ${scannedCount}/${totalToScan}`;
@@ -1595,6 +1600,9 @@ async function rescanAllBookmarks() {
   // Hide stop button, show rescan button
   if (stopBtn) stopBtn.style.display = 'none';
   if (rescanAllBtn) rescanAllBtn.style.display = 'flex';
+
+  // Clear checkedBookmarks to free memory after scan completes
+  checkedBookmarks.clear();
 
   // Reset status to "Ready" after 2 seconds
   setTimeout(() => {
@@ -1648,7 +1656,7 @@ async function autoCheckBookmarkStatuses() {
   bookmarksToCheck.forEach(item => checkedBookmarks.add(item.id));
 
   // Process bookmarks in batches to prevent browser/network overload
-  const BATCH_SIZE = 5; // Check 5 bookmarks at a time
+  const BATCH_SIZE = 10; // Check 10 bookmarks at a time
   const BATCH_DELAY = 300; // 300ms delay between batches (balance speed vs network load)
 
   // Update status bar to show scanning state
@@ -1739,6 +1747,9 @@ async function autoCheckBookmarkStatuses() {
   // Update status bar to show complete
   if (scanProgress) scanProgress.textContent = 'Scan complete';
   if (scanStatusBar) scanStatusBar.classList.remove('scanning');
+
+  // Clear checkedBookmarks to free memory after scan completes
+  checkedBookmarks.clear();
 
   console.log(`Finished checking link status for ${bookmarksToCheck.length} bookmarks (safety checks disabled - use Test VT button)`);
 }
@@ -3614,7 +3625,7 @@ async function rescanFolder(folderId, folderTitle) {
     let dead = 0;
 
     // Process bookmarks in batches to avoid overwhelming the background service
-    const BATCH_SIZE = 5;
+    const BATCH_SIZE = 10;
     for (let i = 0; i < bookmarks.length; i += BATCH_SIZE) {
       const batch = bookmarks.slice(i, i + BATCH_SIZE);
 
@@ -3692,6 +3703,9 @@ async function rescanFolder(folderId, folderTitle) {
 
     // Refresh the display with updated status icons
     renderBookmarks();
+
+    // Clear checkedBookmarks to free memory after folder scan completes
+    checkedBookmarks.clear();
 
     // Show summary
     const summary = [
@@ -4347,6 +4361,40 @@ async function loadSafetyHistory() {
   }
 }
 
+// Clean up safetyHistory to remove entries for URLs no longer in bookmarks
+function cleanupSafetyHistory() {
+  if (isPreviewMode || !bookmarkTree || bookmarkTree.length === 0) return;
+
+  // Collect all current bookmark URLs
+  const currentUrls = new Set();
+  const collectUrls = (nodes) => {
+    nodes.forEach(node => {
+      if (node.url) {
+        currentUrls.add(node.url);
+      }
+      if (node.children) {
+        collectUrls(node.children);
+      }
+    });
+  };
+  collectUrls(bookmarkTree);
+
+  // Remove history entries for URLs that no longer exist in bookmarks
+  const historyUrls = Object.keys(safetyHistory);
+  let removedCount = 0;
+  historyUrls.forEach(url => {
+    if (!currentUrls.has(url)) {
+      delete safetyHistory[url];
+      removedCount++;
+    }
+  });
+
+  if (removedCount > 0) {
+    console.log(`[Memory Cleanup] Removed ${removedCount} stale entries from safetyHistory`);
+    saveSafetyHistory(); // Persist the cleanup
+  }
+}
+
 // Track safety status change and alert if degraded
 function trackSafetyChange(url, newStatus, sources) {
   if (!url) return;
@@ -4361,7 +4409,12 @@ function trackSafetyChange(url, newStatus, sources) {
   const history = safetyHistory[url];
   const lastStatus = history.length > 0 ? history[history.length - 1].status : null;
 
-  // Add new entry
+  // Only track if status has actually changed
+  if (lastStatus === newStatus) {
+    return; // No change, skip adding duplicate entry
+  }
+
+  // Add new entry only when status changes
   history.push({ timestamp, status: newStatus, sources });
 
   // Keep only last 10 entries per URL
@@ -4381,7 +4434,7 @@ function trackSafetyChange(url, newStatus, sources) {
     }, 100);
   }
 
-  // Save history
+  // Save history only when status changes
   saveSafetyHistory();
 }
 
@@ -7133,6 +7186,7 @@ function setupEventListeners() {
         try {
           console.log(`[Bookmark Sync] ${eventType} - Syncing bookmarks from Firefox...`);
           await loadBookmarks();
+          cleanupSafetyHistory(); // Clean up stale entries after sync
           renderBookmarks();
           console.log('[Bookmark Sync] ✓ Sync complete');
         } catch (error) {
