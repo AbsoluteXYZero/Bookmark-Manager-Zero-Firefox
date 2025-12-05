@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-2.7.1-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.7.2-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -523,7 +523,17 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.7.1 (Current) - Bug Fixes & Package Update
+### v2.7.2 (Current) - Whitelist Persistence Fix
+
+**Bug Fixes:**
+- 🐛 **Fixed whitelist persistence** - Whitelisted bookmarks now maintain their status after sidebar reload
+  - Added whitelist check during cache restoration
+  - Whitelist status takes priority over cached statuses
+  - Fixes issue where whitelisted bookmarks showed gray shields after reopening sidebar
+
+---
+
+### v2.7.1 - Bug Fixes & Package Update
 
 **Package Updates:**
 - 📦 **Include qrcode-lib.js** - Ensures QR code generation library is included in extension package
