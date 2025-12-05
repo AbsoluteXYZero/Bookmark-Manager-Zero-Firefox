@@ -82,6 +82,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
     </td>
     <td width="33%">
       <img src="screenshots/Screenshot 2025-12-05 133834.png" alt="Screenshot 9" width="100%">
+    </td>
   </tr>
 </table>
 
@@ -950,4 +951,5 @@ Special thanks to the security research community for maintaining free, public m
 ---
 
 **Made with ❤️ for Firefox users who love organized bookmarks**
+
 
