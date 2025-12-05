@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-2.7.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.7.1-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
