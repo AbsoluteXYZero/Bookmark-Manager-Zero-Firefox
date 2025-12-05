@@ -1580,19 +1580,36 @@ async function restoreCachedBookmarkStatuses() {
     function restoreStatuses(nodes) {
       nodes.forEach(node => {
         if (node.url) {
-          // Check link status cache
-          const linkCached = linkCache[node.url];
-          if (linkCached && isValidCache(linkCached)) {
-            node.linkStatus = linkCached.result;
-            restored++;
+          // Check if URL is whitelisted (takes priority over cache)
+          try {
+            const hostname = new URL(node.url).hostname;
+            if (whitelistedUrls.has(hostname)) {
+              node.safetyStatus = 'safe';
+              node.safetySources = ['Whitelisted by user'];
+              node.linkStatus = node.linkStatus || 'unknown'; // Keep existing link status if present
+              restored++;
+            }
+          } catch (e) {
+            // Invalid URL, skip whitelist check
           }
 
-          // Check safety status cache
-          const safetyCached = safetyCache[node.url];
-          if (safetyCached && isValidCache(safetyCached)) {
-            node.safetyStatus = safetyCached.result?.status || safetyCached.result;
-            node.safetySources = safetyCached.result?.sources || [];
-            restored++;
+          // Check link status cache (only if not already set by whitelist)
+          if (!node.linkStatus) {
+            const linkCached = linkCache[node.url];
+            if (linkCached && isValidCache(linkCached)) {
+              node.linkStatus = linkCached.result;
+              restored++;
+            }
+          }
+
+          // Check safety status cache (only if not whitelisted)
+          if (!node.safetyStatus) {
+            const safetyCached = safetyCache[node.url];
+            if (safetyCached && isValidCache(safetyCached)) {
+              node.safetyStatus = safetyCached.result?.status || safetyCached.result;
+              node.safetySources = safetyCached.result?.sources || [];
+              restored++;
+            }
           }
         }
 
