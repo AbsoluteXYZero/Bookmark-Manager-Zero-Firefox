@@ -523,7 +523,28 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.7.0 (Current) - First-Time Setup & QR Code Generation
+### v2.7.1 (Current) - Bug Fixes & Package Update
+
+**Package Updates:**
+- 📦 **Include qrcode-lib.js** - Ensures QR code generation library is included in extension package
+
+**Bug Fixes:**
+- 🐛 **Fixed cache race condition** - Resolved issue where parallel bookmark scans would overwrite each other's cache entries
+  - Added mutex locks to prevent concurrent cache writes
+  - Fixes gray indicators appearing after folder rescan and sidebar reload
+  - Ensures privileged URLs (about:, moz-extension://) persist in cache correctly
+- 🐛 **Fixed folder rescan progress** - Folder rescans now show real-time UI updates and status bar progress
+  - Added `renderBookmarks()` call after each batch during folder rescan
+  - Reduced batch delay from 1000ms to 300ms for 3x faster scanning
+  - Status bar shows "Scanning folder: X/Y" during scan
+- 🐛 **Fixed blocklist loading timing** - Scans now proactively load blocklist database before starting
+  - Added `ensureBlocklistReady` message handler to trigger database update before scanning
+  - Prevents "unknown" safety status results when database loads mid-scan
+  - Applies to both folder rescans and background scans
+
+---
+
+### v2.7.0 - First-Time Setup & QR Code Generation
 
 **New Features:**
 - 🎆 **First-Time Setup Card** - Welcoming onboarding experience for new users
@@ -553,20 +574,6 @@ Contributions welcome! Please:
 - Improved status bar with "Scan All Bookmarks" text label for better discoverability
 - Centered status messages in status bar
 - Matches enhanced-blue theme seamlessly
-
-**Bug Fixes:**
-- 🐛 **Fixed cache race condition** - Resolved issue where parallel bookmark scans would overwrite each other's cache entries
-  - Added mutex locks to prevent concurrent cache writes
-  - Fixes gray indicators appearing after folder rescan and sidebar reload
-  - Ensures privileged URLs (about:, moz-extension://) persist in cache correctly
-- 🐛 **Fixed folder rescan progress** - Folder rescans now show real-time UI updates and status bar progress
-  - Added `renderBookmarks()` call after each batch during folder rescan
-  - Reduced batch delay from 1000ms to 300ms for 3x faster scanning
-  - Status bar shows "Scanning folder: X/Y" during scan
-- 🐛 **Fixed blocklist loading timing** - Scans now proactively load blocklist database before starting
-  - Added `ensureBlocklistReady` message handler to trigger database update before scanning
-  - Prevents "unknown" safety status results when database loads mid-scan
-  - Applies to both folder rescans and background scans
 
 ---
 
