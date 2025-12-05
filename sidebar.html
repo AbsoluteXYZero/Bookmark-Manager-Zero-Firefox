@@ -100,6 +100,13 @@
       border: 0.5px solid rgba(255, 255, 255, 0.12);
     }
 
+    .enhanced-blue .setup-card {
+      border-radius: 14px;
+      background: var(--md-sys-color-surface-variant);
+      border: 0.5px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
     .enhanced-blue .scan-status-bar {
       border-radius: 14px;
       background: var(--md-sys-color-surface-variant);
@@ -620,10 +627,33 @@
       color: var(--md-sys-color-on-surface-variant);
     }
 
-    .scan-status-bar .status-text {
+    .scan-status-bar .status-left,
+    .scan-status-bar .status-center,
+    .scan-status-bar .status-right {
       display: flex;
       align-items: center;
-      gap: 3px;
+      gap: 4px;
+    }
+
+    .scan-status-bar .status-left {
+      flex: 0 0 auto;
+    }
+
+    .scan-status-bar .status-center {
+      flex: 1 1 auto;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .scan-status-bar .status-right {
+      flex: 0 0 auto;
+    }
+
+    .scan-status-bar .scan-btn-label {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      white-space: nowrap;
     }
 
     .scan-status-bar .info-icon {
@@ -638,7 +668,6 @@
       font-size: 7px;
       font-weight: bold;
       cursor: help;
-      margin-left: 3px;
     }
 
     .scan-status-bar .rescan-btn,
@@ -652,7 +681,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-right: 4px;
     }
 
     .scan-status-bar .rescan-btn:hover,
@@ -675,6 +703,91 @@
 
     .scan-status-bar .total-count {
       font-weight: 500;
+    }
+
+    /* First-Time Setup Card Styles */
+    .setup-card {
+      background: var(--md-sys-color-primary-container);
+      border: 2px solid var(--md-sys-color-primary);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--md-elevation-2);
+    }
+
+    .setup-card-header {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-primary-container);
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .setup-card-subheader {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-primary-container);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .setup-card-scan-btn {
+      width: 100%;
+      padding: 14px 20px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 16px;
+    }
+
+    .setup-card-scan-btn:hover {
+      background: var(--md-sys-color-secondary);
+      transform: translateY(-1px);
+      box-shadow: var(--md-elevation-2);
+    }
+
+    .setup-card-info {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-primary-container);
+      margin-bottom: 16px;
+    }
+
+    .setup-card-disclaimer {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--md-sys-color-on-primary-container);
+      opacity: 0.8;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: 8px;
+    }
+
+    .setup-card-disclaimer strong {
+      font-weight: 600;
+    }
+
+    .setup-card-dismiss-btn {
+      width: 100%;
+      padding: 10px 16px;
+      background: transparent;
+      color: var(--md-sys-color-on-primary-container);
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .setup-card-dismiss-btn:hover {
+      background: rgba(0, 0, 0, 0.05);
     }
 
     /* Bookmark Item Styles */
@@ -1213,6 +1326,109 @@
       width: 100%;
       height: auto;
       border-radius: 8px;
+    }
+
+    /* QR Code popup styles */
+    .qr-popup {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 10001;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .qr-popup.show {
+      display: flex;
+      opacity: 1;
+    }
+
+    .qr-popup-content {
+      position: relative;
+      background: var(--md-sys-color-surface);
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      padding: 24px;
+      max-width: 90%;
+      max-height: 90%;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .qr-close-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: var(--md-sys-color-surface-container);
+      color: var(--md-sys-color-on-surface);
+      border: none;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s ease;
+    }
+
+    .qr-close-btn:hover {
+      background: var(--md-sys-color-surface-container-high);
+    }
+
+    .qr-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .qr-container canvas,
+    .qr-container img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .qr-url-input {
+      width: 100%;
+      max-width: 320px;
+      padding: 10px 12px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 8px;
+      background: var(--md-sys-color-surface-container);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      font-family: inherit;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+
+    .qr-url-input:focus {
+      border-color: var(--md-sys-color-primary);
+      background: var(--md-sys-color-surface-container-high);
+    }
+
+    .qr-url-input::selection {
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
     }
 
     .bookmark-preview-container .preview-image.loaded {
@@ -2383,6 +2599,11 @@
         </button>
       </div>
       <div class="toolbar-right">
+        <button id="qrCodeBtn" class="btn btn-icon" title="Generate QR Code" aria-label="Generate QR code for current page">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3,3H11V11H3V3M5,5V9H9V5H5M13,3H21V11H13V3M15,5V9H19V5H15M3,13H11V21H3V13M5,15V19H9V15H5M13,13H15V15H13V13M17,13H19V15H17V13M21,13V15H19V17H21V19H19V21H21V19H23V17H21V15H23V13H21M13,17V19H15V21H13V19H11V17H13M15,17H17V19H15V17M19,17V19H17V21H19V21H21V19H19V17Z"/>
+          </svg>
+        </button>
         <div class="theme-btn-wrapper">
           <button id="themeBtn" class="btn btn-icon" title="Theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false">
             <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -2732,21 +2953,26 @@
 
   <!-- Scan Status Bar -->
   <div class="scan-status-bar" id="scanStatusBar">
-    <div class="status-text">
+    <div class="status-left">
       <button class="rescan-btn" id="rescanAllBtn" title="Rescan All Bookmarks" aria-label="Rescan all bookmarks">
         <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/>
         </svg>
       </button>
+      <span class="scan-btn-label">Scan All Bookmarks</span>
       <button class="stop-scan-btn" id="stopScanBtn" title="Stop Scanning" aria-label="Stop scanning" style="display: none;">
         <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24">
           <path d="M18,18H6V6H18V18Z"/>
         </svg>
       </button>
-      <span class="scan-progress" id="scanProgress">Ready</span>
-      <span class="info-icon" title="Scans bookmarks on-demand as you expand folders&#10;Scans 5 bookmarks every 1 second">i</span>
     </div>
-    <div class="total-count" id="totalCount">0 bookmarks</div>
+    <div class="status-center">
+      <span class="scan-progress" id="scanProgress">Ready</span>
+      <span class="info-icon" title="Scans bookmarks on-demand as you expand folders&#10;Scans 10 bookmarks every 300ms">i</span>
+    </div>
+    <div class="status-right">
+      <span class="total-count" id="totalCount">0 bookmarks</span>
+    </div>
   </div>
 
   <!-- Edit Modal -->
@@ -2939,6 +3165,7 @@
     </div>
   </div>
 
+  <script src="qrcode-lib.js"></script>
   <script src="sidebar.js?v=20251117014"></script>
 </body>
 </html>

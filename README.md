@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-2.6.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+[![Version](https://img.shields.io/badge/version-2.7.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -106,6 +106,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 ### Link & Safety Checking
 - 🔗 **Link Status Checking** - Automatically detects broken/dead links
 - 🛡️ **Security Scanning** - Checks URLs against malware databases
+- 🔄 **Background Scanning** - Bookmark scanning continues in the background even when the sidebar is closed, with automatic progress synchronization when reopened
 - 📂 **Folder Rescan** - Right-click any folder to recursively scan all bookmarks in that folder and subfolders with detailed statistics
 - ⚠️ **Safety Indicators** - Visual warnings for suspicious links with detailed tooltips
 - 👆 **Clickable Status Icons** - Click shield or chain icons for full status details popup
@@ -128,6 +129,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 🎨 **Bookmark Background Opacity** - Adjust bookmark background transparency (0-100%) while keeping text at full opacity
 - ✍️ **Custom Text Colors** - Visual color picker for bookmark and folder text with reset button
 - 🖼️ **Custom Backgrounds** - Upload and position your own background images with drag-to-reposition
+- 📱 **QR Code Generator Button** - Toolbar button for quick QR code generation of the current page URL
 - ⌨️ **Keyboard Navigation** - Full keyboard support with arrow keys
 - ♿ **Accessibility** - Comprehensive ARIA labels and keyboard traps
 - 🔍 **Zoom Control** - 50% - 200% zoom levels for bookmark content
@@ -139,6 +141,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 🔍 **High-Quality Preview Popups** - Hover over thumbnails to see 800x600 high-resolution preview
 - 📌 **Smart Popup Positioning** - Preview popups appear above/below bookmarks to avoid covering content
 - 💬 **URL Tooltips** - Hover over bookmark title/URL to see full URL in tooltip
+- 📊 **Improved Status Bar** - Enhanced discoverability with visible "Scan All Bookmarks" label and centered status messages
 - 📝 **Text-Only View** - View bookmark pages in text-only mode
 - 🔄 **Bulk Operations** - Multi-select mode for batch editing/deletion
 - 📋 **Duplicate Detection** - Find and manage duplicate bookmarks
@@ -520,7 +523,54 @@ Contributions welcome! Please:
 
 ## Changelog
 
-### v2.6.0 (Current) - Performance & Memory Optimization
+### v2.7.0 (Current) - First-Time Setup & QR Code Generation
+
+**New Features:**
+- 🎆 **First-Time Setup Card** - Welcoming onboarding experience for new users
+  - Appears only once on first installation (never on updates)
+  - Explains auto-scan behavior and folder scanning
+  - One-click option to scan all bookmarks immediately
+  - Clear disclaimer about false positives/negatives
+  - Persistent flag independent of cache clearing
+- 📱 **QR Code Generator** - Generate QR codes for any bookmark
+  - Right-click bookmark → "Generate QR Code"
+  - Toolbar button for quick QR code generation of current page URL
+  - 100% local generation (privacy-focused, no external requests)
+  - Editable URL field with live QR code regeneration
+  - Works completely offline
+  - Perfect for quickly accessing bookmarks on mobile devices
+- 🔄 **Background Scanning** - Bookmark scanning continues even when sidebar is closed
+  - Scanning runs in background script for persistent operation
+  - Progress automatically syncs when sidebar reopens
+  - Scan results restore from cache upon reopening
+  - Processes bookmarks in batches (10 items, 300ms delay)
+
+**User Experience:**
+- Setup card positioned as inline banner between header and bookmarks
+- QR code popup with centered layout and Material Design styling
+- QR code toolbar button with distinctive QR icon (left of themes button)
+- Real-time QR code updates as you edit the URL
+- Improved status bar with "Scan All Bookmarks" text label for better discoverability
+- Centered status messages in status bar
+- Matches enhanced-blue theme seamlessly
+
+**Bug Fixes:**
+- 🐛 **Fixed cache race condition** - Resolved issue where parallel bookmark scans would overwrite each other's cache entries
+  - Added mutex locks to prevent concurrent cache writes
+  - Fixes gray indicators appearing after folder rescan and sidebar reload
+  - Ensures privileged URLs (about:, moz-extension://) persist in cache correctly
+- 🐛 **Fixed folder rescan progress** - Folder rescans now show real-time UI updates and status bar progress
+  - Added `renderBookmarks()` call after each batch during folder rescan
+  - Reduced batch delay from 1000ms to 300ms for 3x faster scanning
+  - Status bar shows "Scanning folder: X/Y" during scan
+- 🐛 **Fixed blocklist loading timing** - Scans now proactively load blocklist database before starting
+  - Added `ensureBlocklistReady` message handler to trigger database update before scanning
+  - Prevents "unknown" safety status results when database loads mid-scan
+  - Applies to both folder rescans and background scans
+
+---
+
+### v2.6.0 - Performance & Memory Optimization
 
 **Performance Improvements:**
 - ⚡ **10x Faster Scanning** - Fixed parallel processing bug that was checking bookmarks sequentially instead of in parallel

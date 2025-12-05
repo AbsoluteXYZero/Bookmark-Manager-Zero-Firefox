@@ -7,6 +7,33 @@
 const APP_VERSION = browser.runtime.getManifest().version;
 
 // ============================================================================
+// FIRST-TIME SETUP CARD
+// ============================================================================
+let hasSeenSetupCard = true; // Default to true, will be loaded from storage
+
+// Load setup card flag from storage
+async function loadSetupCardFlag() {
+  try {
+    const result = await safeStorage.get('hasSeenSetupCard');
+    hasSeenSetupCard = result.hasSeenSetupCard || false;
+  } catch (error) {
+    console.error('Error loading setup card flag:', error);
+    hasSeenSetupCard = false;
+  }
+}
+
+// Mark setup card as seen
+async function dismissSetupCard() {
+  hasSeenSetupCard = true;
+  try {
+    await safeStorage.set({ hasSeenSetupCard: true });
+    renderBookmarks(); // Re-render to remove the card
+  } catch (error) {
+    console.error('Error saving setup card flag:', error);
+  }
+}
+
+// ============================================================================
 // GLOBAL ERROR BOUNDARY
 // ============================================================================
 
@@ -517,6 +544,7 @@ const filterToggle = document.getElementById('filterToggle');
 const filterBar = document.getElementById('filterBar');
 const displayToggle = document.getElementById('displayToggle');
 const displayBar = document.getElementById('displayBar');
+const qrCodeBtn = document.getElementById('qrCodeBtn');
 const themeBtn = document.getElementById('themeBtn');
 const headerCollapseBtn = document.getElementById('headerCollapseBtn');
 const collapsibleHeader = document.getElementById('collapsibleHeader');
@@ -610,6 +638,30 @@ function shouldScanFolder(folderId) {
   return elapsed > FOLDER_SCAN_CACHE_DURATION; // >7 days
 }
 
+// Sync UI with ongoing background scan status
+async function syncBackgroundScanStatus() {
+  try {
+    const status = await browser.runtime.sendMessage({ action: 'getBackgroundScanStatus' });
+
+    if (status.isScanning) {
+      console.log(`[Background Scan] Syncing UI - ${status.scanned}/${status.total}`);
+
+      // Update progress text
+      if (scanProgress) {
+        scanProgress.textContent = `Scanning: ${status.scanned}/${status.total}`;
+      }
+
+      // Show stop button, hide rescan button
+      const stopBtn = document.getElementById('stopScanBtn');
+      const rescanBtn = document.getElementById('rescanAllBtn');
+      if (stopBtn) stopBtn.style.display = 'flex';
+      if (rescanBtn) rescanBtn.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('Error syncing background scan status:', error);
+  }
+}
+
 // Setup listener for blocklist download progress messages from background script
 function setupBlocklistProgressListener() {
   browser.runtime.onMessage.addListener((message) => {
@@ -635,6 +687,60 @@ function setupBlocklistProgressListener() {
       }
       if (scanStatusBar) scanStatusBar.classList.remove('scanning');
       console.log(`[Blocklist Complete] ${message.domains.toLocaleString()} unique domains from ${message.totalEntries.toLocaleString()} entries (${message.sources} sources)`);
+    }
+    // Background scan messages
+    else if (message.type === 'scanStarted') {
+      console.log(`[Background Scan] Started - ${message.total} bookmarks`);
+      if (scanProgress) scanProgress.textContent = `Scanning: 0/${message.total}`;
+
+      // Show stop button, hide rescan button
+      const stopBtn = document.getElementById('stopScanBtn');
+      const rescanBtn = document.getElementById('rescanAllBtn');
+      if (stopBtn) stopBtn.style.display = 'flex';
+      if (rescanBtn) rescanBtn.style.display = 'none';
+    } else if (message.type === 'scanProgress') {
+      // Update progress in status bar
+      if (scanProgress) {
+        scanProgress.textContent = `Scanning: ${message.scanned}/${message.total}`;
+      }
+
+      // Update the bookmark in the tree with scan results
+      if (message.result) {
+        const updates = {};
+        if (message.result.linkStatus) {
+          updates.linkStatus = message.result.linkStatus;
+        }
+        if (message.result.safetyStatus) {
+          updates.safetyStatus = message.result.safetyStatus;
+          updates.safetySources = message.result.safetySources || [];
+        }
+
+        updateBookmarkInTree(message.result.id, updates);
+
+        // Re-render if the bookmark is currently visible
+        const bookmarkElement = document.querySelector(`[data-id="${message.result.id}"]`);
+        if (bookmarkElement) {
+          renderBookmarks();
+        }
+      }
+    } else if (message.type === 'scanComplete') {
+      console.log(`[Background Scan] Complete - ${message.scanned}/${message.total} bookmarks scanned`);
+      if (scanProgress) scanProgress.textContent = 'Ready';
+
+      // Show rescan button, hide stop button
+      const stopBtn = document.getElementById('stopScanBtn');
+      const rescanBtn = document.getElementById('rescanAllBtn');
+      if (stopBtn) stopBtn.style.display = 'none';
+      if (rescanBtn) rescanBtn.style.display = 'flex';
+    } else if (message.type === 'scanCancelled') {
+      console.log(`[Background Scan] Cancelled - ${message.scanned}/${message.total} bookmarks scanned`);
+      if (scanProgress) scanProgress.textContent = 'Ready';
+
+      // Show rescan button, hide stop button
+      const stopBtn = document.getElementById('stopScanBtn');
+      const rescanBtn = document.getElementById('rescanAllBtn');
+      if (stopBtn) stopBtn.style.display = 'none';
+      if (rescanBtn) rescanBtn.style.display = 'flex';
     }
   });
 }
@@ -670,6 +776,7 @@ async function init() {
   loadContainerOpacity();
   // loadCustomTextColor(); // Moved to after event listener setup (line ~5388)
   loadCheckingSettings();
+  await loadSetupCardFlag();
   await loadWhitelist();
   await loadSafetyHistory();
   await loadFolderScanTimestamps();
@@ -682,6 +789,9 @@ async function init() {
   setupEventListeners();
   setupBlocklistProgressListener();
   renderBookmarks();
+
+  // Check if background scan is in progress and sync UI
+  await syncBackgroundScanStatus();
 
   // Automatically check bookmark statuses after initial render
   autoCheckBookmarkStatuses();
@@ -2061,6 +2171,47 @@ function renderBookmarks() {
   }
 
   bookmarkList.innerHTML = '';
+
+  // Show first-time setup card if user hasn't seen it
+  if (!hasSeenSetupCard) {
+    const setupCard = document.createElement('div');
+    setupCard.className = 'setup-card';
+    setupCard.innerHTML = `
+      <div class="setup-card-header">🎆 Welcome to Bookmark Manager Zero! 🎆</div>
+      <div class="setup-card-subheader">Your bookmarks are already here!</div>
+      <button class="setup-card-scan-btn" id="setupScanBtn">🔍 Scan All Bookmarks Now</button>
+      <div class="setup-card-info">
+        Bookmarks auto-scan when you expand folders (every 7 days). Progress appears in the status bar below.
+        You'll be alerted if safe bookmarks turn malicious.
+      </div>
+      <div class="setup-card-disclaimer">
+        <strong>Note:</strong> Scanning relies on community-submitted threat lists and automated link validation.
+        This may produce false positive/negative results. Use Bookmark Manager Zero as a helpful safety tool,
+        not a security guarantee.
+      </div>
+      <button class="setup-card-dismiss-btn" id="setupDismissBtn">Got it, don't show this again</button>
+    `;
+    bookmarkList.appendChild(setupCard);
+
+    // Add event listeners
+    setTimeout(() => {
+      const scanBtn = document.getElementById('setupScanBtn');
+      const dismissBtn = document.getElementById('setupDismissBtn');
+
+      if (scanBtn) {
+        scanBtn.addEventListener('click', async () => {
+          await dismissSetupCard();
+          // Trigger full scan directly
+          await rescanAllBookmarks();
+        });
+      }
+
+      if (dismissBtn) {
+        dismissBtn.addEventListener('click', dismissSetupCard);
+      }
+    }, 0);
+  }
+
   renderNodes(filtered, bookmarkList);
 
   // Restore open menu state if menu was open before re-render
@@ -2694,6 +2845,30 @@ function createBookmarkElement(bookmark) {
         </span>
         <span>Check on VirusTotal</span>
       </button>
+      <button class="action-btn" data-action="qr-code">
+        <span class="icon">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3,11H11V3H3M5,5H9V9H5M13,3V11H21V3M19,9H15V5H19M3,21H11V13H3M5,15H9V19H5M19,19V21H21V19M13,13H15V15H13M15,15H17V17H15M17,17H19V19H17M19,13V15H21V13M13,21H15V19H13M15,19H17V21H15Z"/>
+          </svg>
+        </span>
+        <span>Generate QR Code</span>
+      </button>
+      <button class="action-btn" data-action="wayback-save">
+        <span class="icon">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/>
+          </svg>
+        </span>
+        <span>Save to Wayback Machine</span>
+      </button>
+      <button class="action-btn" data-action="wayback-browse">
+        <span class="icon">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M16.59,7.58L10,14.17L7.41,11.59L6,13L10,17L18,9L16.59,7.58Z"/>
+          </svg>
+        </span>
+        <span>Browse Wayback Snapshots</span>
+      </button>
       <button class="action-btn" data-action="copy-url">
         <span class="icon">
           <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
@@ -3024,6 +3199,96 @@ function showPreviewPopup(previewImage, mouseEvent) {
 function hidePreviewPopup() {
   if (previewPopup) {
     previewPopup.classList.remove('show');
+  }
+}
+
+// QR Code popup handling (local generation, privacy-focused)
+let qrCodePopup = null;
+
+// Create QR code popup element
+function createQRCodePopup() {
+  if (!qrCodePopup) {
+    qrCodePopup = document.createElement('div');
+    qrCodePopup.className = 'qr-popup';
+    qrCodePopup.innerHTML = `
+      <div class="qr-popup-content">
+        <button class="qr-close-btn" aria-label="Close">&times;</button>
+        <div class="qr-container"></div>
+        <input type="text" class="qr-url-input" placeholder="Enter URL..." />
+      </div>
+    `;
+    document.body.appendChild(qrCodePopup);
+
+    // Add click handler for close button
+    const closeBtn = qrCodePopup.querySelector('.qr-close-btn');
+    closeBtn.addEventListener('click', hideQRCodePopup);
+
+    // Close on backdrop click
+    qrCodePopup.addEventListener('click', (e) => {
+      if (e.target === qrCodePopup) {
+        hideQRCodePopup();
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && qrCodePopup && qrCodePopup.classList.contains('show')) {
+        hideQRCodePopup();
+      }
+    });
+  }
+  return qrCodePopup;
+}
+
+// Show QR code popup with locally generated QR code
+function showQRCodePopup(url) {
+  const popup = createQRCodePopup();
+  const qrContainer = popup.querySelector('.qr-container');
+  const qrUrlInput = popup.querySelector('.qr-url-input');
+
+  // Set the initial URL in the input
+  qrUrlInput.value = url;
+
+  // Function to generate/regenerate QR code
+  function generateQR(text) {
+    // Clear previous QR code
+    qrContainer.innerHTML = '';
+
+    // Generate QR code locally using qrcode-lib.js
+    try {
+      new QRCode(qrContainer, {
+        text: text,
+        width: 280,
+        height: 280,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      qrContainer.innerHTML = '<div style="padding: 20px;">Error generating QR code</div>';
+    }
+  }
+
+  // Generate initial QR code
+  generateQR(url);
+
+  // Regenerate QR code on input change
+  qrUrlInput.addEventListener('input', (e) => {
+    const newUrl = e.target.value;
+    if (newUrl.trim()) {
+      generateQR(newUrl);
+    }
+  });
+
+  // Show popup
+  popup.classList.add('show');
+}
+
+// Hide QR code popup
+function hideQRCodePopup() {
+  if (qrCodePopup) {
+    qrCodePopup.classList.remove('show');
   }
 }
 
@@ -3615,8 +3880,42 @@ async function rescanFolder(folderId, folderTitle) {
       return;
     }
 
-    // Show notification that scan is starting
-    alert(`Starting rescan of ${bookmarks.length} bookmark(s)...\n\nThis may take a minute. You'll see a summary when complete.`);
+    // Expand the rescanned folder and all its subfolders FIRST so icons can update live
+    const expandFolderTree = (nodeId) => {
+      expandedFolders.add(nodeId);
+      const node = findFolderById(nodeId, bookmarkTree);
+      if (node && node.children) {
+        node.children.forEach(child => {
+          if (child.type === 'folder' || child.children) {
+            expandFolderTree(child.id);
+          }
+        });
+      }
+    };
+    expandFolderTree(folderId);
+    renderBookmarks(); // Initial render with folders expanded
+
+    // Wait for DOM to update before starting scan
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Update status bar to show scanning
+    if (scanStatusBar) scanStatusBar.classList.add('scanning');
+    if (scanProgress) scanProgress.textContent = `Preparing scan...`;
+
+    // Ensure blocklist database is ready (triggers update if needed, then waits for completion)
+    // This prevents getting 'unknown' results during database download
+    try {
+      if (scanProgress) scanProgress.textContent = `Loading security database...`;
+      console.log('[Folder Rescan] Ensuring blocklist database is ready...');
+
+      const response = await browser.runtime.sendMessage({ action: 'ensureBlocklistReady' });
+
+      console.log(`[Folder Rescan] Blocklist ready with ${response.size} domains`);
+    } catch (error) {
+      console.warn('[Folder Rescan] Could not ensure blocklist is ready:', error);
+    }
+
+    if (scanProgress) scanProgress.textContent = `Scanning folder: 0/${bookmarks.length}`;
 
     // Track statistics
     let scanned = 0;
@@ -3673,9 +3972,16 @@ async function rescanFolder(folderId, folderTitle) {
       // Wait for batch to complete
       await Promise.all(batchPromises);
 
+      // Update UI after each batch to show progress
+      renderBookmarks();
+
+      // Update status bar with progress
+      const progress = Math.min(scanned, bookmarks.length);
+      if (scanProgress) scanProgress.textContent = `Scanning folder: ${progress}/${bookmarks.length}`;
+
       // Add delay between batches to avoid overwhelming background service
       if (i + BATCH_SIZE < bookmarks.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
 
@@ -3687,22 +3993,12 @@ async function rescanFolder(folderId, folderTitle) {
       checkedBookmarks.add(bookmark.id);
     });
 
-    // Expand the rescanned folder and all its subfolders so status icons appear
-    const expandFolderTree = (nodeId) => {
-      expandedFolders.add(nodeId);
-      const node = findFolderById(nodeId, bookmarkTree);
-      if (node && node.children) {
-        node.children.forEach(child => {
-          if (child.type === 'folder' || child.children) {
-            expandFolderTree(child.id);
-          }
-        });
-      }
-    };
-    expandFolderTree(folderId);
-
     // Refresh the display with updated status icons
     renderBookmarks();
+
+    // Update status bar to show completion
+    if (scanStatusBar) scanStatusBar.classList.remove('scanning');
+    if (scanProgress) scanProgress.textContent = `Scan complete: ${scanned}/${bookmarks.length}`;
 
     // Clear checkedBookmarks to free memory after folder scan completes
     checkedBookmarks.clear();
@@ -4532,6 +4828,41 @@ async function handleBookmarkAction(action, bookmark) {
       } catch (error) {
         console.error('Error opening VirusTotal:', error);
         alert('Failed to open VirusTotal. Invalid URL.');
+      }
+      break;
+
+    case 'qr-code':
+      // Generate and show QR code for bookmark URL (local, privacy-focused)
+      showQRCodePopup(bookmark.url);
+      break;
+
+    case 'wayback-save':
+      // Save to Wayback Machine - open the save page with URL pre-filled
+      {
+        // Wayback's save page doesn't accept URL in path, so we copy URL first
+        // and open their save page where user can paste and submit
+        try {
+          await navigator.clipboard.writeText(bookmark.url);
+          const waybackSaveUrl = 'https://web.archive.org/save';
+          browser.tabs.create({ url: waybackSaveUrl });
+          // Brief notification that URL was copied
+          setTimeout(() => {
+            alert(`URL copied to clipboard!\n\n"${bookmark.url}"\n\nPaste it into the Wayback Machine save page that just opened.`);
+          }, 100);
+        } catch (error) {
+          console.error('Error copying URL:', error);
+          // Fallback: just open the save page
+          const waybackSaveUrl = 'https://web.archive.org/save';
+          browser.tabs.create({ url: waybackSaveUrl });
+        }
+      }
+      break;
+
+    case 'wayback-browse':
+      // Browse Wayback Machine snapshots
+      {
+        const waybackBrowseUrl = `https://web.archive.org/web/*/${bookmark.url}`;
+        browser.tabs.create({ url: waybackBrowseUrl });
       }
       break;
 
@@ -6204,6 +6535,26 @@ function setupEventListeners() {
     });
   });
 
+  // QR Code button - generate QR for current page URL
+  if (qrCodeBtn) {
+    qrCodeBtn.addEventListener('click', async () => {
+      // Get the current active tab URL
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs && tabs[0] && tabs[0].url) {
+          showQRCodePopup(tabs[0].url);
+        } else {
+          // Fallback: show with empty URL so user can paste one
+          showQRCodePopup('');
+        }
+      } catch (error) {
+        console.error('Error getting current tab URL:', error);
+        // Fallback: show with empty URL so user can paste one
+        showQRCodePopup('');
+      }
+    });
+  }
+
   // Theme menu
   themeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -6835,31 +7186,50 @@ function setupEventListeners() {
         return;
       }
 
-      // Reset all bookmark statuses to trigger rescan
-      function resetStatuses(nodes) {
-        nodes.forEach(node => {
-          if (node.url) {
-            node.linkStatus = 'unknown';
-            node.safetyStatus = 'unknown';
-          }
-          if (node.children) {
-            resetStatuses(node.children);
-          }
-        });
-      }
-      resetStatuses(bookmarkTree);
-      checkedBookmarks.clear();
-      renderBookmarks();
+      try {
+        // Stop any ongoing background scan first
+        await browser.runtime.sendMessage({ action: 'stopBackgroundScan' });
 
-      // Scan ALL bookmarks regardless of folder expansion
-      await rescanAllBookmarks();
+        // Wait a moment for the scan to stop
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Clear the checkedBookmarks set to allow re-checking
+        checkedBookmarks.clear();
+
+        // Reset all bookmark statuses to unknown
+        function resetStatuses(nodes) {
+          nodes.forEach(node => {
+            if (node.url) {
+              node.linkStatus = 'unknown';
+              node.safetyStatus = 'unknown';
+            }
+            if (node.children) {
+              resetStatuses(node.children);
+            }
+          });
+        }
+        resetStatuses(bookmarkTree);
+        renderBookmarks();
+
+        // Start background scan (runs in background script)
+        const response = await browser.runtime.sendMessage({ action: 'startBackgroundScan' });
+
+        if (!response.success) {
+          console.error('Failed to start background scan:', response.message);
+          alert('Failed to start scan: ' + response.message);
+        }
+      } catch (error) {
+        console.error('Error rescanning bookmarks:', error);
+        alert('Failed to rescan bookmarks. Please try again.');
+      }
     });
 
     // Stop scan button
     const stopScanBtn = document.getElementById('stopScanBtn');
     if (stopScanBtn) {
-      stopScanBtn.addEventListener('click', () => {
-        scanCancelled = true;
+      stopScanBtn.addEventListener('click', async () => {
+        // Stop background scan
+        await browser.runtime.sendMessage({ action: 'stopBackgroundScan' });
         console.log('User requested scan cancellation');
       });
     }

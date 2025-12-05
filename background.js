@@ -217,8 +217,16 @@ const getCachedResult = async (url, cacheKey) => {
   return null;
 };
 
-// Store result in cache
+// Store result in cache (with mutex to prevent race conditions)
+const cacheMutex = {};
 const setCachedResult = async (url, result, cacheKey) => {
+  // Wait for any pending write to the same cache to complete
+  while (cacheMutex[cacheKey]) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+
+  cacheMutex[cacheKey] = true;
+
   try {
     const cache = await browser.storage.local.get(cacheKey);
     const cacheData = cache[cacheKey] || {};
@@ -229,6 +237,8 @@ const setCachedResult = async (url, result, cacheKey) => {
     await browser.storage.local.set({ [cacheKey]: cacheData });
   } catch (e) {
     console.warn('Cache write error:', e);
+  } finally {
+    cacheMutex[cacheKey] = false;
   }
 };
 
@@ -287,6 +297,8 @@ const checkLinkStatus = async (url, bypassCache = false) => {
   const privilegedInfo = isPrivilegedUrl(url);
   if (privilegedInfo) {
     console.log(`[Link Check] Privileged URL detected: ${privilegedInfo.label}`);
+    // Cache the result so it persists after sidebar reload
+    await setCachedResult(url, 'live', 'linkStatusCache');
     return 'live'; // Privileged URLs are always considered "live"
   }
 
@@ -1160,7 +1172,10 @@ const checkURLSafety = async (url, bypassCache = false) => {
   const privilegedInfo = isPrivilegedUrl(url);
   if (privilegedInfo) {
     console.log(`[Safety Check] Privileged URL detected: ${privilegedInfo.label}`);
-    return { status: 'safe', sources: [privilegedInfo.label + ' (not scanned)'] };
+    // Cache the result so it persists after sidebar reload
+    const result = { status: 'safe', sources: [privilegedInfo.label + ' (not scanned)'] };
+    await setCachedResult(url, result, 'safetyStatusCache');
+    return result;
   }
 
   // Check cache first (unless bypassed for rescan)
@@ -1459,8 +1474,296 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     browser.tabs.create({ url: printUrl });
     // This message doesn't need a response.
   }
+
+  // Background scan control
+  if (request.action === "startBackgroundScan") {
+    startBackgroundScan().then(result => {
+      sendResponse(result);
+    });
+    return true; // Required for async response
+  }
+
+  if (request.action === "stopBackgroundScan") {
+    const result = stopBackgroundScan();
+    sendResponse(result);
+    return true;
+  }
+
+  if (request.action === "getBackgroundScanStatus") {
+    const status = getBackgroundScanStatus();
+    sendResponse(status);
+    return true;
+  }
+
+  if (request.action === "isBlocklistLoading") {
+    sendResponse({ isLoading: blocklistLoading });
+    return true;
+  }
+
+  if (request.action === "waitForBlocklist") {
+    // Wait for blocklist to finish loading
+    const checkInterval = setInterval(() => {
+      if (!blocklistLoading) {
+        clearInterval(checkInterval);
+        sendResponse({ ready: true });
+      }
+    }, 500);
+    return true; // Required for async response
+  }
+
+  if (request.action === "ensureBlocklistReady") {
+    // Trigger blocklist update if needed, then wait for it to be ready
+    (async () => {
+      const now = Date.now();
+      if (now - blocklistLastUpdate > BLOCKLIST_UPDATE_INTERVAL || maliciousUrlsSet.size === 0) {
+        console.log('[Blocklist] Ensuring database is up to date...');
+        await updateBlocklistDatabase();
+      }
+
+      // Wait for any ongoing load to complete
+      if (blocklistLoading) {
+        await new Promise(resolve => {
+          const checkInterval = setInterval(() => {
+            if (!blocklistLoading) {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 500);
+        });
+      }
+
+      sendResponse({ ready: true, size: maliciousUrlsSet.size });
+    })();
+    return true; // Required for async response
+  }
 });
 
+
+// Background scanning state
+let backgroundScanState = {
+  isScanning: false,
+  isCancelled: false,
+  totalBookmarks: 0,
+  scannedCount: 0,
+  bookmarksQueue: [],
+  checkedBookmarks: new Set()
+};
+
+// Get all bookmarks recursively
+async function getAllBookmarks() {
+  const tree = await browser.bookmarks.getTree();
+  const bookmarks = [];
+
+  function traverse(nodes) {
+    nodes.forEach(node => {
+      if (node.url) {
+        bookmarks.push(node);
+      }
+      if (node.children) {
+        traverse(node.children);
+      }
+    });
+  }
+
+  traverse(tree);
+  return bookmarks;
+}
+
+// Start background scanning
+async function startBackgroundScan() {
+  if (backgroundScanState.isScanning) {
+    console.log('[Background Scan] Already scanning');
+    return { success: false, message: 'Scan already in progress' };
+  }
+
+  try {
+    // Get user settings
+    const settings = await browser.storage.local.get(['linkCheckingEnabled', 'safetyCheckingEnabled']);
+    const linkCheckingEnabled = settings.linkCheckingEnabled !== false;
+    const safetyCheckingEnabled = settings.safetyCheckingEnabled !== false;
+
+    if (!linkCheckingEnabled && !safetyCheckingEnabled) {
+      console.log('[Background Scan] Both checking types disabled');
+      return { success: false, message: 'Link and safety checking are both disabled' };
+    }
+
+    // Clear cache
+    await browser.storage.local.remove(['linkStatusCache', 'safetyStatusCache']);
+
+    // Ensure blocklist database is ready (triggers update if needed, then waits for completion)
+    // This prevents all bookmarks from getting 'unknown' safety status
+    const now = Date.now();
+    if (now - blocklistLastUpdate > BLOCKLIST_UPDATE_INTERVAL || maliciousUrlsSet.size === 0) {
+      console.log('[Background Scan] Ensuring blocklist database is up to date...');
+      browser.runtime.sendMessage({
+        type: 'scanStatus',
+        message: 'Loading security database...'
+      }).catch(() => {});
+
+      await updateBlocklistDatabase();
+    }
+
+    // Wait for any ongoing blocklist load to complete
+    if (blocklistLoading) {
+      console.log('[Background Scan] Waiting for blocklist to finish loading...');
+      browser.runtime.sendMessage({
+        type: 'scanStatus',
+        message: 'Waiting for security database to load...'
+      }).catch(() => {});
+
+      await new Promise(resolve => {
+        const checkInterval = setInterval(() => {
+          if (!blocklistLoading) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 500);
+      });
+
+      console.log('[Background Scan] Blocklist ready');
+    }
+
+    // Get all bookmarks
+    const allBookmarks = await getAllBookmarks();
+
+    console.log(`[Background Scan] Starting scan of ${allBookmarks.length} bookmarks`);
+
+    // Initialize scan state
+    backgroundScanState = {
+      isScanning: true,
+      isCancelled: false,
+      totalBookmarks: allBookmarks.length,
+      scannedCount: 0,
+      bookmarksQueue: allBookmarks,
+      checkedBookmarks: new Set(),
+      linkCheckingEnabled,
+      safetyCheckingEnabled
+    };
+
+    // Notify UI that scan has started
+    browser.runtime.sendMessage({
+      type: 'scanStarted',
+      total: allBookmarks.length
+    }).catch(() => {}); // Ignore if no listeners
+
+    // Start processing the queue
+    processBackgroundScanQueue();
+
+    return { success: true, total: allBookmarks.length };
+  } catch (error) {
+    console.error('[Background Scan] Error starting scan:', error);
+    backgroundScanState.isScanning = false;
+    return { success: false, message: error.message };
+  }
+}
+
+// Process the background scan queue in batches
+async function processBackgroundScanQueue() {
+  const BATCH_SIZE = 10;
+  const BATCH_DELAY = 300;
+
+  while (backgroundScanState.bookmarksQueue.length > 0 && !backgroundScanState.isCancelled) {
+    // Get next batch
+    const batch = backgroundScanState.bookmarksQueue.splice(0, BATCH_SIZE);
+
+    // Process batch in parallel
+    const checkPromises = batch.map(async (bookmark) => {
+      try {
+        if (backgroundScanState.checkedBookmarks.has(bookmark.id)) {
+          return null;
+        }
+
+        backgroundScanState.checkedBookmarks.add(bookmark.id);
+
+        const result = {
+          id: bookmark.id,
+          url: bookmark.url,
+          title: bookmark.title
+        };
+
+        // Check link status
+        if (backgroundScanState.linkCheckingEnabled) {
+          result.linkStatus = await checkLinkStatus(bookmark.url, true); // Bypass cache
+        }
+
+        // Check safety status
+        if (backgroundScanState.safetyCheckingEnabled) {
+          const safetyResult = await checkURLSafety(bookmark.url, true); // Bypass cache
+          result.safetyStatus = safetyResult.status;
+          result.safetySources = safetyResult.sources;
+        }
+
+        backgroundScanState.scannedCount++;
+
+        // Notify UI of progress
+        browser.runtime.sendMessage({
+          type: 'scanProgress',
+          scanned: backgroundScanState.scannedCount,
+          total: backgroundScanState.totalBookmarks,
+          result: result
+        }).catch(() => {}); // Ignore if no listeners
+
+        return result;
+      } catch (error) {
+        console.error(`[Background Scan] Error checking bookmark ${bookmark.id}:`, error);
+        backgroundScanState.scannedCount++;
+        return {
+          id: bookmark.id,
+          url: bookmark.url,
+          title: bookmark.title,
+          linkStatus: 'dead',
+          safetyStatus: 'unknown',
+          safetySources: []
+        };
+      }
+    });
+
+    await Promise.all(checkPromises);
+
+    // Wait before next batch
+    if (backgroundScanState.bookmarksQueue.length > 0) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+    }
+  }
+
+  // Scan complete or cancelled
+  const wasCancelled = backgroundScanState.isCancelled;
+
+  console.log(`[Background Scan] ${wasCancelled ? 'Cancelled' : 'Complete'} - Scanned ${backgroundScanState.scannedCount}/${backgroundScanState.totalBookmarks}`);
+
+  // Notify UI
+  browser.runtime.sendMessage({
+    type: wasCancelled ? 'scanCancelled' : 'scanComplete',
+    scanned: backgroundScanState.scannedCount,
+    total: backgroundScanState.totalBookmarks
+  }).catch(() => {});
+
+  // Reset state
+  backgroundScanState.isScanning = false;
+  backgroundScanState.isCancelled = false;
+  backgroundScanState.bookmarksQueue = [];
+}
+
+// Stop background scanning
+function stopBackgroundScan() {
+  if (!backgroundScanState.isScanning) {
+    return { success: false, message: 'No scan in progress' };
+  }
+
+  console.log('[Background Scan] Cancelling scan...');
+  backgroundScanState.isCancelled = true;
+
+  return { success: true };
+}
+
+// Get current scan status
+function getBackgroundScanStatus() {
+  return {
+    isScanning: backgroundScanState.isScanning,
+    scanned: backgroundScanState.scannedCount,
+    total: backgroundScanState.totalBookmarks
+  };
+}
 
 // Handles the browser action (clicking the toolbar icon)
 // When clicked, toggle the sidebar
