@@ -259,7 +259,9 @@ function showPrivateModeIndicator() {
 
 // Encryption utilities inlined to avoid module loading issues
 async function getDerivedKey() {
-  const browserInfo = `${navigator.userAgent}-${navigator.language}-${screen.width}x${screen.height}`;
+  // Use extension ID and browser info for key derivation (consistent with background.js)
+  const extensionId = browser.runtime.id;
+  const browserInfo = `${navigator.userAgent}-${navigator.language}-${extensionId}`;
   const encoder = new TextEncoder();
   const data = encoder.encode(browserInfo);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);

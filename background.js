@@ -5,7 +5,9 @@ const APP_VERSION = browser.runtime.getManifest().version;
 
 // Encryption utilities inlined to avoid module loading issues
 async function getDerivedKey() {
-  const browserInfo = `${navigator.userAgent}-${navigator.language}-${screen.width}x${screen.height}`;
+  // Use extension ID and browser info for key derivation (works in service workers)
+  const extensionId = browser.runtime.id;
+  const browserInfo = `${navigator.userAgent}-${navigator.language}-${extensionId}`;
   const encoder = new TextEncoder();
   const data = encoder.encode(browserInfo);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -759,33 +761,54 @@ const checkVirusTotal = async (url) => {
       return 'unknown';
     }
 
-    // Wait a moment for analysis to complete
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Poll for analysis results with retries
+    let analysisData;
+    let attempts = 0;
+    const maxAttempts = 5;
 
-    // Get analysis results
-    const analysisController = new AbortController();
-    const analysisTimeout = setTimeout(() => analysisController.abort(), 10000);
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s between attempts
+      attempts++;
 
-    const analysisResponse = await fetch(
-      `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
-      {
-        method: 'GET',
-        signal: analysisController.signal,
-        headers: {
-          'x-apikey': apiKey
+      const analysisController = new AbortController();
+      const analysisTimeout = setTimeout(() => analysisController.abort(), 10000);
+
+      const analysisResponse = await fetch(
+        `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
+        {
+          method: 'GET',
+          signal: analysisController.signal,
+          headers: {
+            'x-apikey': apiKey
+          }
         }
+      );
+
+      clearTimeout(analysisTimeout);
+
+      if (!analysisResponse.ok) {
+        console.error(`[VirusTotal] Analysis fetch error: ${analysisResponse.status}`);
+        return 'unknown';
       }
-    );
 
-    clearTimeout(analysisTimeout);
+      analysisData = await analysisResponse.json();
+      const status = analysisData.data?.attributes?.status;
 
-    if (!analysisResponse.ok) {
-      console.error(`[VirusTotal] Analysis fetch error: ${analysisResponse.status}`);
-      return 'unknown';
+      console.log(`[VirusTotal] Analysis status (attempt ${attempts}): ${status}`);
+
+      if (status === 'completed') {
+        break;
+      }
+
+      if (attempts === maxAttempts) {
+        console.warn(`[VirusTotal] Analysis still not complete after ${maxAttempts} attempts, using partial results`);
+      }
     }
 
-    const analysisData = await analysisResponse.json();
     const stats = analysisData.data?.attributes?.stats;
+    const status = analysisData.data?.attributes?.status;
+
+    console.log(`[VirusTotal] Full stats:`, stats);
 
     if (!stats) {
       console.error(`[VirusTotal] No stats in analysis results`);
@@ -1198,11 +1221,18 @@ const checkURLSafety = async (url, bypassCache = false) => {
   let result;
 
   try {
-    // If database is currently loading, return unknown without caching
-    // This prevents blocking while the startup preload completes
+    // If database is currently loading, wait for it to complete
     if (blocklistLoading) {
-      console.log(`[Blocklist] Database still loading, returning unknown (will recheck later)`);
-      return { status: 'unknown', sources: [] };
+      console.log(`[Blocklist] Database still loading, waiting for completion...`);
+      await new Promise(resolve => {
+        const checkInterval = setInterval(() => {
+          if (!blocklistLoading) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 100);
+      });
+      console.log(`[Blocklist] Database loading complete, proceeding with scan`);
     }
 
     // Update database if needed (once per 24 hours)
