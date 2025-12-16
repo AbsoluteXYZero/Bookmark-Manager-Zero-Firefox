@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="icons/bookmark-96.svg" alt="Bookmark Manager Zero Logo" width="128" height="128">
+<img src="icons/bookmark-96.png" alt="Bookmark Manager Zero Logo" width="128" height="128">
 
 # Bookmark Manager Zero
 
