@@ -5616,6 +5616,36 @@ async function exportBookmarks() {
     } else {
       // Export actual bookmarks
       const tree = await browser.bookmarks.getTree();
+
+      // Debug: Log the root folders we're getting
+      if (tree && tree.length > 0 && tree[0].children) {
+        console.log('[Export] Root folders found:');
+        tree[0].children.forEach(folder => {
+          console.log(`  - "${folder.title}" (id: ${folder.id}, children: ${folder.children?.length || 0})`);
+        });
+      }
+
+      // Ensure Mobile Bookmarks folder is included
+      // Firefox's getTree() sometimes doesn't include mobile______ if it's empty or hidden
+      if (tree && tree.length > 0 && tree[0].children) {
+        const hasMobile = tree[0].children.some(folder => folder.id === 'mobile______');
+
+        if (!hasMobile) {
+          console.log('[Export] Mobile Bookmarks not in tree, attempting to fetch explicitly...');
+          try {
+            // Try to get mobile bookmarks folder explicitly
+            const mobileFolder = await browser.bookmarks.getSubTree('mobile______');
+            if (mobileFolder && mobileFolder.length > 0) {
+              console.log(`[Export] Found Mobile Bookmarks: ${mobileFolder[0].children?.length || 0} items`);
+              // Add it to the tree
+              tree[0].children.push(mobileFolder[0]);
+            }
+          } catch (e) {
+            console.log('[Export] Could not fetch Mobile Bookmarks folder:', e.message);
+          }
+        }
+      }
+
       data = tree;
     }
 
@@ -7365,7 +7395,7 @@ function setupEventListeners() {
   // Help & Documentation
   const helpDocsBtn = document.getElementById('helpDocsBtn');
   helpDocsBtn.addEventListener('click', () => {
-    const readmeUrl = 'https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/blob/main/README.md';
+    const readmeUrl = 'https://bmz.absolutezero.fyi/';
     if (isPreviewMode) {
       window.open(readmeUrl, '_blank');
     } else {
