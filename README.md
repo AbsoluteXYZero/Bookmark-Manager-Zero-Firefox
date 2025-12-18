@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-[![Version](https://img.shields.io/badge/version-3.0-blue)](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
+![Version](https://img.shields.io/badge/version-3.0-blue)]
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
@@ -160,22 +160,12 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 
 This is the easiest and most secure installation method. Updates will be delivered automatically through Firefox.
 
-### From XPI File (Alternative)
-If you prefer manual installation, you can download the `.xpi` file directly.
-
-1. Download the `.xpi` file from the [Releases page](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/releases)
-2. Open Firefox and navigate to `about:addons` (or press `Ctrl+Shift+A`)
-3. Click the gear icon (⚙️) in the top-right corner
-4. Select "Install Add-on From File..."
-5. Browse to and select the downloaded `.xpi` file
-6. Click "Add" when prompted to confirm the installation
-
 ### From Source Code (Development)
 For development or testing purposes. **Note:** This method requires re-adding the extension every time Firefox closes.
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox.git
+   git clone https://gitlab.com/AbsoluteXYZero/BMZ-Firefox.git
    ```
 2. Open Firefox and navigate to `about:debugging`
 3. Click "This Firefox" → "Load Temporary Add-on"
@@ -502,13 +492,13 @@ No build process required - pure vanilla JavaScript.
 - ✅ XSS protection
 
 ### Reporting Security Issues
-Please report security vulnerabilities via GitHub Issues (mark as security issue).
+Please report security vulnerabilities via GitLab Issues (mark as security issue).
 
 ## Browser Compatibility
 
 - **Firefox:** ✅ Fully supported (Manifest V3)
-- **Chrome:** ❌ Use [Chrome version](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Chrome)
-- **Edge:** ❌ Use [Chrome version](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Chrome) (Chromium-based)
+- **Chrome:** ❌ Use [Chrome version](https://gitlab.com/AbsoluteXYZero/BMZ-Chrome/)
+- **Edge:** ❌ Use [Chrome version](https://gitlab.com/AbsoluteXYZero/BMZ-Chrome/) (Chromium-based)
 
 ## Roadmap
 
@@ -921,8 +911,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Issues:** [GitHub Issues](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox/issues)
-- **Source Code:** [GitHub Repository](https://github.com/AbsoluteXYZero/Bookmark-Manager-Zero-Firefox)
+- **Issues:** [GitLab Issues](https://gitlab.com/AbsoluteXYZero/BMZ-Firefox/-/issues)
+- **Source Code:** [GitLab Repository](https://gitlab.com/AbsoluteXYZero/BMZ-Firefox)
 - **Buy Me a Coffee:** [Support Development](https://buymeacoffee.com/absolutexyzero)
 
 ## Acknowledgments

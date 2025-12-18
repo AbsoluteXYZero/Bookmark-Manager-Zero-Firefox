@@ -764,7 +764,7 @@ const checkVirusTotal = async (url) => {
     // Poll for analysis results with retries
     let analysisData;
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 15; // Increased from 5 to 15 (30 seconds total)
 
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s between attempts
