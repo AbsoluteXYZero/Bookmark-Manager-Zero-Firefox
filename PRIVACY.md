@@ -1,6 +1,6 @@
 # Privacy Policy for Bookmark Manager Zero
 
-**Last Updated:** November 18, 2025
+**Last Updated:** December 18, 2025
 
 ## Overview
 
@@ -28,6 +28,17 @@ When using the extension in Firefox Private Browsing mode:
 - No data is written to disk
 - All session data is cleared when you close the private window
 - Settings and preferences do not persist across sessions
+
+### QR Code Generation
+
+The extension includes a QR code generator that allows users to create QR codes for any text content:
+
+- **When Used:** When using the QR code generator button (typically defaults to current page URL, but can be customized with any text)
+- **Data Used:** User-input text (no existing stored data required)
+- **Purpose:** Generate QR codes for sharing URLs, text, or other content via mobile device scanning
+- **Processing:** QR codes are generated locally using client-side JavaScript library
+- **Storage:** QR codes are not stored; generated on-demand and displayed temporarily in the interface
+- **Data Transmission:** No data is transmitted externally for QR code generation
 
 ## External Services
 
