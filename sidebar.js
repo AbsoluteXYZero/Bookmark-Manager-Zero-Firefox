@@ -219,6 +219,43 @@ const safeStorage = {
   }
 };
 
+// ============================================================================
+// STATUS MANAGER
+// ============================================================================
+
+const statusUI = {
+    statusElement: null,
+    scanStatusBar: null,
+    rescanBtn: null,
+    stopBtn: null,
+    
+    init() {
+        this.statusElement = document.getElementById('scanProgress');
+        this.scanStatusBar = document.getElementById('scanStatusBar');
+        this.rescanBtn = document.getElementById('rescanAllBtn');
+        this.stopBtn = document.getElementById('stopScanBtn');
+    },
+    
+    setText(message) {
+        if (this.statusElement) {
+            this.statusElement.textContent = message;
+        }
+    },
+
+    showScanningState() {
+        if (this.scanStatusBar) this.scanStatusBar.classList.add('scanning');
+        if (this.stopBtn) this.stopBtn.style.display = 'flex';
+        if (this.rescanBtn) this.rescanBtn.style.display = 'none';
+    },
+
+    showReadyState() {
+        if (this.scanStatusBar) this.scanStatusBar.classList.remove('scanning');
+        if (this.stopBtn) this.stopBtn.style.display = 'none';
+        if (this.rescanBtn) this.rescanBtn.style.display = 'flex';
+        this.setText('Ready');
+    }
+};
+
 // Show private mode indicator in UI
 function showPrivateModeIndicator() {
   if (!isPrivateMode) return;
@@ -311,7 +348,9 @@ async function decryptApiKey(encrypted) {
     const decoder = new TextDecoder();
     return decoder.decode(decrypted);
   } catch (error) {
-    console.error('Decryption failed:', error);
+    // Handle decryption failures gracefully (e.g., different extension ID, corrupted data)
+    // Don't log as error since this is expected when switching between extension versions
+    console.debug('API key decryption failed (this is normal if switching extension versions):', error.message);
     return null;
   }
 }
@@ -643,9 +682,9 @@ function shouldScanFolder(folderId) {
 // Sync UI with ongoing background scan status
 async function syncBackgroundScanStatus() {
   try {
-    const status = await browser.runtime.sendMessage({ action: 'getBackgroundScanStatus' });
+    const status = await browser.runtime.sendMessage({ action: 'getScanStatus' });
 
-    if (status.isScanning) {
+    if (status && status.isScanning) {
       console.log(`[Background Scan] Syncing UI - ${status.scanned}/${status.total}`);
 
       // Update progress text
@@ -680,12 +719,16 @@ function setupBlocklistProgressListener() {
     } else if (message.type === 'blocklistComplete') {
       // Clear status bar after completion
       if (scanProgress) {
-        scanProgress.textContent = `Blocklists loaded: ${message.domains.toLocaleString()} domains`;
-        setTimeout(() => {
-          if (scanProgress && scanProgress.textContent.startsWith('Blocklists loaded:')) {
-            scanProgress.textContent = 'Ready';
-          }
-        }, 3000); // Show completion message for 3 seconds
+        // Only show blocklist message if not currently scanning
+        if (!scanStatusBar || !scanStatusBar.classList.contains('scanning')) {
+          scanProgress.textContent = `Blocklists loaded: ${message.domains.toLocaleString()} domains`;
+          setTimeout(() => {
+            if (scanProgress && scanProgress.textContent.startsWith('Blocklists loaded:') &&
+                !scanStatusBar.classList.contains('scanning')) {
+              scanProgress.textContent = 'Ready';
+            }
+          }, 3000); // Show completion message for 3 seconds
+        }
       }
       if (scanStatusBar) scanStatusBar.classList.remove('scanning');
       console.log(`[Blocklist Complete] ${message.domains.toLocaleString()} unique domains from ${message.totalEntries.toLocaleString()} entries (${message.sources} sources)`);
@@ -728,6 +771,7 @@ function setupBlocklistProgressListener() {
     } else if (message.type === 'scanComplete') {
       console.log(`[Background Scan] Complete - ${message.scanned}/${message.total} bookmarks scanned`);
       if (scanProgress) scanProgress.textContent = 'Ready';
+      if (scanStatusBar) scanStatusBar.classList.remove('scanning');
 
       // Show rescan button, hide stop button
       const stopBtn = document.getElementById('stopScanBtn');
@@ -737,6 +781,7 @@ function setupBlocklistProgressListener() {
     } else if (message.type === 'scanCancelled') {
       console.log(`[Background Scan] Cancelled - ${message.scanned}/${message.total} bookmarks scanned`);
       if (scanProgress) scanProgress.textContent = 'Ready';
+      if (scanStatusBar) scanStatusBar.classList.remove('scanning');
 
       // Show rescan button, hide stop button
       const stopBtn = document.getElementById('stopScanBtn');
@@ -3998,6 +4043,9 @@ async function rescanFolder(folderId, folderTitle) {
       const progress = Math.min(scanned, bookmarks.length);
       if (scanProgress) scanProgress.textContent = `Scanning folder: ${progress}/${bookmarks.length}`;
 
+      // Force UI update and add small delay to ensure progress is visible
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       // Add delay between batches to avoid overwhelming background service
       if (i + BATCH_SIZE < bookmarks.length) {
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -4035,6 +4083,11 @@ async function rescanFolder(folderId, folderTitle) {
 
     alert(summary);
     console.log(`[Folder Rescan] Complete: ${scanned} scanned, ${unsafe} unsafe, ${warning} warnings, ${dead} dead`);
+
+    // Reset status to "Ready" after 2 seconds
+    setTimeout(() => {
+      if (scanProgress) scanProgress.textContent = 'Ready';
+    }, 2000);
 
   } catch (error) {
     console.error('[Folder Rescan] Error:', error);
@@ -4593,6 +4646,43 @@ function updateBookmarkStatusInDOM(bookmarkId, linkStatus, safetyStatus, safetyS
   }
 
   statusIndicators.innerHTML = statusIndicatorsHtml;
+
+// FORCE IMMEDIATE DOM REFLOW to ensure visual update and prevent race condition
+statusIndicators.offsetHeight; // Trigger layout calculation
+
+// Additional safeguard: force style recalculation on the parent element
+bookmarkElement.style.display = 'flex';
+bookmarkElement.offsetHeight; // Force complete reflow
+bookmarkElement.style.display = '';
+}
+
+// Update status indicators in DOM for a specific bookmark (without full re-render)
+function updateBookmarkStatusInDOM(bookmarkId, linkStatus, safetyStatus, safetySources, url) {
+  const bookmarkElement = document.querySelector(`.bookmark-item[data-id="${bookmarkId}"]`);
+  if (!bookmarkElement) return;
+
+  const statusIndicators = bookmarkElement.querySelector('.status-indicators');
+  if (!statusIndicators) return;
+
+  // Rebuild the status indicators HTML
+  // Shield (safety) on top, chain (link status) below
+  let statusIndicatorsHtml = '';
+  if (displayOptions.safetyStatus && safetyStatus) {
+    statusIndicatorsHtml += getShieldHtml(safetyStatus, url, safetySources);
+  }
+  if (displayOptions.liveStatus && linkStatus) {
+    statusIndicatorsHtml += getStatusDotHtml(linkStatus, url);
+  }
+
+  statusIndicators.innerHTML = statusIndicatorsHtml;
+
+// FORCE IMMEDIATE DOM REFLOW to ensure visual update and prevent race condition
+statusIndicators.offsetHeight; // Trigger layout calculation
+
+// Additional safeguard: force style recalculation on the parent element
+bookmarkElement.style.display = 'flex';
+bookmarkElement.offsetHeight; // Force complete reflow
+bookmarkElement.style.display = '';
 }
 
 // Whitelist a bookmark (trust it regardless of safety checks)
@@ -6301,11 +6391,32 @@ async function clearCache() {
   }
 
   try {
-    // Remove both cache keys from storage
+    // Clear storage cache (current)
     await safeStorage.remove(['linkStatusCache', 'safetyStatusCache']);
 
+    // ALSO CLEAR: Reset in-memory bookmark statuses
+    function resetStatuses(nodes) {
+      nodes.forEach(node => {
+        if (node.url) {
+          node.linkStatus = 'unknown';
+          node.safetyStatus = 'unknown';
+          node.safetySources = [];
+        }
+        if (node.children) resetStatuses(node.children);
+      });
+    }
+    resetStatuses(bookmarkTree);
+
+    // Re-render to show cleared states
+    renderBookmarks();
+
+    // Clear IndexedDB cache too (if scanner service available)
+    if (window.scannerService && window.scannerService.clearAllCache) {
+      await window.scannerService.clearAllCache();
+    }
+
     console.log('Cache cleared successfully');
-    alert('Cache cleared! All bookmark checks will be refreshed on next scan.');
+    alert('Cache cleared! Status indicators reset to unknown.');
 
     // Update cache size display
     await updateCacheSizeDisplay();
@@ -6829,6 +6940,48 @@ function setupEventListeners() {
     closeAllMenus();
   });
 
+async function clearCache() {
+  if (isPreviewMode) {
+    alert('🧹 In the Firefox extension, this would clear the cache for link and safety checks.');
+    return;
+  }
+
+  try {
+    // Clear storage cache (current)
+    await safeStorage.remove(['linkStatusCache', 'safetyStatusCache']);
+
+    // ALSO CLEAR: Reset in-memory bookmark statuses
+    function resetStatuses(nodes) {
+      nodes.forEach(node => {
+        if (node.url) {
+          node.linkStatus = 'unknown';
+          node.safetyStatus = 'unknown';
+          node.safetySources = [];
+        }
+        if (node.children) resetStatuses(node.children);
+      });
+    }
+    resetStatuses(bookmarkTree);
+
+    // Re-render to show cleared states
+    renderBookmarks();
+
+    // Clear IndexedDB cache too (if scanner service available)
+    if (window.scannerService && window.scannerService.clearAllCache) {
+      await window.scannerService.clearAllCache();
+    }
+
+    console.log('Cache cleared successfully');
+    alert('Cache cleared! Status indicators reset to unknown.');
+
+    // Update cache size display
+    await updateCacheSizeDisplay();
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    alert('Failed to clear cache. Please try again.');
+  }
+}
+
   // Auto-clear cache setting
   autoClearCacheSelect.addEventListener('change', async (e) => {
     const autoClearDays = e.target.value;
@@ -7261,7 +7414,7 @@ function setupEventListeners() {
         renderBookmarks();
 
         // Start background scan (runs in background script)
-        const response = await browser.runtime.sendMessage({ action: 'startBackgroundScan' });
+        const response = await browser.runtime.sendMessage({ action: 'startScan', bookmarks: allBookmarks, bypassCache: true });
 
         if (!response.success) {
           console.error('Failed to start background scan:', response.message);
