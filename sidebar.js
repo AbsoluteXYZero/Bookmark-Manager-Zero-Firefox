@@ -1925,6 +1925,11 @@ async function autoCheckBookmarkStatuses() {
   // Clear checkedBookmarks to free memory after scan completes
   checkedBookmarks.clear();
 
+  // Reset status to "Ready" after 2 seconds
+  setTimeout(() => {
+    if (scanProgress) scanProgress.textContent = 'Ready';
+  }, 2000);
+
   console.log(`Finished checking link status for ${bookmarksToCheck.length} bookmarks (safety checks disabled - use Test VT button)`);
 }
 
@@ -7746,6 +7751,1001 @@ async function clearCache() {
     }
   });
 
+  // ============================================================================
+  // GITLAB SNIPPET SYNC
+  // ============================================================================
+
+  // GitLab Snippet global variables
+  let snippetToken = null;
+  let snippetId = null;
+  let snippetSyncInterval = null;
+  let snippetLastSyncTime = 0;
+  let snippetIsSyncing = false;
+  let snippetLocalVersion = 0;
+  let snippetPushDebounceTimer = null;
+  let snippetMinSyncInterval = 60000; // Minimum 60 seconds between syncs to avoid abuse detection
+
+  // Encrypt and store GitLab token
+  async function storeSnippetToken(token) {
+    const encrypted = await encryptApiKey(token);
+    await safeStorage.set({ gitlab_token: encrypted });
+    snippetToken = token;
+    console.log('GitLab token stored securely');
+  }
+
+  // Retrieve and decrypt GitLab token
+  async function loadSnippetToken() {
+    const result = await safeStorage.get(['gitlab_token']);
+    if (!result.gitlab_token) return null;
+    snippetToken = await decryptApiKey(result.gitlab_token);
+    return snippetToken;
+  }
+
+  // Clear GitLab token
+  async function clearSnippetToken() {
+    await safeStorage.set({ gitlab_token: null });
+    snippetToken = null;
+    console.log('GitLab token cleared');
+  }
+
+  // Get GitLab API headers
+  function getSnippetHeaders() {
+    if (!snippetToken) {
+      throw new Error('No GitLab token available');
+    }
+    return {
+      'Authorization': `Bearer ${snippetToken}`,
+      'Content-Type': 'application/json'
+    };
+  }
+
+  // Validate GitLab token
+  async function validateSnippetToken() {
+    try {
+      const response = await fetch('https://gitlab.com/api/v4/user', {
+        headers: getSnippetHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`GitLab API error: ${response.status}`);
+      }
+      const user = await response.json();
+      console.log('GitLab token validated for user:', user.username);
+      return user;
+    } catch (error) {
+      console.error('Token validation failed:', error);
+      return null;
+    }
+  }
+
+  // Get all user's snippets
+  async function getAllSnippets() {
+    try {
+      const response = await fetch('https://gitlab.com/api/v4/snippets', {
+        headers: getSnippetHeaders()
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch snippets: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to fetch snippets:', error);
+      throw error;
+    }
+  }
+
+  // Find bookmark snippet
+  async function findBookmarkSnippet() {
+    try {
+      const snippets = await getAllSnippets();
+      const bookmarkSnippet = snippets.find(s =>
+        s.title?.includes('BMZ') ||
+        s.title?.includes('Bookmark Manager Zero') ||
+        s.file_name === 'bookmarks.json'
+      );
+      if (bookmarkSnippet) {
+        console.log('Found bookmark Snippet:', bookmarkSnippet.id);
+        return bookmarkSnippet.id;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to find bookmark Snippet:', error);
+      throw error;
+    }
+  }
+
+  // Create new bookmark snippet
+  async function createBookmarkSnippet(bookmarkTree = null) {
+    try {
+      let tree = bookmarkTree;
+
+      // If no tree provided, get current Firefox bookmarks
+      if (!tree) {
+        const bookmarkRoot = await browser.bookmarks.getTree();
+        tree = await firefoxBookmarksToSnippetFormat(bookmarkRoot);
+      }
+
+      const response = await fetch('https://gitlab.com/api/v4/snippets', {
+        method: 'POST',
+        headers: getSnippetHeaders(),
+        body: JSON.stringify({
+          title: 'BMZ Bookmarks - Managed by Bookmark Manager Zero',
+          visibility: 'private',
+          files: [
+            {
+              file_path: 'bookmarks.json',
+              content: JSON.stringify(tree, null, 2)
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create Snippet: ${response.status} - ${errorText}`);
+      }
+
+      const snippet = await response.json();
+      snippetId = snippet.id;
+      await safeStorage.set({ bmz_snippet_id: snippetId });
+      console.log('Created bookmark Snippet:', snippetId);
+      return snippet.id;
+    } catch (error) {
+      console.error('Failed to create bookmark Snippet:', error);
+      throw error;
+    }
+  }
+
+  // Read bookmarks from snippet
+  async function readBookmarksFromSnippet(id = null) {
+    const useId = id || snippetId;
+    if (!useId) {
+      throw new Error('No Snippet ID provided');
+    }
+
+    try {
+      const response = await fetch(`https://gitlab.com/api/v4/snippets/${useId}`, {
+        headers: getSnippetHeaders()
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Bookmark Snippet not found');
+        }
+        throw new Error(`Failed to read Snippet: ${response.status}`);
+      }
+
+      const snippet = await response.json();
+
+      // GitLab snippets have a 'files' array
+      const bookmarkFile = snippet.files?.find(f =>
+        f.path === 'bookmarks.json' || f.file_name === 'bookmarks.json'
+      );
+      if (!bookmarkFile) {
+        throw new Error('Snippet does not contain bookmarks.json');
+      }
+
+      // Get file content
+      let content = bookmarkFile.content;
+
+      // If content is not in the response, fetch it using the raw endpoint
+      if (!content) {
+        const fileResponse = await fetch(
+          `https://gitlab.com/api/v4/snippets/${useId}/files/main/bookmarks.json/raw`,
+          { headers: getSnippetHeaders() }
+        );
+        if (!fileResponse.ok) {
+          throw new Error(`Failed to fetch file content: ${fileResponse.status}`);
+        }
+        content = await fileResponse.text();
+      }
+
+      // If content is empty or just whitespace, return empty structure
+      if (!content || content.trim() === '') {
+        console.log('Snippet file is empty, returning empty bookmark structure');
+        return {
+          version: 1,
+          checksum: '',
+          lastModified: Date.now(),
+          roots: {
+            bookmark_bar: { id: '1', title: 'Bookmarks Toolbar', name: 'Bookmarks Toolbar', type: 'folder', dateAdded: Date.now(), children: [] },
+            menu: { id: '2', title: 'Bookmarks Menu', name: 'Bookmarks Menu', type: 'folder', dateAdded: Date.now(), children: [] },
+            other: { id: '3', title: 'Other Bookmarks', name: 'Other Bookmarks', type: 'folder', dateAdded: Date.now(), children: [] },
+            mobile: { id: '4', title: 'Mobile Bookmarks', name: 'Mobile Bookmarks', type: 'folder', dateAdded: Date.now(), children: [] }
+          }
+        };
+      }
+
+      return JSON.parse(content);
+    } catch (error) {
+      console.error('Failed to read bookmarks from Snippet:', error);
+      throw error;
+    }
+  }
+
+  // Update bookmarks in snippet
+  async function updateBookmarksInSnippet(bookmarkTree, version = null) {
+    if (!snippetId) {
+      throw new Error('No Snippet ID provided');
+    }
+
+    try {
+      const dataWithMeta = {
+        ...bookmarkTree,
+        version: version !== null ? version : (bookmarkTree.version || 1) + 1,
+        checksum: await calculateChecksum(bookmarkTree),
+        lastModified: Date.now()
+      };
+
+      const response = await fetch(`https://gitlab.com/api/v4/snippets/${snippetId}`, {
+        method: 'PUT',
+        headers: getSnippetHeaders(),
+        body: JSON.stringify({
+          files: [
+            {
+              action: 'update',
+              file_path: 'bookmarks.json',
+              content: JSON.stringify(dataWithMeta, null, 2)
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update Snippet: ${response.status} - ${errorText}`);
+      }
+
+      console.log('Updated bookmarks in Snippet:', snippetId);
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update bookmarks in Snippet:', error);
+      throw error;
+    }
+  }
+
+  // Calculate diff between local and remote bookmark trees
+  function calculateBookmarkDiff(localTree, remoteTree) {
+    const diff = {
+      added: [],
+      removed: [],
+      moved: [],
+      modified: []
+    };
+
+    const localMap = new Map();
+    const remoteMap = new Map();
+
+    const mapItems = (node, map, parentPath = '') => {
+      const path = parentPath ? `${parentPath}/${node.title || node.id}` : (node.title || node.id);
+      map.set(node.id, { node, path, parentId: node.parentId || null });
+      if (node.children) {
+        node.children.forEach(child => mapItems(child, map, path));
+      }
+    };
+
+    if (localTree && localTree.children) {
+      localTree.children.forEach(root => mapItems(root, localMap));
+    }
+
+    if (remoteTree) {
+      if (remoteTree.roots) {
+        Object.values(remoteTree.roots).forEach(root => {
+          if (root) mapItems(root, remoteMap);
+        });
+      } else if (remoteTree.children) {
+        remoteTree.children.forEach(root => mapItems(root, remoteMap));
+      }
+    }
+
+    remoteMap.forEach((remoteItem, id) => {
+      if (!localMap.has(id)) {
+        diff.added.push({
+          id: remoteItem.node.id,
+          title: remoteItem.node.title,
+          path: remoteItem.path,
+          type: remoteItem.node.type || (remoteItem.node.url ? 'bookmark' : 'folder'),
+          url: remoteItem.node.url
+        });
+      }
+    });
+
+    localMap.forEach((localItem, id) => {
+      if (!remoteMap.has(id)) {
+        diff.removed.push({
+          id: localItem.node.id,
+          title: localItem.node.title,
+          path: localItem.path,
+          type: localItem.node.url ? 'bookmark' : 'folder',
+          url: localItem.node.url
+        });
+      }
+    });
+
+    localMap.forEach((localItem, id) => {
+      const remoteItem = remoteMap.get(id);
+      if (remoteItem) {
+        const localNode = localItem.node;
+        const remoteNode = remoteItem.node;
+
+        if (localItem.parentId !== remoteItem.parentId) {
+          diff.moved.push({
+            id,
+            title: localNode.title,
+            from: localItem.path,
+            to: remoteItem.path,
+            type: localNode.url ? 'bookmark' : 'folder'
+          });
+        }
+
+        const titleDiffers = localNode.title?.toLowerCase() !== remoteNode.title?.toLowerCase();
+        const urlDiffers = localNode.url !== remoteNode.url;
+        if (titleDiffers || urlDiffers) {
+          diff.modified.push({
+            id,
+            oldTitle: localNode.title,
+            newTitle: remoteNode.title,
+            oldUrl: localNode.url,
+            newUrl: remoteNode.url,
+            path: remoteItem.path,
+            type: localNode.url ? 'bookmark' : 'folder'
+          });
+        }
+      }
+    });
+
+    return diff;
+  }
+
+  // Convert Snippet format to Firefox bookmarks structure
+  function snippetFormatToFirefoxBookmarks(snippetData) {
+    const convertNode = (node, parentId = null) => {
+      if (node.type === 'bookmark' || node.url) {
+        return {
+          id: node.id,
+          title: node.title,
+          url: node.url,
+          parentId: parentId,
+          dateAdded: node.dateAdded || Date.now()
+        };
+      } else {
+        const folder = {
+          id: node.id,
+          title: node.title || node.name || 'Unnamed Folder',
+          parentId: parentId,
+          dateAdded: node.dateAdded || Date.now(),
+          children: []
+        };
+        if (node.children && node.children.length > 0) {
+          folder.children = node.children.map(child => convertNode(child, node.id));
+        }
+        return folder;
+      }
+    };
+
+    const firefoxRoots = [];
+    if (snippetData.roots) {
+      if (snippetData.roots.bookmark_bar) {
+        firefoxRoots.push(convertNode({ ...snippetData.roots.bookmark_bar, id: 'root________' }, 'root'));
+      }
+      if (snippetData.roots.menu) {
+        firefoxRoots.push(convertNode({ ...snippetData.roots.menu, id: 'menu________' }, 'root'));
+      }
+      if (snippetData.roots.other) {
+        firefoxRoots.push(convertNode({ ...snippetData.roots.other, id: 'unfiled_____' }, 'root'));
+      }
+      if (snippetData.roots.mobile) {
+        firefoxRoots.push(convertNode({ ...snippetData.roots.mobile, id: 'mobile_____' }, 'root'));
+      }
+    }
+
+    return [{
+      id: 'root',
+      children: firefoxRoots
+    }];
+  }
+
+  // Convert Firefox bookmarks to Snippet format
+  async function firefoxBookmarksToSnippetFormat(firefoxTree) {
+    const convertNode = (node) => {
+      if (node.url) {
+        return {
+          id: node.id,
+          title: node.title,
+          url: node.url,
+          type: 'bookmark',
+          dateAdded: node.dateAdded || Date.now()
+        };
+      } else {
+        const folder = {
+          id: node.id,
+          title: node.title || node.name || 'Unnamed Folder',
+          name: node.title || node.name || 'Unnamed Folder',
+          type: 'folder',
+          dateAdded: node.dateAdded || Date.now(),
+          children: []
+        };
+        if (node.children) {
+          folder.children = node.children.map(child => convertNode(child));
+        }
+        return folder;
+      }
+    };
+
+    const roots = {};
+    if (firefoxTree && firefoxTree[0] && firefoxTree[0].children) {
+      for (const rootFolder of firefoxTree[0].children) {
+        const key = rootFolder.root === 'bookmarkToolbar' ? 'bookmark_bar' :
+                    rootFolder.root === 'unsorted' ? 'other' :
+                    rootFolder.root === 'mobile' ? 'mobile' :
+                    rootFolder.root === 'bookmarkMenu' ? 'menu' : null;
+        if (key) {
+          roots[key] = convertNode(rootFolder);
+        }
+      }
+    }
+
+    // Ensure all folders exist
+    if (!roots.bookmark_bar) {
+      roots.bookmark_bar = {
+        id: 'root________',
+        title: 'Bookmarks Toolbar',
+        name: 'Bookmarks Toolbar',
+        type: 'folder',
+        dateAdded: Date.now(),
+        children: []
+      };
+    }
+    if (!roots.menu) {
+      roots.menu = {
+        id: 'menu________',
+        title: 'Bookmarks Menu',
+        name: 'Bookmarks Menu',
+        type: 'folder',
+        dateAdded: Date.now(),
+        children: []
+      };
+    }
+    if (!roots.other) {
+      roots.other = {
+        id: 'unfiled_____',
+        title: 'Other Bookmarks',
+        name: 'Other Bookmarks',
+        type: 'folder',
+        dateAdded: Date.now(),
+        children: []
+      };
+    }
+
+    const snippetData = {
+      version: 1,
+      checksum: '',
+      lastModified: Date.now(),
+      roots: roots
+    };
+  
+    snippetData.checksum = await calculateChecksum(snippetData);
+    return snippetData;
+  }
+
+  // Sync from Snippet to Firefox bookmarks
+  async function syncFromSnippet() {
+    if (!snippetId) {
+      showToast('No Snippet connected', 'error');
+      return;
+    }
+
+    try {
+      showToast('Checking for Snippet updates...');
+
+      const remoteData = await readBookmarksFromSnippet(snippetId);
+      const localTree = await browser.bookmarks.getTree();
+
+      const remoteTreeAsFirefoxFormat = snippetFormatToFirefoxBookmarks(remoteData);
+
+      const diff = calculateBookmarkDiff(localTree[0], remoteTreeAsFirefoxFormat[0]);
+      const hasChanges = diff.added.length + diff.removed.length + diff.moved.length + diff.modified.length > 0;
+
+      if (!hasChanges) {
+        showToast('No changes detected. Bookmarks are in sync.');
+        return;
+      }
+
+      await showSyncDiffDialog(diff, remoteData);
+    } catch (error) {
+      console.error('Sync from Snippet failed:', error);
+      showToast(`Error: ${error.message}`, 'error');
+    }
+  }
+
+  // Sync from Firefox bookmarks to Snippet
+  async function syncToSnippet() {
+    if (!snippetId) {
+      showToast('No Snippet connected', 'error');
+      return;
+    }
+
+    try {
+      showToast('Syncing to Snippet...');
+
+      const firefoxTree = await browser.bookmarks.getTree();
+      const snippetData = await firefoxBookmarksToSnippetFormat(firefoxTree);
+
+      await updateBookmarksInSnippet(snippetData);
+
+      snippetLocalVersion = (snippetData.version || 1);
+      await safeStorage.set({ snippet_local_version: snippetLocalVersion });
+
+      showToast('Synced to Snippet successfully!');
+    } catch (error) {
+      console.error('Sync to Snippet failed:', error);
+      showToast(`Error: ${error.message}`, 'error');
+    }
+  }
+
+  // Start auto-syncing Snippet every 10 minutes
+  function startSnippetAutoSync() {
+    if (snippetSyncInterval) {
+      clearInterval(snippetSyncInterval);
+    }
+
+    const syncInterval = 10 * 60 * 1000;
+
+    snippetSyncInterval = setInterval(async () => {
+      if (!snippetId || !snippetToken || !navigator.onLine) {
+        return;
+      }
+
+      try {
+        console.log('[Snippet AutoSync] Running auto-sync...');
+        await syncFromSnippet();
+      } catch (error) {
+        console.error('[Snippet AutoSync] Auto-sync failed:', error);
+      }
+    }, syncInterval);
+
+    console.log('[Snippet AutoSync] Auto-sync enabled (10-minute interval)');
+  }
+
+  // Stop auto-syncing Snippet
+  function stopSnippetAutoSync() {
+    if (snippetSyncInterval) {
+      clearInterval(snippetSyncInterval);
+      snippetSyncInterval = null;
+      console.log('[Snippet AutoSync] Auto-sync disabled');
+    }
+  }
+
+  // Debounced push sync to Snippet (triggered by local bookmark changes)
+  // Waits 30 seconds after last change to batch multiple edits and avoid rate limiting
+  // Respects 60-second minimum between consecutive syncs
+  function markSnippetChanges() {
+    if (!snippetId || !snippetToken || !navigator.onLine) {
+      return;
+    }
+
+    if (snippetPushDebounceTimer) {
+      clearTimeout(snippetPushDebounceTimer);
+    }
+
+    snippetPushDebounceTimer = setTimeout(async () => {
+      const now = Date.now();
+      const timeSinceLastSync = now - snippetLastSyncTime;
+
+      if (timeSinceLastSync < snippetMinSyncInterval) {
+        const delayMs = snippetMinSyncInterval - timeSinceLastSync;
+        console.log('[SnippetPushSync] Rate limit: waiting', delayMs, 'ms before next sync');
+        snippetPushDebounceTimer = setTimeout(markSnippetChanges, delayMs);
+        return;
+      }
+
+      try {
+        console.log('[SnippetPushSync] Syncing local changes to Snippet...');
+        await syncToSnippet();
+      } catch (error) {
+        console.error('[SnippetPushSync] Failed to sync:', error);
+        // Retry after 5 seconds
+        setTimeout(() => {
+          if (snippetId && snippetToken && navigator.onLine) {
+            console.log('[SnippetPushSync] Retrying sync after 5 seconds...');
+            syncToSnippet().catch(err => {
+              console.error('[SnippetPushSync] Retry failed:', err);
+            });
+          }
+        }, 5000);
+      }
+    }, 30000); // Wait 30 seconds after last change to batch multiple edits
+  }
+
+  // Update GitLab button icon
+  function updateGitLabButtonIcon() {
+    const gitlabBtnIcon = document.getElementById('gitlabBtnIcon');
+    if (!gitlabBtnIcon) return;
+
+    if (snippetToken && snippetId) {
+      gitlabBtnIcon.innerHTML = '<path d="M13 3H6c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h7v-2H6V5h7V3zm5.6 5.4l-4.6-4.6-.7.7L17 8h-6v1h6l-3.7 3.7.7.7 4.6-4.6-.7-.7z"/>';
+    } else {
+      gitlabBtnIcon.innerHTML = '<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>';
+    }
+  }
+
+  // Show GitLab disconnect dialog
+  function showGitLabDisconnectDialog() {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background: var(--md-sys-color-surface, #1e1e1e); padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; color: var(--md-sys-color-on-surface, #e0e0e0);';
+
+    dialog.innerHTML = `
+      <h2 style="margin: 0 0 16px 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M23.6 7.2L20.2 1.4c-.4-.6-1.1-1-1.8-1-.7 0-1.4.4-1.8 1L14 7.2h-4L7.4 1.4C7 .8 6.3.4 5.6.4S4.2.8 3.8 1.4L.4 7.2c-.4.6-.4 1.4 0 2l3.4 5.8c.4.6 1.1 1 1.8 1 .7 0 1.4-.4 1.8-1L10 9.8h4l2.6 5.4c.4.6 1.1 1 1.8 1 .7 0 1.4-.4 1.8-1l3.4-5.8c.4-.6.4-1.4 0-2zm-6.8 2.6L12 4.4l-4.8 5.4h9.6z"/>
+        </svg>
+        GitLab Account
+      </h2>
+      <p style="margin: 0 0 20px 0; font-size: 14px; color: var(--md-sys-color-on-surface-variant, #aaa);">
+        You are connected to GitLab. Would you like to disconnect your account?
+      </p>
+      <div style="display: flex; gap: 12px;">
+        <button id="cancelGitLabDisconnect" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">
+          Cancel
+        </button>
+        <button id="confirmGitLabDisconnect" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error, #f44336); color: var(--md-sys-color-on-error, #fff); cursor: pointer; font-size: 14px;">
+          Disconnect
+        </button>
+      </div>
+    `;
+
+    modal.appendChild(dialog);
+    document.body.appendChild(modal);
+
+    dialog.querySelector('#cancelGitLabDisconnect').addEventListener('click', () => {
+      modal.remove();
+    });
+
+    dialog.querySelector('#confirmGitLabDisconnect').addEventListener('click', async () => {
+      modal.remove();
+      stopSnippetAutoSync();
+      await clearSnippetToken();
+      await safeStorage.set({ bmz_snippet_id: null });
+      snippetId = null;
+      updateGitLabButtonIcon();
+      showToast('GitLab account disconnected');
+    });
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+  }
+
+  // Open GitLab Snippet sync dialog
+  async function openSnippetSyncDialog() {
+    await loadSnippetToken();
+
+    const modal = document.createElement('div');
+    modal.id = 'snippetSyncModal';
+    modal.className = 'modal';
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background: var(--md-sys-color-surface, #1e1e1e); padding: 24px; border-radius: 12px; max-width: 500px; width: 90%; color: var(--md-sys-color-on-surface, #e0e0e0);';
+
+    if (snippetToken) {
+      dialog.innerHTML = `
+        <h2 style="margin: 0 0 16px 0; font-size: 20px;">GitLab Snippet Sync</h2>
+        <p style="margin: 0 0 20px 0; color: var(--md-sys-color-on-surface-variant, #aaa);">
+          ${snippetId ? 'Connected to Snippet: <code style="font-size: 11px;">' + snippetId + '</code>' : 'Not connected to any Snippet'}
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          ${snippetId ? `
+            <button id="syncFromSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #818cf8); color: var(--md-sys-color-on-primary, #fff); cursor: pointer; font-size: 14px;">
+              ⬇️ Sync from Snippet to Browser
+            </button>
+            <button id="syncToSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-tertiary-container, #2a2a2a); color: var(--md-sys-color-on-tertiary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+              ⬆️ Sync from Browser to Snippet
+            </button>
+            <hr style="border: none; border-top: 1px solid var(--md-sys-color-outline, #444); margin: 8px 0;">
+          ` : ''}
+          <button id="createNewSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+            Create New Snippet with Current Bookmarks
+          </button>
+          <button id="selectExistingSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+            Select Existing Snippet
+          </button>
+          <button id="disconnectSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error-container, #3b1a1a); color: var(--md-sys-color-on-error-container, #f9dedc); cursor: pointer; font-size: 14px;">
+            Disconnect & Remove Token
+          </button>
+          <button id="cancelSnippetDialog" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">
+            Cancel
+          </button>
+        </div>
+      `;
+    } else {
+      dialog.innerHTML = `
+        <h2 style="margin: 0 0 16px 0; font-size: 20px;">GitLab Snippet Sync Setup</h2>
+        <p style="margin: 0 0 16px 0; color: var(--md-sys-color-on-surface-variant, #aaa); font-size: 14px;">
+          To enable Snippet sync, you need a GitLab Personal Access Token with 'api' permissions.
+        </p>
+        <a href="https://gitlab.com/-/profile/personal_access_tokens?name=Bookmark+Manager+Zero&scopes=api" target="_blank" style="display: inline-block; margin-bottom: 16px; padding: 8px 16px; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); text-decoration: none; border-radius: 8px; font-size: 13px;">
+          Create Token on GitLab →
+        </a>
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 8px; font-size: 14px;">Personal Access Token:</label>
+          <input type="password" id="gitlabTokenInput" placeholder="glpat-xxxxxxxxxxxx" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline, #444); background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface, #e0e0e0); font-size: 14px; box-sizing: border-box;">
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <button id="saveSnippetToken" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #818cf8); color: var(--md-sys-color-on-primary, #fff); cursor: pointer; font-size: 14px;">
+            Save & Continue
+          </button>
+          <button id="cancelSnippetDialog" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">
+            Cancel
+          </button>
+        </div>
+      `;
+    }
+
+    modal.appendChild(dialog);
+    document.body.appendChild(modal);
+
+    const cancelBtn = dialog.querySelector('#cancelSnippetDialog');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => modal.remove());
+    }
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    if (snippetToken) {
+      const syncFromSnippetBtn = dialog.querySelector('#syncFromSnippet');
+      if (syncFromSnippetBtn) {
+        syncFromSnippetBtn.addEventListener('click', async () => {
+          modal.remove();
+          await syncFromSnippet();
+        });
+      }
+
+      const syncToSnippetBtn = dialog.querySelector('#syncToSnippet');
+      if (syncToSnippetBtn) {
+        syncToSnippetBtn.addEventListener('click', async () => {
+          modal.remove();
+          await syncToSnippet();
+        });
+      }
+
+      const createNewBtn = dialog.querySelector('#createNewSnippet');
+      if (createNewBtn) {
+        createNewBtn.addEventListener('click', async () => {
+          modal.remove();
+          await handleCreateNewSnippet();
+        });
+      }
+
+      const selectExistingBtn = dialog.querySelector('#selectExistingSnippet');
+      if (selectExistingBtn) {
+        selectExistingBtn.addEventListener('click', async () => {
+          modal.remove();
+          await handleSelectExistingSnippet();
+        });
+      }
+
+      const disconnectBtn = dialog.querySelector('#disconnectSnippet');
+      if (disconnectBtn) {
+        disconnectBtn.addEventListener('click', async () => {
+          if (confirm('Are you sure you want to disconnect and remove your GitLab token?')) {
+            stopSnippetAutoSync();
+            await clearSnippetToken();
+            await safeStorage.set({ bmz_snippet_id: null });
+            snippetId = null;
+            modal.remove();
+            showToast('GitLab token removed');
+          }
+        });
+      }
+    } else {
+      const saveBtn = dialog.querySelector('#saveSnippetToken');
+      const tokenInput = dialog.querySelector('#gitlabTokenInput');
+
+      if (saveBtn && tokenInput) {
+        saveBtn.addEventListener('click', async () => {
+          const token = tokenInput.value.trim();
+          if (!token) {
+            showToast('Please enter a valid token', 'error');
+            return;
+          }
+
+          snippetToken = token;
+
+          const user = await validateSnippetToken();
+          if (!user) {
+            snippetToken = null;
+            showToast('Invalid token. Please check and try again.', 'error');
+            return;
+          }
+
+          await storeSnippetToken(token);
+          showToast(`Authenticated as ${user.username}`);
+          updateGitLabButtonIcon();
+          modal.remove();
+
+          await openSnippetSyncDialog();
+        });
+
+        tokenInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            saveBtn.click();
+          }
+        });
+
+        setTimeout(() => tokenInput.focus(), 100);
+      }
+    }
+  }
+
+  // Handle creating a new Snippet with current bookmarks
+  async function handleCreateNewSnippet() {
+    try {
+      showToast('Creating Snippet with current bookmarks...');
+
+      const firefoxTree = await browser.bookmarks.getTree();
+      const snippetData = await firefoxBookmarksToSnippetFormat(firefoxTree);
+      const newSnippetId = await createBookmarkSnippet(snippetData);
+
+      snippetId = newSnippetId;
+      await safeStorage.set({ bmz_snippet_id: snippetId });
+      updateGitLabButtonIcon();
+
+      showToast('Snippet created successfully!');
+    } catch (error) {
+      console.error('Failed to create Snippet:', error);
+      showToast(`Error: ${error.message}`, 'error');
+    }
+  }
+
+  // Handle selecting an existing Snippet
+  async function handleSelectExistingSnippet() {
+    try {
+      showToast('Loading your Snippets...');
+      const snippets = await getAllSnippets();
+
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+
+      const dialog = document.createElement('div');
+      dialog.style.cssText = 'background: var(--md-sys-color-surface, #1e1e1e); padding: 24px; border-radius: 12px; max-width: 600px; width: 90%; max-height: 80%; overflow-y: auto; color: var(--md-sys-color-on-surface, #e0e0e0);';
+
+      let snippetList = '<h2 style="margin: 0 0 16px 0; font-size: 20px;">Select a Snippet</h2>';
+
+      if (snippets.length === 0) {
+        snippetList += '<p style="color: var(--md-sys-color-on-surface-variant, #aaa);">No Snippets found. Create a new one instead.</p>';
+      } else {
+        snippetList += '<div style="display: flex; flex-direction: column; gap: 8px;">';
+        snippets.forEach(snippet => {
+          const isBMZ = snippet.title?.includes('BMZ') || snippet.title?.includes('Bookmark Manager Zero');
+          snippetList += `
+            <button class="select-snippet-btn" data-snippet-id="${snippet.id}" style="padding: 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline, #444); background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface, #e0e0e0); cursor: pointer; text-align: left; font-size: 13px;">
+              <div style="font-weight: 500; margin-bottom: 4px;">${snippet.title || 'Untitled Snippet'} ${isBMZ ? '<span style="color: var(--md-sys-color-primary, #818cf8);">[BMZ]</span>' : ''}</div>
+              <div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant, #aaa);">Visibility: ${snippet.visibility}</div>
+              <div style="font-size: 10px; color: var(--md-sys-color-on-surface-variant, #888); margin-top: 4px;">ID: ${snippet.id}</div>
+            </button>
+          `;
+        });
+        snippetList += '</div>';
+      }
+
+      snippetList += `
+        <button id="cancelSelectSnippet" style="margin-top: 16px; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; width: 100%;">
+          Cancel
+        </button>
+      `;
+
+      dialog.innerHTML = snippetList;
+      modal.appendChild(dialog);
+      document.body.appendChild(modal);
+
+      const selectBtns = dialog.querySelectorAll('.select-snippet-btn');
+      selectBtns.forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const selectedSnippetId = btn.dataset.snippetId;
+          snippetId = selectedSnippetId;
+          await safeStorage.set({ bmz_snippet_id: snippetId });
+          updateGitLabButtonIcon();
+          modal.remove();
+          showToast('Snippet connected: ' + snippetId);
+        });
+      });
+
+      const cancelBtn = dialog.querySelector('#cancelSelectSnippet');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => modal.remove());
+      }
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
+    } catch (error) {
+      console.error('Failed to load Snippets:', error);
+      showToast(`Error: ${error.message}`, 'error');
+    }
+  }
+
+  // Load and initialize GitLab Snippet integration
+  async function initGitLabSnippets() {
+    try {
+      await loadSnippetToken();
+      const snippetIdResult = await safeStorage.get(['bmz_snippet_id']);
+      if (snippetIdResult.bmz_snippet_id) {
+        snippetId = snippetIdResult.bmz_snippet_id;
+      }
+      const versionResult = await safeStorage.get(['snippet_local_version']);
+      if (versionResult.snippet_local_version) {
+        snippetLocalVersion = versionResult.snippet_local_version;
+      }
+
+      updateGitLabButtonIcon();
+    } catch (error) {
+      console.error('Failed to initialize GitLab Snippets:', error);
+    }
+  }
+
+  // Initialize GitLab on load
+  initGitLabSnippets();
+
+  // Manual sync button
+  const manualSyncBtn = document.getElementById('manualSyncBtn');
+  if (manualSyncBtn) {
+    manualSyncBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+
+      if (!snippetToken) {
+        console.warn('You must log in or provide a PAT token before using Manual Sync.');
+        return;
+      }
+
+      const forcePush = e.shiftKey;
+      if (forcePush) {
+        if (!confirm('Force push local bookmarks to remote? This will overwrite the remote with your local data.')) {
+          return;
+        }
+      }
+
+      manualSyncBtn.disabled = true;
+      const originalContent = manualSyncBtn.innerHTML;
+      manualSyncBtn.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="animation: spin 1s linear infinite;"><path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/></svg>';
+
+      try {
+        if (forcePush) {
+          await syncToSnippet();
+          showToast('Bookmarks pushed to GitLab successfully', 'success');
+        } else {
+          await syncFromSnippet();
+          showToast('Sync completed successfully', 'success');
+        }
+      } catch (error) {
+        console.error('[ManualSync] Sync failed:', error);
+        showToast(`Sync failed: ${error.message}`, 'error');
+      } finally {
+        manualSyncBtn.disabled = false;
+        manualSyncBtn.innerHTML = originalContent;
+      }
+    });
+  }
+
+  // GitLab account button
+  const gitlabBtn = document.getElementById('gitlabBtn');
+  if (gitlabBtn) {
+    gitlabBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      
+      if (snippetToken && snippetId) {
+        showGitLabDisconnectDialog();
+      } else {
+        await openSnippetSyncDialog();
+      }
+    });
+  }
+
   // BIDIRECTIONAL SYNC: Listen for bookmark changes (only in extension mode)
   // This ensures the extension automatically updates when bookmarks change in Firefox
   if (!isPreviewMode) {
@@ -7765,6 +8765,9 @@ async function clearCache() {
           console.error('[Bookmark Sync] Failed to sync:', error);
         }
       }, 100); // 100ms debounce
+      
+      // Trigger event-driven push sync to Snippet (30s debounce, 60s rate limit)
+      markSnippetChanges();
     };
 
     browser.bookmarks.onCreated.addListener((id, bookmark) => {
