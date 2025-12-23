@@ -740,18 +740,18 @@ let virusTotalRateLimited = false;
 // Check VirusTotal by scraping public web page (no API key needed)
 // This always runs on every bookmark scan
 // WARNING: For personal use only. May violate VirusTotal ToS if distributed.
-const checkVirusTotalScraping = async (url) => {
+const checkURLVoidScraping = async (url) => {
   try {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname.toLowerCase();
 
-    console.log(`[VirusTotal Scraping] Checking ${hostname}`);
+    console.log(`[URLVoid Scraping] Checking ${hostname}`);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
-    const vtUrl = `https://www.virustotal.com/gui/search/${encodeURIComponent(hostname)}`;
-    const response = await fetch(vtUrl, {
+    const urlvoidUrl = `https://www.urlvoid.com/scan/${encodeURIComponent(hostname)}/`;
+    const response = await fetch(urlvoidUrl, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
@@ -761,53 +761,31 @@ const checkVirusTotalScraping = async (url) => {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      console.log(`[VirusTotal Scraping] Failed to fetch VT for ${hostname}: ${response.status}`);
+      console.log(`[URLVoid Scraping] Failed to fetch URLVoid for ${hostname}: ${response.status}`);
       return 'unknown';
     }
 
     const html = await response.text();
 
-    // Debug: Check what we received
-    console.log(`[VirusTotal Scraping] HTML length: ${html.length}`);
-    console.log(`[VirusTotal Scraping] Contains "malicious":`, html.includes('malicious'));
-    console.log(`[VirusTotal Scraping] Contains "last_analysis_stats":`, html.includes('last_analysis_stats'));
+    console.log(`[URLVoid Scraping] HTML length: ${html.length}`);
+    console.log(`[URLVoid Scraping] Contains "detected":`, html.includes('detected'));
 
-    // Look for detection indicators in the HTML
-    const detectionPatterns = [
-      /"malicious":\s*(\d+)/i,
-      /"suspicious":\s*(\d+)/i,
-      /"harmless":\s*(\d+)/i,
-      /"undetected":\s*(\d+)/i,
-      /positives['":\s]+(\d+)/i,
-      /detection.*ratio['":\s]+(\d+)/i
-    ];
+    const detectedPattern = /detected/gi;
+    const detectedMatches = html.match(detectedPattern) || [];
+    const detectedCount = detectedMatches.length;
 
-    let malicious = 0;
-    let suspicious = 0;
+    console.log(`[URLVoid Scraping] ${hostname} - Detected: ${detectedCount}`);
 
-    for (const pattern of detectionPatterns) {
-      const match = html.match(pattern);
-      if (match) {
-        const count = parseInt(match[1]);
-        if (pattern.source.includes('malicious')) malicious = count;
-        if (pattern.source.includes('suspicious')) suspicious = count;
-        if (pattern.source.includes('positives')) malicious = Math.max(malicious, count);
-      }
-    }
-
-    console.log(`[VirusTotal Scraping] ${hostname} - Malicious: ${malicious}, Suspicious: ${suspicious}`);
-
-    // Determine safety based on detections
-    if (malicious > 3) {
-      return 'unsafe'; // Multiple vendors flagged as malicious
-    } else if (malicious > 0 || suspicious > 5) {
-      return 'warning'; // Some detections or many suspicious
+    if (detectedCount >= 2) {
+      return 'unsafe'; // 2 or more scanners detected malicious
+    } else if (detectedCount === 1) {
+      return 'warning'; // 1 scanner detected suspicious
     } else {
-      return 'safe'; // Clean or minimal detections
+      return 'safe'; // No detections
     }
 
   } catch (error) {
-    console.log(`[VirusTotal Scraping] Error:`, error.message);
+    console.log(`[URLVoid Scraping] Error:`, error.message);
     return 'unknown';
   }
 };
@@ -1361,15 +1339,15 @@ const checkURLSafety = async (url, bypassCache = false) => {
         }
       }
 
-      // Check VirusTotal Scraping (always runs, no API key needed)
-      console.log(`[Safety Check] Checking VirusTotal scraping for trusted domain...`);
-      const vtScrapingResult = await checkVirusTotalScraping(url);
+      // Check URLVoid Scraping (always runs, no API key needed)
+      console.log(`[Safety Check] Checking URLVoid scraping for trusted domain...`);
+      const vtScrapingResult = await checkURLVoidScraping(url);
       if (vtScrapingResult === 'unsafe') {
         finalStatus = 'unsafe';
-        allSources.push('VirusTotal');
+        allSources.push('URLVoid');
       } else if (vtScrapingResult === 'warning' && finalStatus !== 'unsafe') {
         finalStatus = 'warning';
-        allSources.push('VirusTotal');
+        allSources.push('URLVoid');
       }
 
       // Check VirusTotal API (optional, requires API key)
@@ -1460,17 +1438,17 @@ const checkURLSafety = async (url, bypassCache = false) => {
       }
     }
 
-    // Check VirusTotal Scraping (always runs, no API key needed)
-    console.log(`[Safety Check] Blocklists say safe, checking VirusTotal scraping...`);
-    const vtScrapingResult = await checkVirusTotalScraping(url);
+    // Check URLVoid Scraping (always runs, no API key needed)
+    console.log(`[Safety Check] Blocklists say safe, checking URLVoid scraping...`);
+    const vtScrapingResult = await checkURLVoidScraping(url);
     if (vtScrapingResult === 'unsafe') {
-      console.log(`[Safety Check] VirusTotal scraping flagged URL as unsafe!`);
+      console.log(`[Safety Check] URLVoid scraping flagged URL as unsafe!`);
       finalStatus = 'unsafe';
-      allSources.push('VirusTotal');
+      allSources.push('URLVoid');
     } else if (vtScrapingResult === 'warning' && finalStatus !== 'unsafe') {
-      console.log(`[Safety Check] VirusTotal scraping flagged URL as suspicious!`);
+      console.log(`[Safety Check] URLVoid scraping flagged URL as suspicious!`);
       finalStatus = 'warning';
-      allSources.push('VirusTotal');
+      allSources.push('URLVoid');
     }
 
     // Check VirusTotal API (optional, requires API key)
