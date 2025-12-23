@@ -7,6 +7,2547 @@
 const APP_VERSION = browser.runtime.getManifest().version;
 
 // ============================================================================
+// AUTHENTICATION MANAGER - Adapted from website version
+// ============================================================================
+
+class AuthManager {
+  constructor() {
+    this.token = null;
+    this.user = null;
+    this.encryptionKey = null;
+  }
+
+  /**
+   * Derive encryption key from browser fingerprint
+   * Uses same method as browser extensions for consistency
+   */
+  async getDerivedKey(userPassword = null) {
+    // Browser fingerprint for key derivation (using origin instead of screen dimensions)
+    const appId = browser.runtime.id;
+    const browserInfo = `${navigator.userAgent}-${navigator.language}-${appId}`;
+
+    // Optionally add user password for additional security
+    const material = userPassword ? `${browserInfo}-${userPassword}` : browserInfo;
+
+    const encoder = new TextEncoder();
+    const data = encoder.encode(material);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return await crypto.subtle.importKey(
+      'raw',
+      hashBuffer,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  /**
+   * Encrypt a token using AES-256-GCM
+   */
+  async encryptToken(token, userPassword = null) {
+    const key = await this.getDerivedKey(userPassword);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoder = new TextEncoder();
+
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      encoder.encode(token)
+    );
+
+    // Combine IV and encrypted data
+    const combined = new Uint8Array(iv.length + encrypted.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(encrypted), iv.length);
+
+    // Return as base64
+    return btoa(String.fromCharCode(...combined));
+  }
+
+  /**
+   * Decrypt a token using AES-256-GCM
+   */
+  async decryptToken(encryptedBase64, userPassword = null) {
+    if (!encryptedBase64) return null;
+
+    try {
+      const key = await this.getDerivedKey(userPassword);
+      const combined = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
+      const iv = combined.slice(0, 12);
+      const data = combined.slice(12);
+
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        data
+      );
+
+      const decoder = new TextDecoder();
+      return decoder.decode(decrypted);
+    } catch (error) {
+      console.error('Token decryption failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Store encrypted token in browser storage
+   */
+  async storeToken(token, userPassword = null, provider = 'gitlab') {
+    const encrypted = await this.encryptToken(token, userPassword);
+    const key = `${provider}_token`;
+    await safeStorage.set({ [key]: encrypted });
+
+    this.token = token;
+    console.log(`${provider} token stored securely`);
+  }
+
+  /**
+   * Retrieve and decrypt token from browser storage
+   */
+  async loadToken(userPassword = null, provider = 'gitlab') {
+    const key = `${provider}_token`;
+    const result = await safeStorage.get(key);
+
+    if (result[key]) {
+      const token = await this.decryptToken(result[key], userPassword);
+      this.token = token;
+      return token;
+    }
+    return null;
+  }
+
+  /**
+   * Remove token from storage
+   */
+  async clearToken(provider = 'gitlab') {
+    const key = `${provider}_token`;
+    await safeStorage.remove(key);
+
+    // Clear in-memory state
+    this.token = null;
+    this.user = null;
+
+    console.log(`${provider} token cleared`);
+  }
+
+  /**
+   * Get current token (from memory or storage)
+   */
+  async getToken(provider = 'gitlab') {
+    if (this.token) {
+      return this.token;
+    }
+    return await this.loadToken(null, provider);
+  }
+
+  /**
+   * Check if user is authenticated
+   */
+  async isAuthenticated() {
+    const token = await this.getToken();
+    return !!token;
+  }
+
+  /**
+   * Fetch user information from GitLab
+   */
+  async fetchUserInfo() {
+    const token = await this.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    try {
+      const response = await fetch('https://gitlab.com/api/v4/user', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`GitLab API error: ${response.status}`);
+      }
+
+      this.user = await response.json();
+      return this.user;
+    } catch (error) {
+      console.error('Failed to fetch user info:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get cached user info or fetch from GitLab
+   */
+  async getUserInfo() {
+    if (this.user) return this.user;
+    return await this.fetchUserInfo();
+  }
+
+  /**
+   * Validate token with GitLab API
+   */
+  async validateToken() {
+    try {
+      await this.fetchUserInfo();
+      return true;
+    } catch (error) {
+      console.error('Token validation failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Encrypt and store API key (for scanning services)
+   */
+  async storeApiKey(keyName, apiKey, userPassword = null) {
+    const encrypted = await this.encryptToken(apiKey, userPassword);
+    await safeStorage.set({ [keyName]: encrypted });
+    console.log(`API key ${keyName} stored securely`);
+  }
+
+  /**
+   * Retrieve and decrypt API key
+   */
+  async getApiKey(keyName, userPassword = null) {
+    const result = await safeStorage.get(keyName);
+    if (result[keyName]) {
+      return await this.decryptToken(result[keyName], userPassword);
+    }
+    return null;
+  }
+
+  /**
+   * Remove API key from storage
+   */
+  async removeApiKey(keyName) {
+    await safeStorage.remove(keyName);
+    console.log(`API key ${keyName} removed`);
+  }
+
+  /**
+   * Store user preferences
+   */
+  async storePreference(key, value) {
+    await safeStorage.set({ [key]: value });
+  }
+
+  /**
+   * Get user preference
+   */
+  async getPreference(key, defaultValue = null) {
+    const result = await safeStorage.get(key);
+    return result[key] !== undefined ? result[key] : defaultValue;
+  }
+
+  /**
+   * Generate a unique device ID for sync locking
+   */
+  getDeviceId() {
+    let deviceId = localStorage.getItem('bmz_device_id');
+    if (!deviceId) {
+      deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('bmz_device_id', deviceId);
+    }
+    return deviceId;
+  }
+
+  /**
+   * Get authentication status for UI
+   */
+  async getAuthStatus() {
+    const isAuth = await this.isAuthenticated();
+    if (!isAuth) {
+      return {
+        authenticated: false,
+        user: null,
+        deviceId: this.getDeviceId()
+      };
+    }
+
+    try {
+      const user = await this.getUserInfo();
+      return {
+        authenticated: true,
+        user: {
+          login: user.username || user.login,
+          name: user.name,
+          avatar: user.avatar_url,
+          email: user.email
+        },
+        deviceId: this.getDeviceId()
+      };
+    } catch (error) {
+      // Token invalid, clear it
+      await this.clearToken();
+      return {
+        authenticated: false,
+        user: null,
+        deviceId: this.getDeviceId()
+      };
+    }
+  }
+}
+
+// Create singleton instance
+const authManager = new AuthManager();
+
+// ============================================================================
+// OAUTH PAT - Personal Access Token Authentication
+// ============================================================================
+
+class OAuthPAT {
+  constructor() {
+    this.token = null;
+    this.user = null;
+    this.provider = 'gitlab'; // Always GitLab
+  }
+
+  /**
+   * Authenticate with Personal Access Token
+   * @param {string} token - GitLab Personal Access Token
+   * @param {Function} retryCallback - Callback to trigger retry with new token
+   * @returns {Promise<Object|null>} User info and token, or null if authentication error popup was shown
+   */
+  async authenticate(token, retryCallback = null) {
+    if (!token || token.trim().length === 0) {
+      throw new Error('Token is required');
+    }
+
+    const trimmedToken = token.trim();
+
+    // Validate token format (GitLab tokens start with glpat-)
+    if (!trimmedToken.startsWith('glpat-')) {
+      throw new Error('Invalid GitLab token format. Token should start with glpat-');
+    }
+
+    console.log('Authenticating with GitLab PAT');
+
+    try {
+      const result = await this.authenticateGitLab(trimmedToken, retryCallback);
+      if (result === null) {
+        // Authentication error popup was shown, allow retry without throwing
+        return null;
+      }
+      return result;
+    } catch (error) {
+      // Clear stored token on error
+      this.token = null;
+      this.user = null;
+      throw error;
+    }
+  }
+
+  /**
+   * Authenticate with GitLab PAT
+   */
+  async authenticateGitLab(token, retryCallback = null) {
+    // Test token by fetching user info
+    const response = await fetch('https://gitlab.com/api/v4/user', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        // Show informational popup and allow retry
+        this.showAuthErrorPopup(retryCallback, false);
+        // Return null to indicate authentication failed but allow retry
+        return null;
+      } else if (response.status === 403) {
+        // Show permission error popup and allow retry
+        this.showAuthErrorPopup(retryCallback, true);
+        // Return null to indicate permission failed but allow retry
+        return null;
+      } else if (response.status === 429) {
+        // Show rate limit popup and allow retry
+        this.showRateLimitPopup(retryCallback);
+        // Return null to indicate rate limited but allow retry
+        return null;
+      } else if (response.status >= 500 && response.status < 600) {
+        // Show service error popup and allow retry
+        this.showServiceErrorPopup(retryCallback);
+        // Return null to indicate service error but allow retry
+        return null;
+      } else {
+        throw new Error('GitLab authentication failed: ' + response.statusText);
+      }
+    }
+
+    const user = await response.json();
+
+    // Verify token has api scope by trying to list snippets
+    const snippetResponse = await fetch('https://gitlab.com/api/v4/snippets', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!snippetResponse.ok) {
+      if (snippetResponse.status === 401) {
+        // Show informational popup for scope issue
+        this.showAuthErrorPopup(retryCallback, false);
+        return null;
+      } else if (snippetResponse.status === 403) {
+        // Show permission error popup for scope issue
+        this.showAuthErrorPopup(retryCallback, true);
+        return null;
+      } else if (snippetResponse.status === 429) {
+        // Show rate limit popup for scope check
+        this.showRateLimitPopup(retryCallback);
+        return null;
+      } else if (snippetResponse.status >= 500 && snippetResponse.status < 600) {
+        // Show service error popup for scope check
+        this.showServiceErrorPopup(retryCallback);
+        return null;
+      } else {
+        throw new Error('GitLab token does not have "api" scope. Please create a new token with "api" permission.');
+      }
+    }
+
+    // Store token and user info
+    this.token = token;
+    this.user = user;
+
+    return {
+      access_token: token,
+      token_type: 'bearer',
+      scope: 'api',
+      user: user,
+      provider: 'gitlab'
+    };
+  }
+
+  /**
+   * Show authentication error popup
+   */
+  showAuthErrorPopup(retryCallback, isPermissionError = false) {
+    const title = isPermissionError ? 'Permission Error' : 'Authentication Failed';
+    const message = isPermissionError
+      ? 'Your GitLab token lacks the required permissions. Please create a new Personal Access Token with "api" scope.'
+      : 'Your GitLab token is invalid or expired. Please check your token and try again.';
+
+    const details = isPermissionError
+      ? 'Go to GitLab → User Settings → Access Tokens → Create a new token with "api" scope selected.'
+      : 'Make sure you copied the complete token starting with "glpat-".';
+
+    this.showErrorPopup(title, message, details, retryCallback);
+  }
+
+  /**
+   * Show rate limit error popup
+   */
+  showRateLimitPopup(retryCallback) {
+    const title = 'Rate Limit Exceeded';
+    const message = 'GitLab API rate limit reached. Please wait a few minutes before trying again.';
+    const details = 'GitLab allows 2000 requests per hour for authenticated users. The limit resets every hour.';
+
+    this.showErrorPopup(title, message, details, retryCallback);
+  }
+
+  /**
+   * Show service error popup
+   */
+  showServiceErrorPopup(retryCallback) {
+    const title = 'GitLab Service Error';
+    const message = 'GitLab is currently experiencing issues. Please try again later.';
+    const details = 'This is usually temporary. Check GitLab status at https://status.gitlab.com/';
+
+    this.showErrorPopup(title, message, details, retryCallback);
+  }
+
+  /**
+   * Show error popup with retry option
+   */
+  showErrorPopup(title, message, details, retryCallback) {
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 10001;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    modal.innerHTML = `
+      <div style="
+        background: var(--md-sys-color-surface);
+        border-radius: 16px;
+        padding: 24px;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        border: 1px solid var(--md-sys-color-outline);
+      ">
+        <h3 style="
+          margin: 0 0 16px 0;
+          color: var(--md-sys-color-error);
+          font-size: 18px;
+          font-weight: 600;
+        ">${title}</h3>
+        <p style="margin-bottom: 12px; color: var(--md-sys-color-on-surface); line-height: 1.5;">
+          ${message}
+        </p>
+        <div style="
+          background: var(--md-sys-color-surface-variant);
+          padding: 12px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          font-size: 13px;
+          color: var(--md-sys-color-on-surface-variant);
+          line-height: 1.4;
+        ">
+          ${details}
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button id="cancelRetry" style="
+            background: var(--md-sys-color-surface-variant);
+            color: var(--md-sys-color-on-surface-variant);
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+          ">Cancel</button>
+          <button id="retryAuth" style="
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+          ">Try Again</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Handle button clicks
+    modal.querySelector('#cancelRetry').onclick = () => {
+      modal.remove();
+    };
+
+    modal.querySelector('#retryAuth').onclick = () => {
+      modal.remove();
+      if (retryCallback) retryCallback();
+    };
+
+    // Close on background click
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    };
+
+    // Close on Escape key
+    document.addEventListener('keydown', function escHandler(e) {
+      if (e.key === 'Escape') {
+        modal.remove();
+        document.removeEventListener('keydown', escHandler);
+      }
+    });
+  }
+
+  /**
+   * Get current token
+   * @returns {string|null} Current token
+   */
+  getToken() {
+    return this.token;
+  }
+
+  /**
+   * Get current user
+   * @returns {Object|null} Current user info
+   */
+  getUser() {
+    return this.user;
+  }
+
+  /**
+   * Get current provider
+   * @returns {string} Always 'gitlab'
+   */
+  getProvider() {
+    return this.provider;
+  }
+
+  /**
+   * Clear authentication
+   */
+  clear() {
+    this.token = null;
+    this.user = null;
+  }
+
+  /**
+   * Check if authenticated
+   * @returns {boolean} True if authenticated
+   */
+  isAuthenticated() {
+    return this.token !== null;
+  }
+}
+
+// Create singleton instance
+const oauthPAT = new OAuthPAT();
+
+// ============================================================================
+// SNIPPET ADAPTER - GitLab Snippet Operations
+// ============================================================================
+
+class SnippetAdapter {
+  constructor() {
+    this.apiBase = 'https://gitlab.com/api/v4';
+    this.snippetId = null;
+    this.rateLimit = {
+      remaining: null,
+      limit: null,
+      reset: null
+    };
+    this.userCache = null;
+    this.userCacheExpiry = 0;
+  }
+
+  /**
+   * Get authorization headers for GitLab API
+   */
+  async getHeaders() {
+    const token = await authManager.getToken('gitlab');
+    if (!token) {
+      throw new Error('No GitLab authentication token available');
+    }
+
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Bookmark-Manager-Zero/1.0 (https://github.com/AbsoluteXYZero/bookmark-manager-zero)'
+    };
+  }
+
+  /**
+   * Update rate limit info from response headers
+   */
+  updateRateLimitFromResponse(response) {
+    const remaining = response.headers.get('RateLimit-Remaining');
+    const limit = response.headers.get('RateLimit-Limit');
+    const reset = response.headers.get('RateLimit-Reset');
+
+    if (remaining !== null) this.rateLimit.remaining = parseInt(remaining, 10);
+    if (limit !== null) this.rateLimit.limit = parseInt(limit, 10);
+    if (reset !== null) this.rateLimit.reset = parseInt(reset, 10);
+
+    // Log warning if rate limit is getting low
+    if (this.rateLimit.remaining !== null && this.rateLimit.remaining < 100) {
+      const resetDate = new Date(this.rateLimit.reset * 1000);
+      console.warn(`[RateLimit] GitLab API rate limit low: ${this.rateLimit.remaining}/${this.rateLimit.limit} remaining (resets at ${resetDate.toLocaleTimeString()})`);
+    }
+  }
+
+  /**
+   * Check if we should proceed with API call based on rate limits
+   */
+  checkRateLimit() {
+    if (this.rateLimit.remaining !== null && this.rateLimit.remaining < 10) {
+      const resetDate = new Date(this.rateLimit.reset * 1000);
+      const now = Date.now();
+      const msUntilReset = (this.rateLimit.reset * 1000) - now;
+
+      if (msUntilReset > 0) {
+        throw new Error(`GitLab API rate limit nearly exhausted (${this.rateLimit.remaining} remaining). Sync will retry after ${resetDate.toLocaleTimeString()}`);
+      }
+    }
+  }
+
+  /**
+   * Get rate limit status
+   */
+  getRateLimitStatus() {
+    return { ...this.rateLimit };
+  }
+
+  /**
+   * Exponential backoff with jitter for retry logic
+   */
+  async retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+    let lastError;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+
+        // Don't retry on certain errors
+        if (error.message.includes('404') ||
+            error.message.includes('401') ||
+            error.message.includes('403')) {
+          throw error;
+        }
+
+        // If this was the last attempt, throw the error
+        if (attempt === maxRetries) {
+          throw error;
+        }
+
+        // Calculate delay with exponential backoff and jitter
+        const exponentialDelay = baseDelay * Math.pow(2, attempt);
+        const jitter = Math.random() * exponentialDelay * 0.3; // 30% jitter
+        const delay = exponentialDelay + jitter;
+
+        console.log(`[RetryBackoff] Attempt ${attempt + 1}/${maxRetries + 1} failed. Retrying in ${Math.round(delay)}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * Get all user's snippets
+   */
+  async getAllSnippets() {
+    try {
+      // Check rate limits before making API calls
+      this.checkRateLimit();
+
+      const headers = await this.getHeaders();
+
+      // Use cached user info if available (expires after 5 minutes)
+      const now = Date.now();
+      if (!this.userCache || now > this.userCacheExpiry) {
+        console.log('[GetAllSnippets] Fetching user info (cache expired or empty)...');
+        const userResponse = await fetch(`${this.apiBase}/user`, { headers });
+        this.updateRateLimitFromResponse(userResponse);
+
+        if (userResponse.ok) {
+          this.userCache = await userResponse.json();
+          this.userCacheExpiry = now + (5 * 60 * 1000); // Cache for 5 minutes
+          console.log('[GetAllSnippets] Authenticated as:', this.userCache.username, '(User ID:', this.userCache.id + ')');
+        } else {
+          console.error('[GetAllSnippets] Failed to verify user:', userResponse.status);
+        }
+      } else {
+        console.log('[GetAllSnippets] Using cached user info:', this.userCache.username);
+      }
+
+      // Fetch all snippets for the authenticated user
+      console.log('[GetAllSnippets] Fetching from:', `${this.apiBase}/snippets?per_page=100`);
+      const response = await fetch(`${this.apiBase}/snippets?per_page=100`, { headers });
+
+      // Update rate limit tracking
+      this.updateRateLimitFromResponse(response);
+
+      console.log('[GetAllSnippets] Response status:', response.status, response.statusText);
+
+      // Check pagination headers
+      const linkHeader = response.headers.get('Link');
+      const totalCount = response.headers.get('X-Total-Count');
+      if (linkHeader) {
+        console.log('[GetAllSnippets] Pagination Link header:', linkHeader);
+      }
+      if (totalCount) {
+        console.log('[GetAllSnippets] Total count:', totalCount);
+      }
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Show authentication error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showAuthErrorPopup(() => {
+              // Retry the entire operation
+              this.getAllSnippets().then(resolve).catch(reject);
+            }, false);
+          });
+        } else if (response.status === 403) {
+          // Show permission error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showAuthErrorPopup(() => {
+              // Retry the entire operation
+              this.getAllSnippets().then(resolve).catch(reject);
+            }, true);
+          });
+        } else if (response.status === 429) {
+          // Show rate limit popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showRateLimitPopup(() => {
+              // Retry the entire operation
+              this.getAllSnippets().then(resolve).catch(reject);
+            });
+          });
+        } else if (response.status >= 500 && response.status < 600) {
+          // Show service error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showServiceErrorPopup(() => {
+              // Retry the entire operation
+              this.getAllSnippets().then(resolve).catch(reject);
+            });
+          });
+        }
+        const errorText = await response.text();
+        console.error('[GetAllSnippets] Error response:', errorText);
+        throw new Error(`Failed to fetch snippets: ${response.status}`);
+      }
+
+      const snippets = await response.json();
+      console.log('[GetAllSnippets] Retrieved', snippets.length, 'snippets')
+
+      // Log details about each snippet
+      if (snippets.length > 0) {
+        console.log('[GetAllSnippets] Snippet details:');
+        snippets.forEach((s, idx) => {
+          const fileName = s.file_name || 'unknown';
+          const visibility = s.visibility || 'unknown';
+          console.log(`  ${idx + 1}. ${s.id} - ${visibility} - File: ${fileName} - Title: "${s.title || 'none'}"`);
+        });
+      } else {
+        console.warn('[GetAllSnippets] No snippets found. Possible reasons:');
+        console.warn('  1. This GitLab account has no Snippets');
+        console.warn('  2. Token permissions issue (needs "api" scope)');
+      }
+
+      return snippets;
+    } catch (error) {
+      console.error('Failed to fetch snippets:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find user's bookmark Snippet
+   */
+  async findBookmarkSnippet() {
+    try {
+      const snippets = await this.getAllSnippets();
+
+      // Look for Snippet with BMZ in title or bookmarks.json file
+      const bookmarkSnippet = snippets.find(s =>
+        s.title?.includes('BMZ') ||
+        s.title?.includes('Bookmark Manager Zero') ||
+        s.file_name === 'bookmarks.json'
+      );
+
+      if (bookmarkSnippet) {
+        // Validate that we can actually read from this snippet
+        try {
+          await this.readBookmarks(bookmarkSnippet.id);
+          this.snippetId = bookmarkSnippet.id;
+          console.log('Found and validated bookmark Snippet:', this.snippetId);
+          return bookmarkSnippet.id;
+        } catch (error) {
+          console.warn('Found bookmark snippet but cannot read from it:', bookmarkSnippet.id, error);
+          return null;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Failed to find bookmark Snippet:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set snippet ID to use
+   */
+  setSnippetId(snippetId) {
+    this.snippetId = snippetId;
+    // Store in localStorage so we remember it
+    localStorage.setItem('bmz_snippet_id', snippetId);
+    console.log('Set bookmark Snippet ID:', snippetId);
+  }
+
+  /**
+   * Load saved snippet ID from storage
+   */
+  loadSavedSnippetId() {
+    const savedId = localStorage.getItem('bmz_snippet_id');
+    if (savedId) {
+      // Validate that it's a string and not an object
+      if (typeof savedId === 'string' && !savedId.startsWith('{') && !savedId.startsWith('[')) {
+        this.snippetId = savedId;
+        console.log('Loaded saved Snippet ID:', savedId);
+        return savedId;
+      } else {
+        console.warn('Invalid snippet ID in localStorage:', savedId);
+        localStorage.removeItem('bmz_snippet_id');
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Create a new Snippet for bookmarks
+   */
+  async createBookmarkSnippet(bookmarkTree = null) {
+    try {
+      const headers = await this.getHeaders();
+
+      // Default bookmark structure with standard root folders
+      const defaultTree = {
+        version: 1,
+        checksum: '',
+        lastModified: Date.now(),
+        roots: {
+          bookmark_bar: {
+            id: '1',
+            title: 'Bookmarks Toolbar',
+            name: 'Bookmarks Toolbar',
+            type: 'folder',
+            dateAdded: Date.now(),
+            children: []
+          },
+          menu: {
+            id: '2',
+            title: 'Bookmarks Menu',
+            name: 'Bookmarks Menu',
+            type: 'folder',
+            dateAdded: Date.now(),
+            children: []
+          },
+          other: {
+            id: '3',
+            title: 'Other Bookmarks',
+            name: 'Other Bookmarks',
+            type: 'folder',
+            dateAdded: Date.now(),
+            children: []
+          },
+          mobile: {
+            id: '4',
+            title: 'Mobile Bookmarks',
+            name: 'Mobile Bookmarks',
+            type: 'folder',
+            dateAdded: Date.now(),
+            children: []
+          }
+        }
+      };
+
+      const tree = bookmarkTree || defaultTree;
+      tree.checksum = await this.calculateChecksum(tree);
+
+      // Check rate limits before creating
+      this.checkRateLimit();
+
+      console.log('[CreateSnippet] Sending request to GitLab API...');
+      const response = await fetch(`${this.apiBase}/snippets`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title: 'BMZ Bookmarks - Managed by Bookmark Manager Zero',
+          visibility: 'private',
+          files: [
+            {
+              file_path: 'bookmarks.json',
+              content: JSON.stringify(tree)
+            }
+          ]
+        })
+      });
+
+      // Update rate limit tracking
+      this.updateRateLimitFromResponse(response);
+
+      console.log('[CreateSnippet] Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Show authentication error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showAuthErrorPopup(() => {
+              // Retry the entire operation
+              this.createBookmarkSnippet(bookmarkTree).then(resolve).catch(reject);
+            }, false);
+          });
+        } else if (response.status === 403) {
+          // Show permission error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showAuthErrorPopup(() => {
+              // Retry the entire operation
+              this.createBookmarkSnippet(bookmarkTree).then(resolve).catch(reject);
+            }, true);
+          });
+        } else if (response.status === 429) {
+          // Show rate limit popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showRateLimitPopup(() => {
+              // Retry the entire operation
+              this.createBookmarkSnippet(bookmarkTree).then(resolve).catch(reject);
+            });
+          });
+        } else if (response.status >= 500 && response.status < 600) {
+          // Show service error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showServiceErrorPopup(() => {
+              // Retry the entire operation
+              this.createBookmarkSnippet(bookmarkTree).then(resolve).catch(reject);
+            });
+          });
+        }
+        const errorBody = await response.text();
+        console.error('[CreateSnippet] Error response:', errorBody);
+        throw new Error(`Failed to create Snippet: ${response.status} - ${errorBody}`);
+      }
+
+      const snippet = await response.json();
+      console.log('[CreateSnippet] Snippet created successfully:', {
+        id: snippet.id,
+        url: snippet.web_url,
+        title: snippet.title
+      });
+
+      this.snippetId = snippet.id;
+      // Save to localStorage
+      this.setSnippetId(snippet.id);
+
+      console.log('Created bookmark Snippet:', this.snippetId);
+
+      return snippet.id;
+    } catch (error) {
+      console.error('Failed to create bookmark Snippet:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Read bookmark data from Snippet
+   */
+  async readBookmarks(snippetId = null) {
+    const id = snippetId || this.snippetId;
+    console.log('[ReadSnippet] Attempting to read Snippet:', {
+      providedId: snippetId,
+      storedId: this.snippetId,
+      usingId: id
+    });
+
+    if (!id) {
+      throw new Error('No Snippet ID provided');
+    }
+
+    try {
+      // Check rate limits before reading
+      this.checkRateLimit();
+
+      const headers = await this.getHeaders();
+      console.log('[ReadSnippet] Fetching from:', `${this.apiBase}/snippets/${id}`);
+      const response = await fetch(`${this.apiBase}/snippets/${id}`, { headers });
+
+      // Update rate limit tracking
+      this.updateRateLimitFromResponse(response);
+
+      console.log('[ReadSnippet] Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const errorText = await response.text();
+          console.error('[ReadSnippet] 404 Error - Snippet not found. Response:', errorText);
+
+          // Clear the invalid Snippet ID immediately
+          console.warn('[ReadSnippet] Clearing invalid Snippet ID:', id);
+          this.snippetId = null;
+          localStorage.removeItem('bmz_snippet_id');
+
+          throw new Error('Bookmark Snippet not found');
+        } else if (response.status >= 500 && response.status < 600) {
+          // Show service error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showServiceErrorPopup(() => {
+              // Retry the entire operation
+              this.readBookmarks(snippetId).then(resolve).catch(reject);
+            });
+          });
+        }
+        const errorText = await response.text();
+        console.error('[ReadSnippet] Error response:', errorText);
+        throw new Error(`Failed to read Snippet: ${response.status}`);
+      }
+
+      const snippet = await response.json();
+      console.log('[ReadSnippet] Snippet fetched successfully:', {
+        id: snippet.id,
+        title: snippet.title,
+        filesCount: snippet.files?.length || 0
+      });
+
+      // GitLab snippets have a 'files' array
+      const bookmarkFile = snippet.files?.find(f => f.path === 'bookmarks.json' || f.file_name === 'bookmarks.json');
+      if (!bookmarkFile) {
+        throw new Error('Snippet does not contain bookmarks.json');
+      }
+
+      console.log('[ReadSnippet] Found bookmarks.json file:', {
+        path: bookmarkFile.path,
+        file_name: bookmarkFile.file_name
+      });
+
+      // GitLab API v4 doesn't include content directly, need to fetch it via API
+      let content = bookmarkFile.content;
+
+      // If content is not in the response, fetch it using the API with authentication
+      if (!content) {
+        console.log('[ReadSnippet] Content not in response, fetching via API...');
+        // Use the authenticated API endpoint instead of raw_url to avoid CORS
+        const fileResponse = await fetch(`${this.apiBase}/snippets/${id}/files/main/bookmarks.json/raw`, { headers });
+        if (!fileResponse.ok) {
+          if (fileResponse.status === 429) {
+            // Show rate limit popup and allow retry
+            return new Promise((resolve, reject) => {
+              oauthPAT.showRateLimitPopup(() => {
+                // Retry the entire operation
+                this.readBookmarks(snippetId).then(resolve).catch(reject);
+              });
+            });
+          } else if (fileResponse.status >= 500 && fileResponse.status < 600) {
+            // Show service error popup and allow retry
+            return new Promise((resolve, reject) => {
+              oauthPAT.showServiceErrorPopup(() => {
+                // Retry the entire operation
+                this.readBookmarks(snippetId).then(resolve).catch(reject);
+              });
+            });
+          }
+          console.warn('[ReadSnippet] API raw endpoint failed with status:', fileResponse.status);
+          throw new Error(`Failed to fetch file content: ${fileResponse.status}`);
+        }
+        content = await fileResponse.text();
+        console.log('[ReadSnippet] Fetched content length:', content?.length);
+      }
+
+      // If content is empty or just whitespace, return empty bookmark structure
+      if (!content || content.trim() === '') {
+        console.log('[ReadSnippet] Snippet file is empty, returning empty bookmark structure');
+        return this.getEmptyBookmarkTree();
+      }
+
+      const bookmarkData = JSON.parse(content);
+
+      console.log('[ReadSnippet] Bookmarks parsed successfully. Version:', bookmarkData.version);
+      return bookmarkData;
+    } catch (error) {
+      console.error('Failed to read bookmarks from Snippet:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update Snippet with new bookmark data
+   */
+  async updateBookmarks(snippetId = null, bookmarkTree, version = null) {
+    const id = snippetId || this.snippetId;
+    console.log('[UpdateSnippet] Attempting to update Snippet:', {
+      providedId: snippetId,
+      storedId: this.snippetId,
+      usingId: id
+    });
+
+    if (!id) {
+      throw new Error('No Snippet ID provided');
+    }
+
+    try {
+      // Add version and metadata
+      const dataWithMeta = {
+        ...bookmarkTree,
+        version: version !== null ? version : (bookmarkTree.version || 1) + 1,
+        checksum: await this.calculateChecksum(bookmarkTree),
+        lastModified: Date.now()
+      };
+
+      console.log('[UpdateSnippet] Updating with version:', dataWithMeta.version);
+
+      // Check rate limits before updating
+      this.checkRateLimit();
+
+      const headers = await this.getHeaders();
+      const response = await fetch(`${this.apiBase}/snippets/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          files: [
+            {
+              action: 'update',
+              file_path: 'bookmarks.json',
+              content: JSON.stringify(dataWithMeta)
+            }
+          ]
+        })
+      });
+
+      // Update rate limit tracking
+      this.updateRateLimitFromResponse(response);
+
+      console.log('[UpdateSnippet] Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Show authentication error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showAuthErrorPopup(() => {
+              // Retry the entire operation
+              this.updateBookmarks(snippetId, bookmarkTree, version).then(resolve).catch(reject);
+            }, false);
+          });
+        } else if (response.status === 403) {
+          // Show permission error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showAuthErrorPopup(() => {
+              // Retry the entire operation
+              this.updateBookmarks(snippetId, bookmarkTree, version).then(resolve).catch(reject);
+            }, true);
+          });
+        } else if (response.status === 429) {
+          // Show rate limit popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showRateLimitPopup(() => {
+              // Retry the entire operation
+              this.updateBookmarks(snippetId, bookmarkTree, version).then(resolve).catch(reject);
+            });
+          });
+        } else if (response.status >= 500 && response.status < 600) {
+          // Show service error popup and allow retry
+          return new Promise((resolve, reject) => {
+            oauthPAT.showServiceErrorPopup(() => {
+              // Retry the entire operation
+              this.updateBookmarks(snippetId, bookmarkTree, version).then(resolve).catch(reject);
+            });
+          });
+        }
+        const errorText = await response.text();
+        console.error('[UpdateSnippet] Error response:', errorText);
+        throw new Error(`Failed to update Snippet: ${response.status} - ${errorText}`);
+      }
+
+      const snippet = await response.json();
+      console.log('[UpdateSnippet] Updated bookmarks in Snippet:', id, '- New version:', dataWithMeta.version);
+      return snippet;
+    } catch (error) {
+      console.error('Failed to update bookmarks in Snippet:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Calculate SHA-256 checksum for conflict detection
+   */
+  async calculateChecksum(data) {
+    // Remove fields that change on every update
+    const { checksum, lastModified, version, editLock, ...dataToHash } = data;
+
+    const str = JSON.stringify(dataToHash, Object.keys(dataToHash).sort());
+    const buffer = new TextEncoder().encode(str);
+    const hash = await crypto.subtle.digest('SHA-256', buffer);
+
+    return Array.from(new Uint8Array(hash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  /**
+   * Get current Snippet ID
+   */
+  getSnippetId() {
+    return this.snippetId;
+  }
+
+  /**
+   * Get empty bookmark tree structure
+   */
+  getEmptyBookmarkTree() {
+    return {
+      version: 1,
+      checksum: '',
+      lastModified: Date.now(),
+      roots: {
+        bookmark_bar: {
+          id: '1',
+          title: 'Bookmarks Toolbar',
+          name: 'Bookmarks Toolbar',
+          type: 'folder',
+          dateAdded: Date.now(),
+          children: []
+        },
+        menu: {
+          id: '2',
+          title: 'Bookmarks Menu',
+          name: 'Bookmarks Menu',
+          type: 'folder',
+          dateAdded: Date.now(),
+          children: []
+        },
+        other: {
+          id: '3',
+          title: 'Other Bookmarks',
+          name: 'Other Bookmarks',
+          type: 'folder',
+          dateAdded: Date.now(),
+          children: []
+        },
+        mobile: {
+          id: '4',
+          title: 'Mobile Bookmarks',
+          name: 'Mobile Bookmarks',
+          type: 'folder',
+          dateAdded: Date.now(),
+          children: []
+        }
+      }
+    };
+  }
+}
+
+// Create singleton instance
+const snippetAdapter = new SnippetAdapter();
+
+// ============================================================================
+// SYNC MANAGER - Handles bidirectional sync with GitLab
+// ============================================================================
+
+class SyncManager {
+  constructor() {
+    this.snippetId = null;
+    this.provider = 'gitlab';
+    this.deviceId = authManager.getDeviceId();
+    this.syncInterval = null;
+    this.isSyncing = false;
+    this.hasUnsyncedChanges = false;
+    this.lastSyncTime = null;
+    this.autoSyncEnabled = true;
+    this.minSyncInterval = 60000; // Minimum 60 seconds between syncs
+  }
+
+  /**
+   * Initialize the sync manager
+   */
+  async init() {
+    // Prevent duplicate initialization
+    if (this._initialized) {
+      return;
+    }
+    this._initialized = true;
+
+    console.log('[Init] Sync manager initializing...');
+    this.provider = await authManager.getPreference('syncProvider') || 'gitlab';
+    console.log('Sync provider set to:', this.provider);
+
+    // Load snippet ID from storage
+    const savedId = snippetAdapter.loadSavedSnippetId();
+    if (savedId) {
+      this.snippetId = savedId;
+      console.log('Loaded Snippet ID from storage:', savedId);
+    }
+
+    // Initialize auto-sync (disabled by default to avoid rate limiting)
+    console.log('[Init] Timer-based auto-sync disabled - using event-driven sync only');
+  }
+
+  /**
+   * Set Snippet ID
+   */
+  async setSnippetId(snippetId) {
+    this.snippetId = snippetId;
+    snippetAdapter.setSnippetId(snippetId);
+    await safeStorage.set({ snippetId });
+    await this.setProvider('gitlab');
+    console.log('Snippet ID saved:', snippetId);
+  }
+
+  /**
+   * Set the current provider
+   */
+  async setProvider(provider) {
+    this.provider = 'gitlab';
+    await safeStorage.set({ syncProvider: 'gitlab' });
+    console.log('Sync provider set to: gitlab');
+  }
+
+  /**
+   * Mark that local changes need to be synced
+   */
+  async markChanged() {
+    console.log('[MarkChanged] Setting hasUnsyncedChanges = true');
+    this.hasUnsyncedChanges = true;
+
+    // Trigger sync if online
+    if (navigator.onLine) {
+      // Debounce sync to avoid too many requests
+      if (this.syncDebounceTimer) {
+        clearTimeout(this.syncDebounceTimer);
+      }
+      this.syncDebounceTimer = setTimeout(async () => {
+        // Check if we still have a valid remote ID before syncing
+        if (!this.getRemoteId()) {
+          console.log('[MarkChanged] No remote ID, skipping sync');
+          return;
+        }
+
+        try {
+          await this.syncToRemote();
+          this.emitEvent('syncSuccess', 'Changes synced to remote');
+        } catch (error) {
+          console.error('Sync failed:', error);
+          this.emitEvent('syncError', error.message || 'Failed to sync changes');
+          // Retry after 5 seconds
+          setTimeout(() => {
+            if (this.hasUnsyncedChanges && navigator.onLine && this.getRemoteId()) {
+              this.syncToRemote().catch(err => {
+                console.error('Retry sync failed:', err);
+                this.emitEvent('syncError', 'Sync retry failed. Changes will sync when connection improves.');
+              });
+            }
+          }, 5000);
+        }
+      }, 30000); // Wait 30 seconds after last change to batch multiple edits
+    }
+  }
+
+  /**
+   * Sync local changes to remote (push)
+   */
+  async syncToRemote() {
+    console.log('[SyncToRemote] Called, checking conditions...');
+
+    if (this.isSyncing) {
+      console.log('[SyncToRemote] Sync already in progress, skipping...');
+      return;
+    }
+
+    if (!navigator.onLine) {
+      console.log('[SyncToRemote] Offline, cannot sync to remote');
+      return;
+    }
+
+    const remoteId = this.getRemoteId();
+    if (!remoteId) {
+      console.log('[SyncToRemote] No remote ID, cannot sync');
+      return;
+    }
+
+    // Rate limiting: prevent syncing more frequently than minSyncInterval
+    const timeSinceLastSync = Date.now() - (this.lastSyncTime || 0);
+    if (this.lastSyncTime && timeSinceLastSync < this.minSyncInterval) {
+      const waitTime = Math.ceil((this.minSyncInterval - timeSinceLastSync) / 1000);
+      console.log(`[SyncToRemote] Rate limit: Last sync was ${Math.ceil(timeSinceLastSync / 1000)}s ago. Please wait ${waitTime}s before syncing again.`);
+      this.emitEvent('syncError', `Please wait ${waitTime} seconds before syncing again to avoid rate limits`);
+      return;
+    }
+
+    console.log(`[SyncToRemote] All conditions passed. Provider: ${this.provider}, Remote ID: ${remoteId}`);
+    this.isSyncing = true;
+
+    // Cancel any pending debounced sync since we're doing an explicit sync now
+    if (this.syncDebounceTimer) {
+      clearTimeout(this.syncDebounceTimer);
+      this.syncDebounceTimer = null;
+      console.log('[SyncToRemote] Cancelled pending debounced sync');
+    }
+
+    try {
+      console.log(`[SyncToRemote] Starting sync of local changes to ${this.provider}...`);
+
+      // Check rate limits before syncing
+      const rateLimitStatus = snippetAdapter.getRateLimitStatus();
+      if (rateLimitStatus.remaining !== null && rateLimitStatus.remaining < 10) {
+        const resetDate = new Date(rateLimitStatus.reset * 1000);
+        throw new Error(`API rate limit nearly exhausted (${rateLimitStatus.remaining} remaining). Sync will retry after ${resetDate.toLocaleTimeString()}`);
+      }
+
+      // Load local bookmark tree
+      const localBookmarks = await this.loadLocalBookmarks();
+      const bookmarkCount = this.countBookmarksInTree(localBookmarks);
+      console.log(`[SyncToRemote] Loaded local bookmarks: ${bookmarkCount} total bookmarks`);
+
+      // Get remote version (single read, no locking to reduce API calls)
+      const remoteData = await snippetAdapter.readBookmarks(remoteId);
+      const localVersion = await this.getLocalVersion();
+
+      console.log(`[SyncToRemote] Version check - Local: ${localVersion}, Remote: ${remoteData.version}`);
+
+      // Check for conflicts
+      if (remoteData.version > localVersion) {
+        console.warn('[SyncToRemote] Remote has newer changes! Conflict detected.');
+        throw new Error('Sync conflict: Remote has newer changes. Please reload and try again.');
+      }
+
+      // Push local changes
+      const newVersion = remoteData.version + 1;
+      console.log(`[SyncToRemote] Pushing ${bookmarkCount} bookmarks to remote with version ${newVersion}...`);
+      await snippetAdapter.updateBookmarks(remoteId, localBookmarks, newVersion);
+
+      // Update local metadata
+      await this.setLocalVersion(newVersion);
+      console.log('[SyncToRemote] Setting hasUnsyncedChanges = false');
+      this.hasUnsyncedChanges = false;
+      this.lastSyncTime = Date.now();
+      await safeStorage.set({ lastSync: this.lastSyncTime });
+
+      console.log(`[SyncToRemote] Sync complete! Version ${newVersion} with ${bookmarkCount} bookmarks pushed to remote`);
+    } catch (error) {
+      console.error('Sync to remote failed:', error);
+
+      // If the error is a 404 (Snippet not found), stop syncing
+      if (error.message && error.message.includes('not found')) {
+        console.warn('[SyncToRemote] Remote not found (404), aborting sync and clearing stored ID');
+        this.hasUnsyncedChanges = false; // Clear the flag to prevent retry loops
+
+        // Clear the stored snippet ID
+        localStorage.removeItem('bmz_snippet_id');
+        await safeStorage.remove('snippetId');
+        this.snippetId = null;
+        snippetAdapter.snippetId = null;
+
+        // Emit event to notify UI that setup is needed
+        this.emitEvent('syncError', {
+          error: 'Remote storage not found. Please set up sync again.',
+          requiresSetup: true
+        });
+      }
+
+      throw error;
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  /**
+   * Sync remote changes to local (pull)
+   */
+  async syncFromRemote() {
+    if (this.isSyncing) {
+      console.log('[SyncFromRemote] Already syncing, skipping...');
+      return;
+    }
+
+    if (!navigator.onLine) {
+      console.log('[SyncFromRemote] Offline, skipping...');
+      return;
+    }
+
+    const remoteId = this.getRemoteId();
+    if (!remoteId) {
+      console.log('[SyncFromRemote] No remote ID, skipping...');
+      return;
+    }
+
+    this.isSyncing = true;
+
+    try {
+      console.log(`[SyncFromRemote] Starting sync for ${this.provider}:`, remoteId);
+
+      // Check rate limits before syncing
+      const rateLimitStatus = snippetAdapter.getRateLimitStatus();
+      if (rateLimitStatus.remaining !== null && rateLimitStatus.remaining < 10) {
+        const resetDate = new Date(rateLimitStatus.reset * 1000);
+        throw new Error(`API rate limit nearly exhausted (${rateLimitStatus.remaining} remaining). Sync will retry after ${resetDate.toLocaleTimeString()}`);
+      }
+
+      const remoteData = await snippetAdapter.readBookmarks(remoteId);
+      const remoteBookmarkCount = this.countBookmarksInTree(remoteData);
+      console.log('[SyncFromRemote] Remote data fetched:', {
+        hasRoots: !!remoteData?.roots,
+        rootKeys: remoteData?.roots ? Object.keys(remoteData.roots) : [],
+        version: remoteData?.version,
+        bookmarkCount: remoteBookmarkCount
+      });
+
+      const localData = await this.loadLocalBookmarks();
+      const localBookmarkCount = this.countBookmarksInTree(localData);
+      const localVersion = await this.getLocalVersion();
+      console.log('[SyncFromRemote] Local version:', localVersion, 'Local bookmarks:', localBookmarkCount);
+
+      // Sync if remote is newer OR if local is empty (version 0)
+      if (remoteData.version > localVersion || localVersion === 0) {
+        console.log(`[SyncFromRemote] Remote version (${remoteData.version}) >= Local version (${localVersion}), pulling changes...`);
+
+        // Get current local data for diff
+        const localData = await this.getLocalBookmarks();
+
+        // Calculate diff
+        const diff = this.calculateBookmarkDiff(localData, remoteData);
+        console.log('[SyncFromRemote] Changes detected:', {
+          added: diff.added.length,
+          removed: diff.removed.length,
+          moved: diff.moved.length,
+          modified: diff.modified.length
+        });
+
+        // Check if there are deletions - require user confirmation
+        if (diff.removed.length > 0) {
+          // Emit event with diff data for UI to handle
+          this.emitEvent('syncConflict', {
+            diff,
+            remoteData,
+            requiresConfirmation: true,
+            message: `Remote has ${diff.removed.length} deletion(s). Review changes before syncing.`
+          });
+
+          this.isSyncing = false;
+          return false; // Don't auto-sync, wait for user confirmation
+        }
+
+        // No deletions - auto-sync with notification
+        if (diff.added.length > 0 || diff.moved.length > 0 || diff.modified.length > 0) {
+          // Emit event with diff data
+          this.emitEvent('syncChanges', {
+            diff,
+            remoteData,
+            requiresConfirmation: false,
+            message: `Remote has ${diff.added.length} addition(s), ${diff.moved.length} move(s), ${diff.modified.length} modification(s).`
+          });
+        }
+
+        // Save remote data to local
+        await this.saveLocalBookmarks(remoteData);
+        console.log('[SyncFromRemote] Saved remote data to local storage');
+
+        await this.setLocalVersion(remoteData.version);
+        console.log('[SyncFromRemote] Updated local version to:', remoteData.version);
+
+        this.lastSyncTime = Date.now();
+        await safeStorage.set({ lastSync: this.lastSyncTime });
+
+        console.log('[SyncFromRemote] Sync complete, version:', remoteData.version);
+        return true; // Indicate that data was updated
+      } else {
+        console.log('[SyncFromRemote] Local is up to date (local:', localVersion, ', remote:', remoteData.version, ')');
+        return false;
+      }
+    } catch (error) {
+      console.error('[SyncFromRemote] Sync failed:', error);
+
+      // If the error is a 404 (Snippet not found), clear the stored ID
+      if (error.message && error.message.includes('not found')) {
+        console.warn('[SyncFromRemote] Remote not found (404), clearing stored ID');
+
+        localStorage.removeItem('bmz_snippet_id');
+        await safeStorage.remove('snippetId');
+        this.snippetId = null;
+        snippetAdapter.snippetId = null;
+
+        // Emit event to notify UI that setup is needed
+        this.emitEvent('syncError', {
+          error: 'Remote storage not found. Please set up sync again.',
+          requiresSetup: true
+        });
+      }
+
+      return false;
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  /**
+   * Apply remote sync manually (after user confirmation)
+   */
+  async applyRemoteSync(remoteData) {
+    try {
+      // Save remote data to local
+      await this.saveLocalBookmarks(remoteData);
+      console.log('[ApplyRemoteSync] Saved remote data to local storage');
+
+      await this.setLocalVersion(remoteData.version);
+      console.log('[ApplyRemoteSync] Updated local version to:', remoteData.version);
+
+      this.lastSyncTime = Date.now();
+      await safeStorage.set({ lastSync: this.lastSyncTime });
+
+      console.log('[ApplyRemoteSync] Manual sync applied successfully');
+      this.emitEvent('syncSuccess', 'Bookmarks updated from remote');
+
+      return true;
+    } catch (error) {
+      console.error('[ApplyRemoteSync] Failed to apply sync:', error);
+      this.emitEvent('syncError', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Calculate diff between local and remote bookmark trees
+   */
+  calculateBookmarkDiff(localTree, remoteTree) {
+    const diff = {
+      added: [],
+      removed: [],
+      moved: [],
+      modified: []
+    };
+
+    // Create ID maps for quick lookup
+    const localMap = new Map();
+    const remoteMap = new Map();
+
+    // Recursively map all items by ID
+    const mapItems = (node, map, parentPath = '') => {
+      if (!node) return;
+
+      const path = parentPath ? `${parentPath}/${node.title || node.id}` : (node.title || node.id);
+      map.set(node.id, { node, path, parentId: node.parentId });
+
+      if (node.children) {
+        node.children.forEach(child => mapItems(child, map, path));
+      }
+    };
+
+    // Map local tree
+    if (localTree?.roots) {
+      Object.values(localTree.roots).forEach(root => mapItems(root, localMap));
+    }
+
+    // Map remote tree
+    if (remoteTree?.roots) {
+      Object.values(remoteTree.roots).forEach(root => mapItems(root, remoteMap));
+    }
+
+    // Find added items (in remote, not in local)
+    remoteMap.forEach((value, id) => {
+      if (!localMap.has(id)) {
+        diff.added.push({
+          id,
+          title: value.node.title || 'Untitled',
+          url: value.node.url || null,
+          path: value.path,
+          type: value.node.url ? 'bookmark' : 'folder'
+        });
+      }
+    });
+
+    // Find removed items (in local, not in remote)
+    localMap.forEach((value, id) => {
+      if (!remoteMap.has(id)) {
+        diff.removed.push({
+          id,
+          title: value.node.title || 'Untitled',
+          url: value.node.url || null,
+          path: value.path,
+          type: value.node.url ? 'bookmark' : 'folder'
+        });
+      }
+    });
+
+    // Find moved/modified items
+    localMap.forEach((localValue, id) => {
+      const remoteValue = remoteMap.get(id);
+      if (remoteValue) {
+        // Check if moved (parent changed)
+        if (localValue.parentId !== remoteValue.parentId) {
+          diff.moved.push({
+            id,
+            title: remoteValue.node.title || 'Untitled',
+            url: remoteValue.node.url || null,
+            oldPath: localValue.path,
+            newPath: remoteValue.path,
+            type: remoteValue.node.url ? 'bookmark' : 'folder'
+          });
+        }
+        // Check if modified (title or url changed), ignoring case-only title differences
+        const titleDiffers = (localValue.node.title || '').toLowerCase() !== (remoteValue.node.title || '').toLowerCase();
+        const urlDiffers = localValue.node.url !== remoteValue.node.url;
+        if (titleDiffers || urlDiffers) {
+          diff.modified.push({
+            id,
+            oldTitle: localValue.node.title || 'Untitled',
+            newTitle: remoteValue.node.title || 'Untitled',
+            oldUrl: localValue.node.url || null,
+            newUrl: remoteValue.node.url || null,
+            path: remoteValue.path,
+            type: remoteValue.node.url ? 'bookmark' : 'folder'
+          });
+        }
+      }
+    });
+
+    return diff;
+  }
+
+  /**
+   * Get local bookmarks
+   */
+  async getLocalBookmarks() {
+    return await this.loadLocalBookmarks();
+  }
+
+  /**
+   * Load bookmarks from local storage
+   */
+  async loadLocalBookmarks() {
+    console.log('[SyncManager.loadLocalBookmarks] Loading from local storage...');
+    const bookmarksRecord = await safeStorage.get('bookmarkTree');
+    console.log('[SyncManager.loadLocalBookmarks] Retrieved:', bookmarksRecord);
+    const result = bookmarksRecord.bookmarkTree ? bookmarksRecord.bookmarkTree : this.getEmptyBookmarkTree();
+    console.log('[SyncManager.loadLocalBookmarks] Returning:', result);
+    return result;
+  }
+
+  /**
+   * Save bookmarks to local storage
+   */
+  async saveLocalBookmarks(bookmarkTree) {
+    console.log('[SyncManager.saveLocalBookmarks] Saving bookmarks to local storage:', bookmarkTree);
+    try {
+      await safeStorage.set({ bookmarkTree });
+      console.log('[SyncManager.saveLocalBookmarks] Successfully saved');
+    } catch (error) {
+      console.error('[SyncManager.saveLocalBookmarks] Failed to save:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get local version number
+   */
+  async getLocalVersion() {
+    const versionRecord = await safeStorage.get('localVersion');
+    return versionRecord.localVersion || 0;
+  }
+
+  /**
+   * Set local version number
+   */
+  async setLocalVersion(version) {
+    await safeStorage.set({ localVersion: version });
+  }
+
+  /**
+   * Get remote ID
+   */
+  getRemoteId() {
+    return this.snippetId;
+  }
+
+  /**
+   * Count total bookmarks in a tree
+   */
+  countBookmarksInTree(tree) {
+    if (!tree || !tree.roots) return 0;
+
+    let count = 0;
+    const countInNode = (node) => {
+      if (node.type === 'bookmark' || node.url) {
+        count++;
+      }
+      if (node.children) {
+        node.children.forEach(child => countInNode(child));
+      }
+    };
+
+    Object.values(tree.roots).forEach(root => countInNode(root));
+    return count;
+  }
+
+  /**
+   * Get empty bookmark tree structure
+   */
+  getEmptyBookmarkTree() {
+    return {
+      version: 1,
+      checksum: '',
+      lastModified: Date.now(),
+      roots: {
+        bookmark_bar: {
+          id: '1',
+          title: 'Bookmarks Toolbar',
+          name: 'Bookmarks Toolbar',
+          type: 'folder',
+          dateAdded: Date.now(),
+          children: []
+        },
+        menu: {
+          id: '2',
+          title: 'Bookmarks Menu',
+          name: 'Bookmarks Menu',
+          type: 'folder',
+          dateAdded: Date.now(),
+          children: []
+        },
+        other: {
+          id: '3',
+          title: 'Other Bookmarks',
+          name: 'Other Bookmarks',
+          type: 'folder',
+          dateAdded: Date.now(),
+          children: []
+        },
+        mobile: {
+          id: '4',
+          title: 'Mobile Bookmarks',
+          name: 'Mobile Bookmarks',
+          type: 'folder',
+          dateAdded: Date.now(),
+          children: []
+        }
+      }
+    };
+  }
+
+  /**
+   * Manual sync trigger - bidirectional
+   */
+  async manualSync(forcePush = false) {
+    if (this.isSyncing) {
+      console.log('[ManualSync] Sync already in progress');
+      return;
+    }
+
+    if (!navigator.onLine) {
+      this.emitEvent('syncError', 'Cannot sync while offline');
+      return;
+    }
+
+    const remoteId = this.getRemoteId();
+    if (!remoteId) {
+      this.emitEvent('syncError', 'No remote storage configured');
+      return;
+    }
+
+    try {
+      console.log(`[ManualSync] Starting (forcePush: ${forcePush}, hasUnsyncedChanges: ${this.hasUnsyncedChanges})`);
+
+      // Push local changes first
+      if (this.hasUnsyncedChanges || forcePush) {
+        console.log('[ManualSync] Pushing local changes to remote...');
+        await this.syncToRemote();
+      }
+      // Then pull remote changes
+      const updated = await this.syncFromRemote();
+
+      if (updated || this.hasUnsyncedChanges) {
+        this.emitEvent('syncSuccess', 'Manual sync complete');
+      } else {
+        this.emitEvent('syncSuccess', 'Already up to date');
+      }
+    } catch (error) {
+      console.error('Manual sync failed:', error);
+      this.emitEvent('syncError', 'Manual sync failed: ' + error.message);
+    }
+  }
+
+  /**
+   * Emit custom events for UI updates
+   */
+  emitEvent(eventName, data = null) {
+    const event = new CustomEvent(`sync:${eventName}`, { detail: data });
+    window.dispatchEvent(event);
+  }
+
+  /**
+   * Get sync status for UI
+   */
+  getSyncStatus() {
+    return {
+      isOnline: navigator.onLine,
+      isSyncing: this.isSyncing,
+      hasUnsyncedChanges: this.hasUnsyncedChanges,
+      lastSyncTime: this.lastSyncTime,
+      provider: this.provider,
+      snippetId: this.snippetId,
+      remoteId: this.getRemoteId(),
+      deviceId: this.deviceId
+    };
+  }
+}
+
+// Create singleton instance
+const syncManager = new SyncManager();
+
+// ============================================================================
+// POST-AUTHENTICATION FLOW - Adapted from website
+// ============================================================================
+
+/**
+ * Initialize the Firefox extension with native bookmarks
+ */
+async function initFirefoxExtension() {
+  console.log('[Firefox Extension] Initializing with native bookmarks...');
+
+  // Load native Firefox bookmarks and show main UI immediately
+  await loadBookmarksAndInit();
+}
+
+/**
+ * Check if we have a snippet set up
+ */
+async function checkSnippetSetup() {
+  // Check for saved snippet ID in localStorage
+  const savedId = localStorage.getItem('bmz_snippet_id');
+  if (savedId) {
+    console.log('Found saved snippet ID:', savedId);
+    // Try to use the saved ID directly
+    try {
+      await snippetAdapter.readBookmarks(savedId);
+      snippetAdapter.snippetId = savedId;
+      syncManager.setSnippetId(savedId);
+      return true;
+    } catch (err) {
+      console.warn('Saved snippet ID is invalid, clearing:', err);
+      localStorage.removeItem('bmz_snippet_id');
+    }
+  }
+
+  // No valid saved ID found
+  return false;
+}
+
+/**
+ * Show authentication setup UI
+ */
+function showAuthSetup() {
+  // Hide main content and show auth setup
+  const mainContent = document.getElementById('mainContent');
+  if (mainContent) {
+    mainContent.style.display = 'none';
+  }
+
+  // Create auth setup modal
+  const modal = document.createElement('div');
+  modal.id = 'authSetupModal';
+  modal.className = 'modal-overlay';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `;
+
+  modal.innerHTML = `
+    <div style="
+      background: var(--md-sys-color-surface);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border: 1px solid var(--md-sys-color-outline);
+    ">
+      <h2 style="
+        margin: 0 0 16px 0;
+        color: var(--md-sys-color-primary);
+        font-size: 20px;
+        font-weight: 600;
+        text-align: center;
+      ">Connect to GitLab</h2>
+      <p style="margin-bottom: 20px; color: var(--md-sys-color-on-surface); line-height: 1.5;">
+        To sync your bookmarks across devices, connect your GitLab account. Your bookmarks will be stored securely in a private GitLab Snippet.
+      </p>
+
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; font-size: 14px; font-weight: 500; color: var(--md-sys-color-on-surface); margin-bottom: 8px;">
+          GitLab Personal Access Token
+        </label>
+        <input type="password" id="gitlabTokenInput" placeholder="glpat-..." style="
+          width: 100%;
+          padding: 12px;
+          border: 1px solid var(--md-sys-color-outline-variant);
+          border-radius: 8px;
+          background: var(--md-sys-color-surface-container);
+          color: var(--md-sys-color-on-surface);
+          font-size: 14px;
+          box-sizing: border-box;
+        ">
+        <div style="margin-top: 8px; font-size: 12px; color: var(--md-sys-color-on-surface-variant); line-height: 1.4;">
+          Create a token at <a href="https://gitlab.com/-/profile/personal_access_tokens" target="_blank" style="color: var(--md-sys-color-primary);">GitLab → User Settings → Access Tokens</a> with "api" scope.
+        </div>
+      </div>
+
+      <div id="authError" style="display: none; margin-bottom: 16px; padding: 12px; background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); border-radius: 8px; font-size: 14px;"></div>
+
+      <div style="display: flex; gap: 12px;">
+        <button id="connectGitlabBtn" style="
+          flex: 1;
+          background: var(--md-sys-color-primary);
+          color: var(--md-sys-color-on-primary);
+          border: none;
+          padding: 12px 16px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.2s;
+        ">Connect GitLab</button>
+        <button id="skipAuthBtn" style="
+          background: var(--md-sys-color-surface-variant);
+          color: var(--md-sys-color-on-surface-variant);
+          border: none;
+          padding: 12px 16px;
+          border-radius: 8px;
+          font-size: 14px;
+          cursor: pointer;
+          transition: background 0.2s;
+        ">Use Local Only</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Set up event handlers
+  const connectBtn = modal.querySelector('#connectGitlabBtn');
+  const skipBtn = modal.querySelector('#skipAuthBtn');
+  const tokenInput = modal.querySelector('#gitlabTokenInput');
+  const errorDiv = modal.querySelector('#authError');
+
+  // Handle Enter key in token input
+  tokenInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      connectBtn.click();
+    }
+  });
+
+  // Connect button
+  connectBtn.addEventListener('click', async () => {
+    const token = tokenInput.value.trim();
+
+    if (!token) {
+      errorDiv.textContent = 'Please enter your Personal Access Token';
+      errorDiv.style.display = 'block';
+      return;
+    }
+
+    // Show loading state
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Connecting...';
+    errorDiv.style.display = 'none';
+
+    try {
+      // Authenticate with token
+      const authResult = await oauthPAT.authenticate(token);
+
+      if (authResult === null) {
+        // Authentication failed but user can retry
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect GitLab';
+        return;
+      }
+
+      console.log(`Authenticated with GitLab:`, authResult.user.username);
+
+      // Store token securely
+      await authManager.storeToken(authResult.access_token, null, 'gitlab');
+
+      // Store provider preference
+      await authManager.storePreference('syncProvider', 'gitlab');
+
+      // Close modal and initialize sync
+      modal.remove();
+
+      // Initialize sync manager and show snippet setup
+      await syncManager.init();
+      await showSnippetSetup();
+
+    } catch (error) {
+      console.error('Login failed:', error);
+      errorDiv.textContent = error.message || 'Authentication failed. Please check your token and try again.';
+      errorDiv.style.display = 'block';
+
+      // Reset button
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect GitLab';
+    }
+  });
+
+  // Skip button - use local only
+  skipBtn.addEventListener('click', async () => {
+    modal.remove();
+
+    // Set local mode flag
+    localStorage.setItem('bmz_local_mode', 'true');
+
+    // Load bookmarks and initialize UI
+    await loadBookmarksAndInit();
+  });
+}
+
+/**
+ * Show snippet setup modal
+ */
+async function showSnippetSetup() {
+  const modal = document.createElement('div');
+  modal.id = 'snippetSetupModal';
+  modal.className = 'modal-overlay';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `;
+
+  modal.innerHTML = `
+    <div style="
+      background: var(--md-sys-color-surface);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border: 1px solid var(--md-sys-color-outline);
+    ">
+      <h2 style="
+        margin: 0 0 16px 0;
+        color: var(--md-sys-color-primary);
+        font-size: 20px;
+        font-weight: 600;
+        text-align: center;
+      ">Set Up Bookmark Sync</h2>
+      <p style="margin-bottom: 20px; color: var(--md-sys-color-on-surface); line-height: 1.5;">
+        Your bookmarks will be stored in a private GitLab Snippet for syncing across devices.
+      </p>
+
+      <div id="snippetSetupContent">
+        <div style="text-align: center; padding: 40px 20px;">
+          <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.5;">🔄</div>
+          <div style="font-size: 14px; color: var(--md-sys-color-on-surface-variant);">Loading snippets...</div>
+        </div>
+      </div>
+
+      <div id="snippetSetupError" style="display: none; margin-top: 16px; padding: 12px; background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); border-radius: 8px; font-size: 14px;"></div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  try {
+    // Get all user's snippets
+    const snippets = await snippetAdapter.getAllSnippets();
+
+    // Filter for bookmark-like items
+    const bookmarkSnippets = snippets.filter(snippet =>
+      snippet.title?.includes('BMZ') ||
+      snippet.title?.includes('Bookmark Manager Zero') ||
+      snippet.file_name === 'bookmarks.json'
+    );
+
+    const content = modal.querySelector('#snippetSetupContent');
+
+    if (bookmarkSnippets.length === 0) {
+      // No bookmark snippets found - show create option
+      content.innerHTML = `
+        <div style="text-align: center; padding: 20px 0;">
+          <div style="font-size: 36px; margin-bottom: 12px;">📝</div>
+          <p style="margin-bottom: 20px; color: var(--md-sys-color-on-surface-variant);">
+            No bookmark snippets found. Create a new one to start syncing.
+          </p>
+          <button id="createSnippetBtn" style="
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+          ">Create New Snippet</button>
+        </div>
+      `;
+
+      modal.querySelector('#createSnippetBtn').addEventListener('click', async () => {
+        try {
+          const snippetId = await snippetAdapter.createBookmarkSnippet();
+          await syncManager.setSnippetId(snippetId);
+          modal.remove();
+          await loadBookmarksAndInit();
+        } catch (error) {
+          console.error('Failed to create snippet:', error);
+          const errorDiv = modal.querySelector('#snippetSetupError');
+          errorDiv.textContent = 'Failed to create snippet: ' + error.message;
+          errorDiv.style.display = 'block';
+        }
+      });
+
+    } else if (bookmarkSnippets.length === 1) {
+      // One bookmark snippet found - show use option
+      const snippet = bookmarkSnippets[0];
+      const fileCount = snippet.files?.length || 1;
+      const lastUpdated = new Date(snippet.updated_at).toLocaleDateString();
+
+      content.innerHTML = `
+        <div style="padding: 20px 0;">
+          <div style="background: var(--md-sys-color-surface-variant); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+            <div style="font-weight: 500; margin-bottom: 4px;">${snippet.title || 'Untitled Snippet'}</div>
+            <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);">${fileCount} files • Updated ${lastUpdated}</div>
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <button id="useSnippetBtn" style="
+              flex: 1;
+              background: var(--md-sys-color-primary);
+              color: var(--md-sys-color-on-primary);
+              border: none;
+              padding: 12px 16px;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: background 0.2s;
+            ">Use This Snippet</button>
+            <button id="createNewSnippetBtn" style="
+              background: var(--md-sys-color-surface-variant);
+              color: var(--md-sys-color-on-surface-variant);
+              border: none;
+              padding: 12px 16px;
+              border-radius: 8px;
+              font-size: 14px;
+              cursor: pointer;
+              transition: background 0.2s;
+            ">Create New</button>
+          </div>
+        </div>
+      `;
+
+      modal.querySelector('#useSnippetBtn').addEventListener('click', async () => {
+        try {
+          await syncManager.setSnippetId(snippet.id);
+          modal.remove();
+          await loadBookmarksAndInit();
+        } catch (error) {
+          console.error('Failed to use snippet:', error);
+          const errorDiv = modal.querySelector('#snippetSetupError');
+          errorDiv.textContent = 'Failed to use snippet: ' + error.message;
+          errorDiv.style.display = 'block';
+        }
+      });
+
+      modal.querySelector('#createNewSnippetBtn').addEventListener('click', async () => {
+        try {
+          const snippetId = await snippetAdapter.createBookmarkSnippet();
+          await syncManager.setSnippetId(snippetId);
+          modal.remove();
+          await loadBookmarksAndInit();
+        } catch (error) {
+          console.error('Failed to create snippet:', error);
+          const errorDiv = modal.querySelector('#snippetSetupError');
+          errorDiv.textContent = 'Failed to create snippet: ' + error.message;
+          errorDiv.style.display = 'block';
+        }
+      });
+
+    } else {
+      // Multiple bookmark snippets - show selection
+      let html = '<div style="padding: 20px 0;"><p style="margin-bottom: 16px; color: var(--md-sys-color-on-surface-variant);">Select a snippet to use:</p>';
+
+      bookmarkSnippets.forEach(snippet => {
+        const fileCount = snippet.files?.length || 1;
+        const lastUpdated = new Date(snippet.updated_at).toLocaleDateString();
+
+        html += `
+          <div style="background: var(--md-sys-color-surface-variant); padding: 12px; border-radius: 8px; margin-bottom: 8px; cursor: pointer; border: 2px solid transparent; transition: border-color 0.2s;" data-snippet-id="${snippet.id}">
+            <div style="font-weight: 500; margin-bottom: 4px;">${snippet.title || 'Untitled Snippet'}</div>
+            <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);">${fileCount} files • Updated ${lastUpdated}</div>
+          </div>
+        `;
+      });
+
+      html += `
+        <div style="margin-top: 20px; text-align: center;">
+          <button id="createNewSnippetBtn" style="
+            background: var(--md-sys-color-surface-variant);
+            color: var(--md-sys-color-on-surface-variant);
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+          ">Create New Snippet</button>
+        </div>
+      </div>`;
+
+      content.innerHTML = html;
+
+      // Add click handlers for snippet selection
+      content.querySelectorAll('[data-snippet-id]').forEach(el => {
+        el.addEventListener('click', async () => {
+          const snippetId = el.getAttribute('data-snippet-id');
+          try {
+            await syncManager.setSnippetId(snippetId);
+            modal.remove();
+            await loadBookmarksAndInit();
+          } catch (error) {
+            console.error('Failed to use snippet:', error);
+            const errorDiv = modal.querySelector('#snippetSetupError');
+            errorDiv.textContent = 'Failed to use snippet: ' + error.message;
+            errorDiv.style.display = 'block';
+          }
+        });
+      });
+
+      modal.querySelector('#createNewSnippetBtn').addEventListener('click', async () => {
+        try {
+          const snippetId = await snippetAdapter.createBookmarkSnippet();
+          await syncManager.setSnippetId(snippetId);
+          modal.remove();
+          await loadBookmarksAndInit();
+        } catch (error) {
+          console.error('Failed to create snippet:', error);
+          const errorDiv = modal.querySelector('#snippetSetupError');
+          errorDiv.textContent = 'Failed to create snippet: ' + error.message;
+          errorDiv.style.display = 'block';
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to load snippets:', error);
+    const content = modal.querySelector('#snippetSetupContent');
+    content.innerHTML = `
+      <div style="text-align: center; padding: 20px 0;">
+        <div style="font-size: 36px; margin-bottom: 12px;">⚠️</div>
+        <p style="margin-bottom: 20px; color: var(--md-sys-color-error);">
+          Failed to load snippets: ${error.message}
+        </p>
+        <button id="retrySnippetSetup" style="
+          background: var(--md-sys-color-primary);
+          color: var(--md-sys-color-on-primary);
+          border: none;
+          padding: 10px 16px;
+          border-radius: 8px;
+          font-size: 14px;
+          cursor: pointer;
+        ">Retry</button>
+      </div>
+    `;
+
+    modal.querySelector('#retrySnippetSetup').addEventListener('click', () => {
+      modal.remove();
+      showSnippetSetup();
+    });
+  }
+}
+
+/**
+ * Show main application after authentication (adapted from website)
+ */
+async function showMainApp() {
+  console.log('[showMainApp] Starting main app initialization...');
+
+  // Hide login screen
+  const authSetupModal = document.getElementById('authSetupModal');
+  if (authSetupModal) {
+    authSetupModal.remove();
+  }
+
+  // Show main content
+  const mainContent = document.getElementById('mainContent');
+  if (mainContent) {
+    mainContent.style.display = 'block';
+  }
+
+  // Initialize sync manager
+  await syncManager.init();
+  console.log('Sync manager initialized');
+
+  // Skip snippet setup and remote sync if in local mode
+  const isLocalMode = localStorage.getItem('bmz_local_mode') === 'true';
+  if (isLocalMode) {
+    console.log('[App] Local mode - skipping remote sync');
+
+    // Hide logout button in local mode
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.style.display = 'none';
+    }
+
+    // Show Connect GitLab button in header for local mode users
+    const headerConnectGitlabBtn = document.getElementById('headerConnectGitlabBtn');
+    if (headerConnectGitlabBtn) {
+      headerConnectGitlabBtn.style.display = 'flex';
+      headerConnectGitlabBtn.addEventListener('click', () => {
+        showConnectGitlabModal();
+      });
+    }
+
+    // Load bookmarks and initialize UI
+    await loadBookmarksAndInit();
+    return;
+  }
+
+  // Check if we have a snippet set up
+  const hasSnippet = await checkSnippetSetup();
+
+  if (!hasSnippet) {
+    // Show snippet setup modal
+    await showSnippetSetup();
+    return;
+  }
+
+  // Sync from remote to ensure we have latest data
+  // Prevent duplicate sync operations
+  if (!syncInProgress) {
+    syncInProgress = true;
+    console.log('[App] Syncing bookmarks from remote...');
+    try {
+      // Check if we already have the latest data from checkSnippetSetup()
+      // We can check if local bookmarks are already loaded and match the remote
+      const localBookmarks = await syncManager.loadLocalBookmarks();
+      const hasLocalBookmarks = localBookmarks && localBookmarks.roots && Object.keys(localBookmarks.roots).length > 0;
+
+      if (hasLocalBookmarks) {
+        console.log('[App] Already have bookmarks loaded, skipping sync');
+      } else {
+        await syncManager.syncFromRemote();
+      }
+      console.log('[App] Sync from remote complete');
+    } catch (error) {
+      console.warn('[App] Sync from remote failed, will use cached data:', error);
+    } finally {
+      syncInProgress = false;
+    }
+  }
+
+  // Load bookmarks and initialize UI
+  await loadBookmarksAndInit();
+
+  console.log('Main app loaded successfully');
+}
+
+/**
+ * Load bookmarks and initialize the main UI
+ */
+async function loadBookmarksAndInit() {
+  console.log('[App] Loading bookmarks and initializing UI...');
+
+  try {
+    // Load bookmarks from local storage or remote
+    await loadBookmarks();
+
+    // Initialize the main UI
+    initMainUI();
+
+    console.log('[App] Main app initialized successfully');
+  } catch (error) {
+    console.error('[App] Failed to load bookmarks:', error);
+    showError('Failed to load bookmarks', error);
+  }
+}
+
+// ============================================================================
 // FIRST-TIME SETUP CARD
 // ============================================================================
 let hasSeenSetupCard = true; // Default to true, will be loaded from storage
@@ -37,7 +2578,10 @@ async function dismissSetupCard() {
 // GLOBAL ERROR BOUNDARY
 // ============================================================================
 
-// Error toast DOM elements
+// Toast DOM elements
+let successToast;
+let successToastMessage;
+let successDismiss;
 let errorToast;
 let errorTitle;
 let errorMessage;
@@ -47,25 +2591,37 @@ let errorDismiss;
 // Error log storage (keep last 50 errors)
 const MAX_ERROR_LOGS = 50;
 
-// Initialize error toast elements after DOM loads
+// Initialize toast elements after DOM loads
 function initErrorToast() {
-  errorToast = document.getElementById('errorToast');
-  errorTitle = document.getElementById('errorTitle');
-  errorMessage = document.getElementById('errorMessage');
-  errorReload = document.getElementById('errorReload');
-  errorDismiss = document.getElementById('errorDismiss');
+   // Success toast
+   successToast = document.getElementById('successToast');
+   successToastMessage = document.getElementById('successMessage');
+   successDismiss = document.getElementById('successDismiss');
 
-  if (errorReload) {
-    errorReload.addEventListener('click', () => {
-      location.reload();
-    });
-  }
+   if (successDismiss) {
+      successDismiss.addEventListener('click', () => {
+         hideSuccessToast();
+      });
+   }
 
-  if (errorDismiss) {
-    errorDismiss.addEventListener('click', () => {
-      hideErrorToast();
-    });
-  }
+   // Error toast
+   errorToast = document.getElementById('errorToast');
+   errorTitle = document.getElementById('errorTitle');
+   errorMessage = document.getElementById('errorMessage');
+   errorReload = document.getElementById('errorReload');
+   errorDismiss = document.getElementById('errorDismiss');
+
+   if (errorReload) {
+      errorReload.addEventListener('click', () => {
+         location.reload();
+      });
+   }
+
+   if (errorDismiss) {
+      errorDismiss.addEventListener('click', () => {
+         hideErrorToast();
+      });
+   }
 }
 
 // Show error toast notification
@@ -84,9 +2640,38 @@ function showErrorToast(title, message) {
 
 // Hide error toast
 function hideErrorToast() {
-  if (errorToast) {
-    errorToast.classList.add('hidden');
-  }
+   if (errorToast) {
+      errorToast.classList.add('hidden');
+   }
+}
+
+// Show success toast notification
+function showSuccessToast(message) {
+   if (!successToast) return;
+
+   successToastMessage.textContent = message;
+   successToast.classList.remove('hidden');
+
+   // Auto-hide after 5 seconds
+   setTimeout(() => {
+      hideSuccessToast();
+   }, 5000);
+}
+
+// Hide success toast
+function hideSuccessToast() {
+   if (successToast) {
+      successToast.classList.add('hidden');
+   }
+}
+
+// General toast notification
+function showToast(message, type = 'success') {
+   if (type === 'error') {
+      showErrorToast('Error', message);
+   } else {
+      showSuccessToast(message);
+   }
 }
 
 // Log error to browser storage
@@ -434,7 +3019,9 @@ async function clearChangelog() {
 // Get folder path for a bookmark/folder
 async function getFolderPath(itemId) {
   try {
-    const parents = [];
+    if (!itemId) return 'Root';
+    
+    const path = [];
     let currentId = itemId;
 
     while (currentId) {
@@ -442,19 +3029,29 @@ async function getFolderPath(itemId) {
       if (!items || items.length === 0) break;
 
       const item = items[0];
+      if (item.title) {
+        path.unshift(item.title);
+      }
+      
       if (!item.parentId) break;
-
-      const parentItems = await browser.bookmarks.get(item.parentId);
-      if (!parentItems || parentItems.length === 0) break;
-
-      const parent = parentItems[0];
-      if (!parent.title) break;
-
-      parents.unshift(parent.title);
-      currentId = parent.parentId;
+      currentId = item.parentId;
     }
 
-    return parents.join(' > ') || 'Root';
+    return path.length > 0 ? path.join(' > ') : 'Root';
+  } catch (error) {
+    return 'Unknown';
+  }
+}
+
+async function getFolderName(folderId) {
+  try {
+    if (!folderId) return 'Root';
+    
+    const items = await browser.bookmarks.get(folderId);
+    if (!items || items.length === 0) return 'Unknown';
+    
+    const folder = items[0];
+    return folder.title || 'Unnamed Folder';
   } catch (error) {
     return 'Unknown';
   }
@@ -538,6 +3135,7 @@ let activeFilters = [];
 let expandedFolders = new Set();
 let folderScanTimestamps = {}; // Track when each folder was last scanned
 const FOLDER_SCAN_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+let syncInProgress = false; // Track sync operations to prevent duplicates
 let theme = 'enhanced-blue';
 let viewMode = 'list';
 let displayOptions = {
@@ -792,8 +3390,8 @@ function setupBlocklistProgressListener() {
   });
 }
 
-// Initialize
-async function init() {
+// Initialize the main UI (called after authentication is complete)
+async function initMainUI() {
   // Force update logo title to bypass cache
   const logoTitle = document.querySelector('.logo-title');
   const logoSubtitle = document.querySelector('.logo-subtitle');
@@ -829,7 +3427,6 @@ async function init() {
   await loadFolderScanTimestamps();
   await loadAutoClearSetting();
   await loadStartFolder();
-  await loadBookmarks();
   cleanupSafetyHistory(); // Clean up stale entries on sidebar load
   await restoreCachedBookmarkStatuses();
   await expandToStartFolder();
@@ -842,6 +3439,14 @@ async function init() {
 
   // Automatically check bookmark statuses after initial render
   autoCheckBookmarkStatuses();
+}
+
+// Initialize (entry point - now handles authentication flow)
+async function init() {
+  console.log('Initializing Bookmark Manager Zero Firefox extension...');
+
+  // Start the authentication and initialization flow
+  await checkAuthAndInit();
 }
 
 // Load and apply auto-clear cache setting
@@ -1549,7 +4154,7 @@ function updateFontSizeDisplay() {
   if (fontSizeValue) fontSizeValue.textContent = `${fontSize}%`;
 }
 
-// Load bookmarks from Firefox API
+// Load bookmarks from sync manager (local storage or remote)
 async function loadBookmarks() {
   if (isPreviewMode) {
     // Use mock data for preview
@@ -1559,50 +4164,29 @@ async function loadBookmarks() {
   }
 
   try {
-    // Save current status data before reloading
-    const statusMap = new Map();
-    const saveStatuses = (nodes) => {
-      nodes.forEach(node => {
-        if (node.id && (node.linkStatus || node.safetyStatus)) {
-          statusMap.set(node.id, {
-            linkStatus: node.linkStatus,
-            safetyStatus: node.safetyStatus,
-            safetySources: node.safetySources
-          });
-        }
-        if (node.children) {
-          saveStatuses(node.children);
-        }
-      });
-    };
-    saveStatuses(bookmarkTree);
+    console.log('[loadBookmarks] Loading native Firefox bookmarks...');
 
-    const tree = await browser.bookmarks.getTree();
-    // Firefox returns root with children, we want the actual bookmark folders
-    bookmarkTree = tree[0].children || [];
+    // Load native Firefox bookmarks using the bookmarks API
+    const firefoxTree = await browser.bookmarks.getTree();
 
-    // Restore status data to reloaded bookmarks
-    const restoreStatuses = (nodes) => {
-      return nodes.map(node => {
-        const savedStatus = statusMap.get(node.id);
-        if (savedStatus) {
-          node = { ...node, ...savedStatus };
-        }
-        if (node.children) {
-          node.children = restoreStatuses(node.children);
-        }
-        return node;
-      });
-    };
-    bookmarkTree = restoreStatuses(bookmarkTree);
+    // Firefox bookmark tree structure: [root] where root.children contains the bookmark folders
+    if (firefoxTree && firefoxTree[0] && firefoxTree[0].children) {
+      bookmarkTree = firefoxTree[0].children;
+      console.log('[loadBookmarks] Loaded native Firefox bookmarks:', bookmarkTree.length, 'root folders');
+    } else {
+      // Fallback to empty tree
+      bookmarkTree = [];
+      console.log('[loadBookmarks] No bookmarks found, using empty tree');
+    }
 
-    console.log('Loaded bookmarks:', bookmarkTree);
     // Clear checked bookmarks when loading fresh data
     checkedBookmarks.clear();
     // Update start folder dropdown with current folders
     populateStartFolderDropdown();
+
+    console.log('[loadBookmarks] Bookmarks loaded successfully');
   } catch (error) {
-    console.error('Error loading bookmarks:', error);
+    console.error('[loadBookmarks] Error loading bookmarks:', error);
     showError('Failed to load bookmarks');
   }
 }
@@ -2819,7 +5403,8 @@ function createBookmarkElement(bookmark) {
   if (displayOptions.favicon && bookmark.url) {
     const faviconUrl = getFaviconUrl(bookmark.url);
     if (faviconUrl) {
-      faviconHtml = `<img class="bookmark-favicon" src="${escapeHtml(faviconUrl)}" alt="" />`;
+      // Firefox CSP doesn't allow inline onerror handlers, so we add the event listener after creating the element
+      faviconHtml = `<img class="bookmark-favicon" src="${escapeHtml(faviconUrl)}" alt="" loading="lazy" fetchpriority="low" />`;
     }
   }
 
@@ -2968,14 +5553,6 @@ function createBookmarkElement(bookmark) {
       <img class="preview-image" alt="Preview" data-url="${escapeHtml(bookmark.url)}" />
     </div>
   `;
-
-  // Add favicon error handler to hide broken images
-  const favicon = bookmarkDiv.querySelector('.bookmark-favicon');
-  if (favicon) {
-    favicon.addEventListener('error', function() {
-      this.style.display = 'none';
-    });
-  }
 
   // Add click handler for bookmark (open in current tab)
   bookmarkDiv.addEventListener('click', (e) => {
@@ -3455,7 +6032,7 @@ async function handleDropToRoot(draggedId) {
 
   try {
     // Get old parent folder path before moving
-    const oldParent = await getFolderPath(draggedItem.parentId);
+    const oldParent = draggedItem.parentId ? await getFolderPath(draggedItem.parentId) : 'Root';
 
     // Move to root at the last position
     await browser.bookmarks.move(draggedId, {
@@ -3522,7 +6099,7 @@ async function handleDropToPosition(draggedId, targetParentId, targetIndex) {
 
   try {
     // Get old parent folder path before moving
-    const oldParent = await getFolderPath(draggedItem.parentId);
+    const oldParent = draggedItem.parentId ? await getFolderPath(draggedItem.parentId) : 'Root';
 
     await browser.bookmarks.move(draggedId, {
       parentId: targetParentId === 'root________' ? undefined : targetParentId,
@@ -3530,7 +6107,7 @@ async function handleDropToPosition(draggedId, targetParentId, targetIndex) {
     });
 
     // Get new parent folder path after moving
-    const newParent = await getFolderPath(targetParentId === 'root________' ? undefined : targetParentId);
+    const newParent = targetParentId === 'root________' ? 'Root' : await getFolderPath(targetParentId);
 
     // Add to changelog
     const itemType = draggedItem.url ? 'bookmark' : 'folder';
@@ -3648,7 +6225,7 @@ async function handleDrop(draggedId, targetId, targetElement, dropState) {
 
     // Move the bookmark using Firefox API
     // Get old parent folder path before moving
-    const oldParent = await getFolderPath(draggedItem.parentId);
+    const oldParent = draggedItem.parentId ? await getFolderPath(draggedItem.parentId) : 'Root';
 
     await browser.bookmarks.move(draggedId, {
       parentId: targetParentId,
@@ -3656,7 +6233,7 @@ async function handleDrop(draggedId, targetId, targetElement, dropState) {
     });
 
     // Get new parent folder path after moving
-    const newParent = await getFolderPath(targetParentId);
+    const newParent = targetParentId ? await getFolderPath(targetParentId) : 'Root';
 
     // Add to changelog
     const itemType = draggedItem.url ? 'bookmark' : 'folder';
@@ -3952,7 +6529,7 @@ async function rescanFolder(folderId, folderTitle) {
     // Expand the rescanned folder and all its subfolders FIRST so icons can update live
     const expandFolderTree = (nodeId) => {
       expandedFolders.add(nodeId);
-      const node = findFolderById(nodeId, bookmarkTree);
+      const node = findFolderById(bookmarkTree, nodeId);
       if (node && node.children) {
         node.children.forEach(child => {
           if (child.type === 'folder' || child.children) {
@@ -4104,7 +6681,7 @@ async function rescanFolder(folderId, folderTitle) {
 async function countFolderItems(folderId) {
   if (isPreviewMode) {
     // Count items in mock data
-    const folder = findFolderById(folderId, bookmarkTree);
+    const folder = findFolderById(bookmarkTree, folderId);
     if (!folder || !folder.children) return 0;
 
     let count = 0;
@@ -4141,12 +6718,12 @@ async function countFolderItems(folderId) {
   }
 }
 
-// Helper to find folder by ID in mock data
-function findFolderById(id, items) {
-  for (const item of items) {
-    if (item.id === id) return item;
-    if (item.children) {
-      const found = findFolderById(id, item.children);
+// Find folder/item by ID in the bookmark tree (unified implementation)
+function findFolderById(nodes, id) {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    if (node.children) {
+      const found = findFolderById(node.children, id);
       if (found) return found;
     }
   }
@@ -4630,35 +7207,6 @@ function updateBookmarkInTree(bookmarkId, updates) {
     });
   };
   bookmarkTree = updateNode(bookmarkTree);
-}
-
-// Update status indicators in DOM for a specific bookmark (without full re-render)
-function updateBookmarkStatusInDOM(bookmarkId, linkStatus, safetyStatus, safetySources, url) {
-  const bookmarkElement = document.querySelector(`.bookmark-item[data-id="${bookmarkId}"]`);
-  if (!bookmarkElement) return;
-
-  const statusIndicators = bookmarkElement.querySelector('.status-indicators');
-  if (!statusIndicators) return;
-
-  // Rebuild the status indicators HTML
-  // Shield (safety) on top, chain (link status) below
-  let statusIndicatorsHtml = '';
-  if (displayOptions.safetyStatus && safetyStatus) {
-    statusIndicatorsHtml += getShieldHtml(safetyStatus, url, safetySources);
-  }
-  if (displayOptions.liveStatus && linkStatus) {
-    statusIndicatorsHtml += getStatusDotHtml(linkStatus, url);
-  }
-
-  statusIndicators.innerHTML = statusIndicatorsHtml;
-
-// FORCE IMMEDIATE DOM REFLOW to ensure visual update and prevent race condition
-statusIndicators.offsetHeight; // Trigger layout calculation
-
-// Additional safeguard: force style recalculation on the parent element
-bookmarkElement.style.display = 'flex';
-bookmarkElement.offsetHeight; // Force complete reflow
-bookmarkElement.style.display = '';
 }
 
 // Update status indicators in DOM for a specific bookmark (without full re-render)
@@ -5564,34 +8112,23 @@ function countBookmarks(folder) {
   }, 0);
 }
 
-// Get all folders recursively for start folder dropdown
+// Get all folders recursively (unified implementation)
 function getAllFolders(nodes, depth = 0, folders = []) {
   nodes.forEach(node => {
-    if (node.children) {
+    // Check both node.type and node.children for compatibility
+    if (node.type === 'folder' || node.children) {
       const indent = '  '.repeat(depth);
       folders.push({
-        id: node.id,
-        title: indent + (node.title || 'Unnamed Folder'),
+        ...node,  // Include all node properties
+        title: indent + (node.title || 'Unnamed Folder'),  // Override with indented title
         depth: depth
       });
-      getAllFolders(node.children, depth + 1, folders);
+      if (node.children) {
+        getAllFolders(node.children, depth + 1, folders);
+      }
     }
   });
   return folders;
-}
-
-// Find a folder by ID in the bookmark tree
-function findFolderById(nodes, folderId) {
-  for (const node of nodes) {
-    if (node.id === folderId && node.children) {
-      return node;
-    }
-    if (node.children) {
-      const found = findFolderById(node.children, folderId);
-      if (found) return found;
-    }
-  }
-  return null;
 }
 
 // Get favicon URL
@@ -6122,7 +8659,7 @@ async function openChangelogModal() {
     entries.forEach(entry => {
       const date = new Date(entry.timestamp);
       const timeAgo = getTimeAgo(entry.timestamp);
-      const iconColor = entry.type === 'create' ? '#10b981' : entry.type === 'delete' ? '#ef4444' : entry.type === 'move' ? '#3b82f6' : '#f59e0b';
+      const iconColor = entry.type === 'create' ? '#10b981' : entry.type === 'delete' ? '#ef4444' : entry.type === 'move' ? '#3b82f6' : entry.type === 'undo' ? '#8b5cf6' : '#f59e0b';
 
       // SVG icons for operation types
       let icon;
@@ -6132,6 +8669,8 @@ async function openChangelogModal() {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/></svg>`;
       } else if (entry.type === 'move') {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18M20,6H10A2,2 0 0,0 8,8V11H10V8H20V20H10V17H8V20A2,2 0 0,0 10,22H20A2,2 0 0,0 22,20V8A2,2 0 0,0 20,6Z"/></svg>`;
+      } else if (entry.type === 'undo') {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 19.56,16H22.01C21.43,12.16 17.97,9 13.9,9H12.5V8M12.5,16C10.54,16 8.77,15.28 7.38,14.12L11,10.5H2V19.5L5.6,15.9C7.45,17.5 9.85,18.5 12.5,18.5C17.1,18.5 20.95,15.4 21.9,11.2H19.38C18.77,14.16 15.76,16.34 12.5,16Z"/></svg>`;
       } else {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg>`;
       }
@@ -6145,7 +8684,15 @@ async function openChangelogModal() {
       }
 
       let detailsHtml = '';
-      if (entry.type === 'move' && entry.details.oldParent && entry.details.newParent) {
+      if (entry.type === 'undo') {
+        if (entry.details.undoType === 'move') {
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Restored to: ${entry.details.restoredToFolder}</div>`;
+        } else if (entry.details.undoType === 'update') {
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Reverted title from: "${entry.details.previousTitle}"</div>`;
+        } else {
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Undid ${entry.details.undoType} operation</div>`;
+        }
+      } else if (entry.type === 'move' && entry.details.oldParent && entry.details.newParent) {
         detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">From: ${entry.details.oldParent} → ${entry.details.newParent}</div>`;
       } else if (entry.type === 'update') {
         if (entry.details.oldTitle && entry.details.newTitle && entry.details.oldTitle !== entry.details.newTitle) {
@@ -6158,6 +8705,18 @@ async function openChangelogModal() {
 
       const urlHtml = entry.url ? `<div class="changelog-url" data-url="${entry.url}" style="font-size: 11px; color: var(--md-sys-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: underline;" title="Click to copy: ${entry.url}">${entry.url}</div>` : '';
 
+      let restoreButtonHtml = '';
+      if ((entry.type === 'delete' || entry.type === 'move' || entry.type === 'update') && entry.type !== 'undo') {
+        const restoreTitle = entry.type === 'delete' ? 'Restore this item' :
+                            entry.type === 'move' ? 'Move back to original location' :
+                            'Revert changes';
+        restoreButtonHtml = `
+          <button class="changelog-restore-btn" data-entry-id="${entry.id}" title="${restoreTitle}" style="margin-left: auto; padding: 4px 8px; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); cursor: pointer; font-size: 11px; opacity: 0.7; transition: opacity 0.2s;">
+            Restore
+          </button>
+        `;
+      }
+
       html += `
         <div style="padding: 12px; background: var(--md-sys-color-surface-variant); border-radius: 8px; border-left: 3px solid ${iconColor};">
           <div style="display: flex; align-items: start; gap: 8px;">
@@ -6166,6 +8725,7 @@ async function openChangelogModal() {
               <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
                 <span style="font-size: 14px;">${itemIcon}</span>
                 <span style="font-size: 13px; font-weight: 600; color: var(--md-sys-color-on-surface);">${entry.title || 'Untitled'}</span>
+                ${restoreButtonHtml}
               </div>
               ${urlHtml}
               ${detailsHtml}
@@ -6202,6 +8762,16 @@ async function openChangelogModal() {
         }
       });
     });
+
+    // Add click handlers to restore buttons
+    const restoreButtons = changelogList.querySelectorAll('.changelog-restore-btn');
+    restoreButtons.forEach(restoreBtn => {
+      restoreBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const entryId = restoreBtn.getAttribute('data-entry-id');
+        await restoreChangelogEntry(entryId);
+      });
+    });
   }
 
   // Show modal
@@ -6215,6 +8785,149 @@ function closeModal(modal) {
   modal.classList.add('hidden');
   modal.setAttribute('aria-hidden', 'true');
   releaseFocusTrap();
+}
+
+// Close changelog modal
+function closeChangelogModal() {
+  const modal = document.getElementById('changelogModal');
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+  releaseFocusTrap();
+}
+
+// Restore a changelog entry (undo the operation)
+async function restoreChangelogEntry(entryId) {
+  try {
+    const entries = await getChangelogEntries();
+    const entry = entries.find(e => e.id == entryId);
+
+    if (!entry) {
+      alert('Changelog entry not found.');
+      return;
+    }
+
+    // Only allow restoring certain operation types
+    if (!['delete', 'move', 'update'].includes(entry.type)) {
+      alert('This operation type cannot be restored.');
+      return;
+    }
+
+    const confirmed = confirm(`Restore this ${entry.type} operation: "${entry.title}"?\n\nThis will attempt to undo the change.`);
+    if (!confirmed) return;
+
+    if (entry.type === 'delete') {
+      alert('Delete operations cannot be automatically restored from the changelog.\n\nThe changelog does not store enough data to recreate deleted items.\n\nUse the undo feature immediately after deletion for full restoration.');
+      return;
+    }
+
+    if (entry.type === 'move') {
+      if (entry.details && entry.details.oldParent) {
+        const items = await browser.bookmarks.search({ title: entry.title });
+        const matchingItem = items.find(item =>
+          item.title === entry.title &&
+          (!entry.url || item.url === entry.url)
+        );
+
+        if (matchingItem) {
+          let targetParentId = null;
+          const folderPath = entry.details.oldParent;
+
+          if (folderPath === 'Root') {
+            targetParentId = undefined;
+          } else if (folderPath) {
+            const allBookmarks = await browser.bookmarks.getTree();
+            const pathParts = folderPath.split(' > ');
+
+            function findFolderByPath(nodes, parts, index) {
+              if (index >= parts.length) return null;
+              
+              for (const node of nodes) {
+                if (node.title === parts[index] && !node.url) {
+                  if (index === parts.length - 1) {
+                    return node.id;
+                  }
+                  if (node.children) {
+                    const found = findFolderByPath(node.children, parts, index + 1);
+                    if (found) return found;
+                  }
+                }
+              }
+              return null;
+            }
+
+            targetParentId = findFolderByPath(allBookmarks[0].children, pathParts, 0);
+          }
+
+          if (folderPath !== 'Root' && !targetParentId) {
+            alert(`Original folder "${folderPath}" not found. The folder may have been deleted.`);
+            return;
+          }
+
+          try {
+            const moveOptions = { parentId: targetParentId };
+            if (targetParentId === undefined) {
+              moveOptions.index = bookmarkTree.length;
+            }
+            await browser.bookmarks.move(matchingItem.id, moveOptions);
+            alert(`Moved "${entry.title}" back to ${entry.details.oldParent || 'Root'}`);
+            
+            const itemType = matchingItem.url ? 'bookmark' : 'folder';
+            await addChangelogEntry('undo', itemType, entry.title, matchingItem.url || null, {
+              undoType: 'move',
+              originalOperation: entry,
+              restoredToFolder: entry.details.oldParent
+            });
+            
+            await loadBookmarks();
+            renderBookmarks();
+          } catch (error) {
+            alert('Failed to move item back: ' + error.message);
+          }
+        } else {
+          alert('Could not find the moved item. It may have been deleted or renamed.');
+        }
+      } else {
+        alert('Not enough information to restore this move operation.');
+      }
+    }
+
+    if (entry.type === 'update') {
+      if (entry.details && entry.details.oldTitle) {
+        const items = await browser.bookmarks.search({ title: entry.title });
+        const matchingItem = items.find(item =>
+          item.title === entry.title &&
+          (!entry.url || item.url === entry.url)
+        );
+
+        if (matchingItem) {
+          try {
+            await browser.bookmarks.update(matchingItem.id, { title: entry.details.oldTitle });
+            alert(`Restored title from "${entry.title}" back to "${entry.details.oldTitle}"`);
+            
+            const itemType = matchingItem.url ? 'bookmark' : 'folder';
+            await addChangelogEntry('undo', itemType, entry.details.oldTitle, matchingItem.url || null, {
+              undoType: 'update',
+              originalOperation: entry,
+              restoredTitle: entry.details.oldTitle,
+              previousTitle: entry.title
+            });
+            
+            await loadBookmarks();
+            renderBookmarks();
+          } catch (error) {
+            alert('Failed to restore title: ' + error.message);
+          }
+        } else {
+          alert('Could not find the updated item. It may have been deleted.');
+        }
+      } else {
+        alert('Not enough information to restore this update operation.');
+      }
+    }
+  } catch (error) {
+    console.error('Failed to restore changelog entry:', error);
+    alert('Failed to restore the operation: ' + error.message);
+  }
 }
 
 // Helper to get relative time
@@ -6515,7 +9228,7 @@ async function bulkMoveItems() {
       // Get item details before moving
       const items = await browser.bookmarks.get(itemId);
       const item = items[0];
-      const oldParent = await getFolderPath(item.parentId);
+      const oldParent = item.parentId ? await getFolderPath(item.parentId) : 'Root';
 
       await browser.bookmarks.move(itemId, { parentId: destinationFolder.id });
 
@@ -6586,22 +9299,6 @@ function getAllBookmarksInFolder(folder) {
   }
 
   return bookmarks;
-}
-
-// Get all folders from bookmark tree
-function getAllFolders(nodes, depth = 0) {
-  const folders = [];
-
-  nodes.forEach(node => {
-    if (node.type === 'folder') {
-      folders.push({ ...node, depth });
-      if (node.children) {
-        folders.push(...getAllFolders(node.children, depth + 1));
-      }
-    }
-  });
-
-  return folders;
 }
 
 // Setup event listeners
@@ -6944,48 +9641,6 @@ function setupEventListeners() {
     await clearCache();
     closeAllMenus();
   });
-
-async function clearCache() {
-  if (isPreviewMode) {
-    alert('🧹 In the Firefox extension, this would clear the cache for link and safety checks.');
-    return;
-  }
-
-  try {
-    // Clear storage cache (current)
-    await safeStorage.remove(['linkStatusCache', 'safetyStatusCache']);
-
-    // ALSO CLEAR: Reset in-memory bookmark statuses
-    function resetStatuses(nodes) {
-      nodes.forEach(node => {
-        if (node.url) {
-          node.linkStatus = 'unknown';
-          node.safetyStatus = 'unknown';
-          node.safetySources = [];
-        }
-        if (node.children) resetStatuses(node.children);
-      });
-    }
-    resetStatuses(bookmarkTree);
-
-    // Re-render to show cleared states
-    renderBookmarks();
-
-    // Clear IndexedDB cache too (if scanner service available)
-    if (window.scannerService && window.scannerService.clearAllCache) {
-      await window.scannerService.clearAllCache();
-    }
-
-    console.log('Cache cleared successfully');
-    alert('Cache cleared! Status indicators reset to unknown.');
-
-    // Update cache size display
-    await updateCacheSizeDisplay();
-  } catch (error) {
-    console.error('Error clearing cache:', error);
-    alert('Failed to clear cache. Please try again.');
-  }
-}
 
   // Auto-clear cache setting
   autoClearCacheSelect.addEventListener('change', async (e) => {
@@ -8716,11 +11371,8 @@ async function clearCache() {
     const gitlabBtnIcon = document.getElementById('gitlabBtnIcon');
     if (!gitlabBtnIcon) return;
 
-    if (snippetToken && snippetId) {
-      gitlabBtnIcon.innerHTML = '<path d="M13 3H6c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h7v-2H6V5h7V3zm5.6 5.4l-4.6-4.6-.7.7L17 8h-6v1h6l-3.7 3.7.7.7 4.6-4.6-.7-.7z"/>';
-    } else {
-      gitlabBtnIcon.innerHTML = '<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>';
-    }
+    // Always use GitLab logo for consistency with website version
+    gitlabBtnIcon.innerHTML = '<path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>';
   }
 
   // Show GitLab disconnect dialog
@@ -9408,9 +12060,9 @@ function highlightSelectedItem(allElements) {
   }
 }
 
-// Initialize when DOM is ready
+// Initialize when DOM is ready - load Firefox bookmarks directly
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', initFirefoxExtension);
 } else {
-  init();
+  initFirefoxExtension();
 }
