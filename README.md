@@ -264,6 +264,7 @@ The extension can optionally use external services for enhanced features. **All 
 ### Default Services (can be disabled)
 - **WordPress mshots** - Website screenshot previews
 - **8 Blocklist Sources** - Dual URLhaus coverage (Active + Historical), BlockList Project (Malware/Phishing/Scam), HaGeZi TIF, Phishing-Filter, OISD Big
+- **URLVoid** - Multi-source reputation analysis from 30+ security engines
 - **Google Favicons** - Website icons
 
 ### User-Configured Services (require API keys)
@@ -526,7 +527,39 @@ Please report security vulnerabilities via GitLab Issues (mark as security issue
 
 ## Changelog
 
-### v2.7.2 (Current) - Whitelist Persistence Fix
+### v3.0 (Current) - Critical Fixes
+
+- 🐛 **Fixed Duplicate clearCache() Function** - Removed duplicate function definition that was causing conflicts
+  - Deleted second definition at sidebar.js:9720, keeping primary at sidebar.js:9164
+  - Prevents function overwriting and ensures consistent cache behavior
+- 🐛 **Fixed Duplicate updateBookmarkStatusInDOM()** - Resolved duplicate function definitions
+  - Merged implementations from sidebar.js:7232 and sidebar.js:7261
+  - Ensures consistent bookmark status updates in DOM
+- 🐛 **Fixed Duplicate getAllFolders()** - Standardized function signature across codebase
+  - Resolved conflicting signatures at sidebar.js:8164 and sidebar.js:9364
+  - Consistent folder retrieval throughout extension
+- 🐛 **Fixed Duplicate findFolderById()** - Merged duplicate implementations
+  - Combined versions from sidebar.js:6741 and sidebar.js:8180
+  - Unified folder lookup functionality
+- 🐛 **Fixed Missing window.initSidebar** - Resolved undefined function reference
+  - Added proper initialization function or removed orphaned reference at sidebar.js:2527
+  - Prevents runtime errors during sidebar initialization
+- 🔧 **Fixed Module Scope Issues** - Replaced this._syncInProgress with proper module-level variables
+  - Corrected scope at sidebar.js:2502-2529
+  - Ensures proper state management across sidebar lifecycle
+- ⚡ **Improved Cache Mutex** - Enhanced cache locking mechanism
+  - Replaced busy-wait polling with efficient mutex implementation
+  - Better performance and resource usage
+- 🔒 **Enhanced Promise Handling** - Added proper rejection handling in retry flows
+- ✅ **All HTML Element IDs Validated** - fixed broken DOM references
+- ✅ **Comprehensive Error Handling** - Robust error boundaries throughout
+- ✅ **Proper Async/Await Usage** - Clean asynchronous code patterns
+- ✅ **Effective Caching Strategies** - Optimized performance with smart caching
+- ✅ **Rate Limiting added for APIs** - Prevents API throttling issues
+
+---
+
+### v2.7.2 - Whitelist Persistence Fix
 
 **Bug Fixes:**
 - 🐛 **Fixed whitelist persistence** - Whitelisted bookmarks now maintain their status after sidebar reload
