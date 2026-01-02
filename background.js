@@ -50,6 +50,33 @@ async function getDecryptedApiKey(keyName) {
   return null;
 }
 
+// Concurrency limiter to prevent overwhelming network with DNS lookups
+class ConcurrencyLimiter {
+  constructor(maxConcurrent = 10) {
+    this.maxConcurrent = maxConcurrent;
+    this.running = 0;
+    this.queue = [];
+  }
+
+  async run(fn) {
+    while (this.running >= this.maxConcurrent) {
+      await new Promise(resolve => this.queue.push(resolve));
+    }
+    this.running++;
+    try {
+      return await fn();
+    } finally {
+      this.running--;
+      const next = this.queue.shift();
+      if (next) next();
+    }
+  }
+}
+
+// Global concurrency limiter for all network requests
+// With parallel link+safety checks, actual concurrent requests can be up to 20 (10 bookmarks × 2 checks each)
+const networkLimiter = new ConcurrencyLimiter(10);
+
 // URL validation utilities inlined to avoid module loading issues
 const BLOCKED_SCHEMES = ['file', 'javascript', 'data', 'vbscript'];
 const PRIVILEGED_SCHEMES = ['about', 'chrome', 'moz-extension', 'chrome-extension', 'view-source', 'jar', 'resource'];
@@ -333,7 +360,7 @@ const checkLinkStatus = async (url, bypassCache = false) => {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout
 
   // Use a standard browser User-Agent to avoid being blocked
   const headers = {
@@ -531,7 +558,7 @@ const checkLinkStatus = async (url, bypassCache = false) => {
     // If HEAD fails for other reasons, try GET as fallback
     try {
       const fallbackController = new AbortController();
-      const fallbackTimeout = setTimeout(() => fallbackController.abort(), 8000);
+      const fallbackTimeout = setTimeout(() => fallbackController.abort(), 5000);
 
       const fallbackResponse = await fetch(url, {
         method: 'GET',
@@ -599,7 +626,6 @@ let domainSourceMap = new Map(); // Track which source(s) flagged each domain
 let domainOnlyMap = new Map(); // Map of domain:port -> sources (for entries with paths like "1.2.3.4:80/malware")
 let blocklistLastUpdate = 0;
 let blocklistLoading = false; // Flag to prevent duplicate loads
-const BLOCKLIST_UPDATE_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 
 // Helper to check if two timestamps are on the same calendar day.
 function isSameDay(timestamp1, timestamp2) {
@@ -817,7 +843,7 @@ const checkVirusTotal = async (url) => {
 
     // Try to get existing report first (uses GET endpoint, counts against rate limit)
     const reportController = new AbortController();
-    const reportTimeout = setTimeout(() => reportController.abort(), 15000);
+    const reportTimeout = setTimeout(() => reportController.abort(), 8000);
 
     const reportResponse = await fetch(
       `https://www.virustotal.com/api/v3/urls/${urlId}`,
@@ -1580,15 +1606,16 @@ function getScanStatus() {
 }
 
 async function processScanQueue() {
-    const BATCH_SIZE = 5; // Smaller batch size to accommodate rate limits
-    const BATCH_DELAY = 1000; // 1 second between batches
+    const BATCH_SIZE = 10;
+    const BATCH_DELAY = 100;
 
     while (scanState.queue.length > 0 && !scanState.isCancelled) {
         const batch = scanState.queue.splice(0, BATCH_SIZE);
         const results = [];
 
-        for (const bookmark of batch) {
-            if (scanState.isCancelled) break;
+        // Process batch in parallel with concurrency limiting
+        const checkPromises = batch.map(async (bookmark) => {
+            if (scanState.isCancelled) return null;
 
             try {
                 const result = {
@@ -1599,25 +1626,43 @@ async function processScanQueue() {
 
                 const { linkCheckingEnabled, safetyCheckingEnabled } = await browser.storage.local.get(['linkCheckingEnabled', 'safetyCheckingEnabled']);
 
+                // Check link status and safety status in parallel with concurrency limiting
+                const checks = [];
+
                 if (linkCheckingEnabled !== false) {
-                    result.linkStatus = await checkLinkStatus(bookmark.url, scanState.bypassCache);
+                    checks.push(
+                        networkLimiter.run(async () => {
+                            result.linkStatus = await checkLinkStatus(bookmark.url, scanState.bypassCache);
+                        })
+                    );
                 }
 
                 if (safetyCheckingEnabled !== false) {
-                    const safetyResult = await checkURLSafety(bookmark.url, scanState.bypassCache);
-                    result.safetyStatus = safetyResult.status;
-                    result.safetySources = safetyResult.sources;
+                    checks.push(
+                        networkLimiter.run(async () => {
+                            const safetyResult = await checkURLSafety(bookmark.url, scanState.bypassCache);
+                            result.safetyStatus = safetyResult.status;
+                            result.safetySources = safetyResult.sources;
+                        })
+                    );
                 }
-                
-                results.push(result);
+
+                // Wait for both to complete
+                await Promise.all(checks);
+
                 scanState.scanned++;
                 browser.runtime.sendMessage({ type: 'scanProgress', scanned: scanState.scanned, total: scanState.total }).catch(()=>{});
 
+                return result;
             } catch (error) {
                 console.error(`[Background Scan] Error checking bookmark ${bookmark.id}:`, error);
                 scanState.scanned++; // Still count it as 'scanned' to not stall progress
+                return null;
             }
-        }
+        });
+
+        const batchResults = await Promise.all(checkPromises);
+        results.push(...batchResults.filter(r => r !== null));
         
         // Send batch results to UI
         if (results.length > 0) {
@@ -1666,17 +1711,6 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (typeof result === 'string') sendResponse({ status: result, sources: [] });
         else sendResponse({ status: result.status, sources: result.sources || [] });
     });
-    return true;
-  }
-
-  if (request.action === "getPageContent") {
-    fetch(request.url)
-      .then(response => {
-        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-        return response.text();
-      })
-      .then(text => sendResponse({ content: text }))
-      .catch(error => sendResponse({ error: error.message }));
     return true;
   }
 
