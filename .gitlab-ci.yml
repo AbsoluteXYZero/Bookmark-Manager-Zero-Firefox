@@ -1,0 +1,39 @@
+image: python:3.12-slim
+
+stages:
+  - deploy
+
+pages:
+  stage: deploy
+  script:
+    - pip install --no-cache-dir markdown
+
+    # Create Pages root
+    - mkdir -p public
+
+    # Copy only non-sensitive files into public/
+    - |
+      shopt -s dotglob
+      for item in *; do
+        if [[ "$item" != "public" && "$item" != ".git" && "$item" != ".gitlab-ci.yml" ]]; then
+          cp -r "$item" public/
+        fi
+      done
+
+    # Generate index.html from README.md
+    - |
+      python << 'EOF'
+      import markdown, pathlib
+
+      readme_path = pathlib.Path("public/README.md")
+      if readme_path.exists():
+          html = markdown.markdown(
+              readme_path.read_text(),
+              extensions=["tables","fenced_code","attr_list","sane_lists"]
+          )
+          pathlib.Path("public/index.html").write_text(html)
+      EOF
+
+  artifacts:
+    paths:
+      - public
