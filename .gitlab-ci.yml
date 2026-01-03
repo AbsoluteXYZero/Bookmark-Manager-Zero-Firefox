@@ -6,7 +6,7 @@ stages:
 pages:
   stage: deploy
   script:
-    - pip install --no-cache-dir markdown
+    - pip install --no-cache-dir markdown markdown-it-py
 
     # Create Pages root
     - mkdir -p public
@@ -23,16 +23,14 @@ pages:
     # Generate index.html from README.md with proper styling
     - |
       python << 'PYEOF'
-      import markdown
+      from markdown_it import MarkdownIt
       import pathlib
 
       readme_path = pathlib.Path("public/README.md")
       if readme_path.exists():
-          # Convert markdown to HTML
-          html_content = markdown.markdown(
-              readme_path.read_text(encoding='utf-8'),
-              extensions=["tables","fenced_code","attr_list","sane_lists"]
-          )
+          # Convert markdown to HTML using markdown-it-py for better list handling
+          md = MarkdownIt()
+          html_content = md.render(readme_path.read_text(encoding='utf-8'))
 
           # Wrap in a full HTML page with GitHub-style CSS
           html_start = """<!DOCTYPE html>
