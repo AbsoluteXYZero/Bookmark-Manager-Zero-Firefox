@@ -6,7 +6,7 @@
 
 **A modern, privacy-focused interface for managing your Firefox bookmarks.**
 
-![Version](https://img.shields.io/badge/version-3.0-blue)]
+[![Version](https://img.shields.io/badge/version-3.0-blue)](https://gitlab.com/AbsoluteXYZero/BMZ-Firefox)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
 
