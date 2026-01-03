@@ -11,7 +11,7 @@ pages:
     # Create Pages root
     - mkdir -p public
 
-    # Copy only non-sensitive files into public/
+    # Copy all files to public/ (screenshots, icons, README, etc.)
     - |
       shopt -s dotglob
       for item in *; do
@@ -40,7 +40,7 @@ pages:
       <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Bookmark Manager Zero - Firefox Extension</title>
+          <title>Bookmark Manager Zero</title>
           <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown.min.css">
           <style>
               body {
