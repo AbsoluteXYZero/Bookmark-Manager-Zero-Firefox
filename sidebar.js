@@ -3486,6 +3486,7 @@ async function initMainUI() {
   await loadStartFolder();
   cleanupSafetyHistory(); // Clean up stale entries on sidebar load
   await restoreCachedBookmarkStatuses();
+  await restoreSessionState(); // Restore previous session (scroll, expanded folders, search)
   await expandToStartFolder();
   setupEventListeners();
   setupBlocklistProgressListener();
@@ -3532,6 +3533,77 @@ async function loadAutoClearSetting() {
   } catch (error) {
     console.error('Error loading auto-clear setting:', error);
   }
+}
+
+// ============================================================================
+// SESSION STATE PERSISTENCE
+// ============================================================================
+
+// Save current session state (scroll position, expanded folders, search, filters)
+async function saveSessionState() {
+  try {
+    const sessionState = {
+      scrollPosition: bookmarkList?.scrollTop || 0,
+      expandedFolders: Array.from(expandedFolders),
+      searchTerm: searchTerm,
+      activeFilters: activeFilters,
+      timestamp: Date.now()
+    };
+    // Use browser.storage.session so it clears when browser closes
+    await browser.storage.session.set({ sessionState });
+  } catch (error) {
+    console.error('Error saving session state:', error);
+  }
+}
+
+// Restore previous session state
+async function restoreSessionState() {
+  try {
+    const result = await browser.storage.session.get('sessionState');
+    if (result.sessionState) {
+      const state = result.sessionState;
+
+      // Session persists until browser is closed (no expiration)
+      // The session will be cleared when the browser closes
+
+      // Restore expanded folders
+      if (state.expandedFolders && Array.isArray(state.expandedFolders)) {
+        expandedFolders = new Set(state.expandedFolders);
+      }
+
+      // Restore search term
+      if (state.searchTerm) {
+        searchTerm = state.searchTerm;
+        if (searchInput) {
+          searchInput.value = state.searchTerm;
+        }
+      }
+
+      // Restore active filters
+      if (state.activeFilters && Array.isArray(state.activeFilters)) {
+        activeFilters = state.activeFilters;
+      }
+
+      // Restore scroll position after rendering
+      if (state.scrollPosition && bookmarkList) {
+        // Use setTimeout to ensure rendering is complete
+        setTimeout(() => {
+          bookmarkList.scrollTop = state.scrollPosition;
+        }, 100);
+      }
+
+      console.log('Session state restored');
+    }
+  } catch (error) {
+    console.error('Error restoring session state:', error);
+  }
+}
+
+// Debounced save to avoid excessive storage writes
+let saveStateTimeout;
+function saveSessionStateDebounced() {
+  clearTimeout(saveStateTimeout);
+  saveStateTimeout = setTimeout(saveSessionState, 500);
 }
 
 // Load theme preference
@@ -4345,14 +4417,16 @@ async function rescanAllBookmarks() {
 
       // Update the node in the tree
       updateBookmarkInTree(node.id, results);
+
+      // Update progress immediately after each bookmark completes
+      scannedCount++;
+      if (scanProgress) scanProgress.textContent = `Scanning: ${scannedCount}/${totalToScan}`;
+
       return results;
     });
 
     // Wait for all checks in the batch to complete
     await Promise.all(batchPromises);
-
-    scannedCount += batch.length;
-    if (scanProgress) scanProgress.textContent = `Scanning: ${scannedCount}/${totalToScan}`;
 
     if (i + BATCH_SIZE < bookmarksToCheck.length) {
       await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
@@ -4463,6 +4537,10 @@ async function autoCheckBookmarkStatuses() {
           result.safetySources = safetyResult.sources;
         }
 
+        // Update progress immediately after each bookmark completes
+        scannedCount++;
+        if (scanProgress) scanProgress.textContent = `Scanning: ${scannedCount}/${totalToScan}`;
+
         return result;
       } catch (error) {
         console.error(`Error checking bookmark ${item.id} (${item.url}):`, error);
@@ -4472,6 +4550,11 @@ async function autoCheckBookmarkStatuses() {
           errorResult.safetyStatus = 'unknown';
           errorResult.safetySources = [];
         }
+
+        // Update progress even on error
+        scannedCount++;
+        if (scanProgress) scanProgress.textContent = `Scanning: ${scannedCount}/${totalToScan}`;
+
         return errorResult;
       }
     });
@@ -4494,10 +4577,6 @@ async function autoCheckBookmarkStatuses() {
       // Update the DOM immediately for this bookmark
       updateBookmarkStatusInDOM(result.id, result.linkStatus, result.safetyStatus, result.safetySources, url);
     });
-
-    // Update scan progress in status bar
-    scannedCount += results.length;
-    if (scanProgress) scanProgress.textContent = `Scanning: ${scannedCount}/${totalToScan}`;
 
     console.log(`Checked batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(bookmarksToCheck.length / BATCH_SIZE)} (${results.length} bookmarks)`);
 
@@ -5963,6 +6042,9 @@ function toggleFolder(folderId, folderElement) {
     }
   }
 
+  // Save session state when folder is toggled
+  saveSessionStateDebounced();
+
   // Re-render to reflect changes
   renderBookmarks();
 }
@@ -6290,6 +6372,10 @@ async function rescanFolder(folderId, folderTitle) {
           }
 
           scanned++;
+
+          // Update status bar immediately after each bookmark
+          if (scanProgress) scanProgress.textContent = `Scanning folder: ${scanned}/${bookmarks.length}`;
+
           console.log(`[Folder Rescan] Progress: ${scanned}/${bookmarks.length} - Safety: ${safetyResult?.status || 'unknown'}, Link: ${linkResult?.status || 'unknown'}`);
         } catch (error) {
           console.error(`[Folder Rescan] Error checking bookmark ${bookmark.id}:`, error);
@@ -6301,10 +6387,6 @@ async function rescanFolder(folderId, folderTitle) {
 
       // Update UI after each batch to show progress
       renderBookmarks();
-
-      // Update status bar with progress
-      const progress = Math.min(scanned, bookmarks.length);
-      if (scanProgress) scanProgress.textContent = `Scanning folder: ${progress}/${bookmarks.length}`;
 
       // Force UI update and add small delay to ensure progress is visible
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -8799,6 +8881,7 @@ function setupEventListeners() {
   searchInput.addEventListener('input', (e) => {
     searchTerm = e.target.value;
     renderBookmarks();
+    saveSessionStateDebounced();
   });
 
   // Filter toggle
@@ -8886,8 +8969,16 @@ function setupEventListeners() {
       }
 
       renderBookmarks();
+      saveSessionStateDebounced();
     });
   });
+
+  // Save scroll position when user scrolls
+  if (bookmarkList) {
+    bookmarkList.addEventListener('scroll', () => {
+      saveSessionStateDebounced();
+    });
+  }
 
   // QR Code button - generate QR for current page URL
   if (qrCodeBtn) {
@@ -9542,7 +9633,7 @@ function setupEventListeners() {
 
       try {
         // Stop any ongoing background scan first
-        await browser.runtime.sendMessage({ action: 'stopBackgroundScan' });
+        await browser.runtime.sendMessage({ action: 'stopScan' });
 
         // Wait a moment for the scan to stop
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -9565,6 +9656,10 @@ function setupEventListeners() {
         resetStatuses(bookmarkTree);
         renderBookmarks();
 
+        // Get all bookmarks from Firefox
+        const tree = await browser.bookmarks.getTree();
+        const allBookmarks = getAllBookmarksFlat(tree);
+
         // Start background scan (runs in background script)
         const response = await browser.runtime.sendMessage({ action: 'startScan', bookmarks: allBookmarks, bypassCache: true });
 
@@ -9583,7 +9678,7 @@ function setupEventListeners() {
     if (stopScanBtn) {
       stopScanBtn.addEventListener('click', async () => {
         // Stop background scan
-        await browser.runtime.sendMessage({ action: 'stopBackgroundScan' });
+        await browser.runtime.sendMessage({ action: 'stopScan' });
         console.log('User requested scan cancellation');
       });
     }

@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
-    <img src="https://img.shields.io/badge/version-3.0-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-3.2-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -569,7 +569,40 @@ Please report security vulnerabilities via GitLab Issues (mark as security issue
 
 ## Changelog
 
-### v3.0 (Current) - Critical Fixes & Performance Optimizations
+### v3.2 (Current) - Real-time Progress Updates (All Scan Types)
+
+**Improvements:**
+- 📊 **Universal Real-time Progress** - ALL scan types now update progress after every individual bookmark
+  - Fixed folder expansion scanning (autoCheckBookmarkStatuses) to update per bookmark instead of per batch
+  - Fixed rescan all bookmarks to update per bookmark
+  - Fixed rescan folder to update per bookmark
+  - Applies to all scan operations for consistent, responsive feedback
+
+---
+
+### v3.1 - Session Persistence & Progress Updates
+
+**New Features:**
+- 💾 **Session State Persistence** - Bookmark Manager Zero now remembers where you left off when you reopen it
+  - Restores scroll position to exactly where you were
+  - Remembers which folders were expanded/collapsed
+  - Preserves your search query and active filters
+  - Session clears when browser closes for privacy
+- 📊 **Real-time Scan Progress** - Progress counter now updates after every bookmark scanned instead of every 10
+  - More responsive and accurate progress feedback during scans
+  - Consistent behavior across all scan operations
+
+**Bug Fixes:**
+- 🐛 **Fixed Stop Scan Button** - Stop scanning button now works correctly
+  - Corrected message action name mismatch between sidebar and background script
+  - Changed from 'stopBackgroundScan' to 'stopScan' to match background listener
+- 🐛 **Fixed Rescan All Bookmarks** - Resolved "allBookmarks is not defined" error
+  - Added proper bookmark retrieval before starting scan
+  - Now correctly gets all bookmarks using getAllBookmarksFlat()
+
+---
+
+### v3.0 - Critical Fixes & Performance Optimizations
 
 **Bug Fixes:**
 - 🐛 **Fixed Duplicate clearCache() Function** - Removed duplicate function definition that was causing conflicts
