@@ -29,7 +29,7 @@ pages:
       readme_path = pathlib.Path("public/README.md")
       if readme_path.exists():
           # Convert markdown to HTML using markdown-it-py for better list handling
-          md = MarkdownIt()
+          md = MarkdownIt().enable('table')
           html_content = md.render(readme_path.read_text(encoding='utf-8'))
 
           # Wrap in a full HTML page with GitHub-style CSS
