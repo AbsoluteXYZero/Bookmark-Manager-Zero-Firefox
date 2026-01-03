@@ -24,14 +24,17 @@ pages:
     - |
       python << 'PYEOF'
       from markdown_it import MarkdownIt
-      from mdit_py_plugins.front_matter import front_matter_plugin
-      from mdit_py_plugins.footnote import footnote_plugin
+      from mdit_py_plugins.deflist import deflist_plugin
       import pathlib
 
       readme_path = pathlib.Path("public/README.md")
       if readme_path.exists():
-          # Convert markdown to HTML using markdown-it-py with table support
-          md = MarkdownIt('gfm-like').enable('table')
+          # Convert markdown to HTML using markdown-it-py with all GFM features
+          md = (
+              MarkdownIt("commonmark", {"breaks": True, "html": True})
+              .enable("table")
+              .enable("strikethrough")
+          )
           html_content = md.render(readme_path.read_text(encoding='utf-8'))
 
           # Wrap in a full HTML page with GitHub-style CSS
