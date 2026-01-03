@@ -6,7 +6,7 @@ stages:
 pages:
   stage: deploy
   script:
-    - pip install --no-cache-dir markdown markdown-it-py
+    - pip install --no-cache-dir markdown markdown-it-py mdit-py-plugins
 
     # Create Pages root
     - mkdir -p public
@@ -24,12 +24,14 @@ pages:
     - |
       python << 'PYEOF'
       from markdown_it import MarkdownIt
+      from mdit_py_plugins.front_matter import front_matter_plugin
+      from mdit_py_plugins.footnote import footnote_plugin
       import pathlib
 
       readme_path = pathlib.Path("public/README.md")
       if readme_path.exists():
-          # Convert markdown to HTML using markdown-it-py for better list handling
-          md = MarkdownIt().enable('table')
+          # Convert markdown to HTML using markdown-it-py with table support
+          md = MarkdownIt('gfm-like').enable('table')
           html_content = md.render(readme_path.read_text(encoding='utf-8'))
 
           # Wrap in a full HTML page with GitHub-style CSS
