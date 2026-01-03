@@ -20,18 +20,65 @@ pages:
         fi
       done
 
-    # Generate index.html from README.md
+    # Generate index.html from README.md with proper styling
     - |
       python << 'EOF'
       import markdown, pathlib
 
       readme_path = pathlib.Path("public/README.md")
       if readme_path.exists():
-          html = markdown.markdown(
-              readme_path.read_text(),
+          # Convert markdown to HTML
+          html_content = markdown.markdown(
+              readme_path.read_text(encoding='utf-8'),
               extensions=["tables","fenced_code","attr_list","sane_lists"]
           )
-          pathlib.Path("public/index.html").write_text(html)
+
+          # Wrap in a full HTML page with GitHub-style CSS
+          html_start = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bookmark Manager Zero - Firefox Extension</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown.min.css">
+    <style>
+        body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+            background-color: #ffffff;
+        }
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 100%;
+        }
+        .markdown-body img {
+            max-width: 100%;
+            height: auto;
+        }
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #0d1117;
+            }
+        }
+        @media (max-width: 767px) {
+            body {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body class="markdown-body">
+"""
+          html_end = """
+</body>
+</html>"""
+
+          full_html = html_start + html_content + html_end
+          pathlib.Path("public/index.html").write_text(full_html, encoding='utf-8')
       EOF
 
   artifacts:
