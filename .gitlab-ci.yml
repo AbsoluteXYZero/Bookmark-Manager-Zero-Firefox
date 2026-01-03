@@ -6,7 +6,7 @@ stages:
 pages:
   stage: deploy
   script:
-    - pip install --no-cache-dir markdown markdown-it-py mdit-py-plugins
+    - pip install --no-cache-dir markdown markdown-it-py mdit-py-plugins linkify-it-py
 
     # Create Pages root
     - mkdir -p public
