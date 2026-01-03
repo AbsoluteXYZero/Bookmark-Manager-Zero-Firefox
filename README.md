@@ -1,18 +1,31 @@
 <div align="center">
-
 <img src="icons/bookmark-96.png" alt="Bookmark Manager Zero Logo" width="128" height="128">
 
-# Bookmark Manager Zero
+<h1 align="center">Bookmark Manager Zero</h1>
 
-**A modern, privacy-focused interface for managing your Firefox bookmarks.**
+<p align="center">
+  <strong>A modern, privacy-focused interface for managing your Firefox bookmarks.</strong>
+</p>
 
-[![Version](https://img.shields.io/badge/version-3.0-blue)](https://gitlab.com/AbsoluteXYZero/BMZ-Firefox)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Firefox](https://img.shields.io/badge/firefox-compatible-orange)](https://addons.mozilla.org/firefox/)
+<p align="center">
+  <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
+    <img src="https://img.shields.io/badge/version-3.0-blue" alt="Version">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  </a>
+  <a href="https://addons.mozilla.org/firefox/">
+    <img src="https://img.shields.io/badge/firefox-compatible-orange" alt="Firefox">
+  </a>
+</p>
 
 <br>
 
-[![Get the Addon](https://blog.mozilla.org/addons/files/2020/04/get-the-addon-fx-apr-2020.svg)](https://addons.mozilla.org/en-US/firefox/addon/bookmark-manager-zero/)
+<p align="center">
+  <a href="https://addons.mozilla.org/en-US/firefox/addon/bookmark-manager-zero/">
+    <img src="https://blog.mozilla.org/addons/files/2020/04/get-the-addon-fx-apr-2020.svg" alt="Get the Addon">
+  </a>
+</p>
 
 </div>
 
