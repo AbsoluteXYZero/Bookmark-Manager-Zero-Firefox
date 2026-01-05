@@ -2690,52 +2690,93 @@ function initErrorToast() {
 
 // Show error toast notification
 function showErrorToast(title, message) {
-  if (!errorToast) return;
-
-  errorTitle.textContent = title;
-  errorMessage.textContent = message;
-  errorToast.classList.remove('hidden');
-
-  // Auto-hide after 10 seconds
-  setTimeout(() => {
-    hideErrorToast();
-  }, 10000);
+  const fullMessage = title && message ? `${title}: ${message}` : (message || title);
+  showToast(fullMessage, 'error', 10000);
 }
 
 // Hide error toast
 function hideErrorToast() {
-   if (errorToast) {
-      errorToast.classList.add('hidden');
-   }
+  // No-op for compatibility
 }
 
 // Show success toast notification
+// New toast system - stacks from bottom
+let toastContainer;
+let toastIdCounter = 0;
+
+function initToastSystem() {
+  toastContainer = document.getElementById('toastContainer');
+}
+
+function showToast(message, type = 'success', duration = 5000) {
+  if (!toastContainer) {
+    initToastSystem();
+  }
+
+  const toastId = `toast-${toastIdCounter++}`;
+
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.id = toastId;
+
+  // Icon based on type
+  let icon = '';
+  if (type === 'success') {
+    icon = '<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; color: var(--md-sys-color-success);"><path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M11,16.5L6.5,12L7.91,10.59L11,13.67L16.59,8.09L18,9.5L11,16.5Z"/></svg>';
+  } else if (type === 'error') {
+    icon = '<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; color: var(--md-sys-color-error);"><path d="M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16"/></svg>';
+  } else {
+    icon = '<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; color: var(--md-sys-color-primary);"><path d="M13,9H11V7H13M13,17H11V11H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/></svg>';
+  }
+
+  toast.innerHTML = `
+    <div class="toast-content">
+      ${icon}
+      <div style="flex: 1;">
+        <div style="font-weight: 600;">${message}</div>
+      </div>
+      <div class="toast-actions">
+        <button class="toast-dismiss">×</button>
+      </div>
+    </div>
+  `;
+
+  // Add to container (inserts at bottom, pushes others up)
+  toastContainer.appendChild(toast);
+
+  // Add click listener to dismiss button
+  const dismissBtn = toast.querySelector('.toast-dismiss');
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => removeToast(toastId));
+  }
+
+  // Auto-remove after duration
+  if (duration > 0) {
+    setTimeout(() => removeToast(toastId), duration);
+  }
+
+  return toastId;
+}
+
+function removeToast(toastId) {
+  const toast = document.getElementById(toastId);
+  if (!toast) return;
+
+  toast.classList.add('removing');
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
+  }, 300); // Match animation duration
+}
+
 function showSuccessToast(message) {
-   if (!successToast) return;
-
-   successToastMessage.textContent = message;
-   successToast.classList.remove('hidden');
-
-   // Auto-hide after 5 seconds
-   setTimeout(() => {
-      hideSuccessToast();
-   }, 5000);
+  showToast(message, 'success');
 }
 
-// Hide success toast
 function hideSuccessToast() {
-   if (successToast) {
-      successToast.classList.add('hidden');
-   }
-}
-
-// General toast notification
-function showToast(message, type = 'success') {
-   if (type === 'error') {
-      showErrorToast('Error', message);
-   } else {
-      showSuccessToast(message);
-   }
+  // No-op for compatibility
 }
 
 // Log error to browser storage
@@ -6283,30 +6324,6 @@ async function rescanFolder(folderId, folderTitle) {
 
     console.log(`[Folder Rescan] Found ${bookmarks.length} bookmark(s) in folder "${folderTitle}"`);
 
-    // Show confirmation
-    const confirmMessage = `Rescan ${bookmarks.length} bookmark(s) in "${folderTitle}" and its subfolders?\n\nThis will check link status and security for all bookmarks.`;
-    if (!confirm(confirmMessage)) {
-      return;
-    }
-
-    // Expand the rescanned folder and all its subfolders FIRST so icons can update live
-    const expandFolderTree = (nodeId) => {
-      expandedFolders.add(nodeId);
-      const node = findFolderById(bookmarkTree, nodeId);
-      if (node && node.children) {
-        node.children.forEach(child => {
-          if (child.type === 'folder' || child.children) {
-            expandFolderTree(child.id);
-          }
-        });
-      }
-    };
-    expandFolderTree(folderId);
-    renderBookmarks(); // Initial render with folders expanded
-
-    // Wait for DOM to update before starting scan
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     // Update status bar to show scanning
     if (scanStatusBar) scanStatusBar.classList.add('scanning');
     if (scanProgress) scanProgress.textContent = `Preparing scan...`;
@@ -6415,19 +6432,7 @@ async function rescanFolder(folderId, folderTitle) {
     // Clear checkedBookmarks to free memory after folder scan completes
     checkedBookmarks.clear();
 
-    // Show summary
-    const summary = [
-      `Rescan complete for "${folderTitle}"!`,
-      ``,
-      `📊 Scanned: ${scanned} bookmark(s)`,
-      `🛡️ Unsafe: ${unsafe}`,
-      `⚠️ Warnings: ${warning}`,
-      `🔗 Dead links: ${dead}`,
-      `✅ Safe: ${scanned - unsafe - warning}`
-    ].join('\n');
-
-    alert(summary);
-    console.log(`[Folder Rescan] Complete: ${scanned} scanned, ${unsafe} unsafe, ${warning} warnings, ${dead} dead`);
+    console.log(`[Folder Rescan] Complete for "${folderTitle}": ${scanned} scanned, ${unsafe} unsafe, ${warning} warnings, ${dead} dead`);
 
     // Reset status to "Ready" after 2 seconds
     setTimeout(() => {
@@ -8192,7 +8197,14 @@ async function openChangelogModal() {
     entries.forEach(entry => {
       const date = new Date(entry.timestamp);
       const timeAgo = getTimeAgo(entry.timestamp);
-      const iconColor = entry.type === 'create' ? '#10b981' : entry.type === 'delete' ? '#ef4444' : entry.type === 'move' ? '#3b82f6' : entry.type === 'undo' ? '#8b5cf6' : '#f59e0b';
+
+      let iconColor;
+      if (entry.type === 'create') iconColor = '#10b981';
+      else if (entry.type === 'delete') iconColor = '#ef4444';
+      else if (entry.type === 'move') iconColor = '#3b82f6';
+      else if (entry.type === 'undo') iconColor = '#8b5cf6';
+      else if (entry.type === 'pre-sync-snapshot') iconColor = '#f59e0b';
+      else iconColor = '#f59e0b';
 
       // SVG icons for operation types
       let icon;
@@ -8204,42 +8216,56 @@ async function openChangelogModal() {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18M20,6H10A2,2 0 0,0 8,8V11H10V8H20V20H10V17H8V20A2,2 0 0,0 10,22H20A2,2 0 0,0 22,20V8A2,2 0 0,0 20,6Z"/></svg>`;
       } else if (entry.type === 'undo') {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 19.56,16H22.01C21.43,12.16 17.97,9 13.9,9H12.5V8M12.5,16C10.54,16 8.77,15.28 7.38,14.12L11,10.5H2V19.5L5.6,15.9C7.45,17.5 9.85,18.5 12.5,18.5C17.1,18.5 20.95,15.4 21.9,11.2H19.38C18.77,14.16 15.76,16.34 12.5,16Z"/></svg>`;
+      } else if (entry.type === 'pre-sync-snapshot') {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/></svg>`;
       } else {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg>`;
       }
 
-      // SVG icons for item types
-      let itemIcon;
-      if (entry.itemType === 'folder') {
-        itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-primary);"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg>`;
-      } else {
-        itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-secondary);"><path d="M17,3H7A2,2 0 0,0 5,5V21L12,18L19,21V5C19,3.89 18.1,3 17,3Z"/></svg>`;
+      // SVG icons for item types (skip for sync snapshots)
+      let itemIcon = '';
+      if (entry.type !== 'pre-sync-snapshot') {
+        if (entry.itemType === 'folder') {
+          itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-primary);"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg>`;
+        } else {
+          itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-secondary);"><path d="M17,3H7A2,2 0 0,0 5,5V21L12,18L19,21V5C19,3.89 18.1,3 17,3Z"/></svg>`;
+        }
       }
 
       let detailsHtml = '';
-      if (entry.type === 'undo') {
-        if (entry.details.undoType === 'move') {
-          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Restored to: ${entry.details.restoredToFolder}</div>`;
-        } else if (entry.details.undoType === 'update') {
-          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Reverted title from: "${entry.details.previousTitle}"</div>`;
-        } else {
-          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Undid ${entry.details.undoType} operation</div>`;
-        }
-      } else if (entry.type === 'move' && entry.details.oldParent && entry.details.newParent) {
-        detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">From: ${entry.details.oldParent} → ${entry.details.newParent}</div>`;
-      } else if (entry.type === 'update') {
-        if (entry.details.oldTitle && entry.details.newTitle && entry.details.oldTitle !== entry.details.newTitle) {
-          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Renamed from: ${entry.details.oldTitle}</div>`;
-        }
-        if (entry.details.oldUrl && entry.details.newUrl && entry.details.oldUrl !== entry.details.newUrl) {
-          detailsHtml += `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 2px;">URL changed</div>`;
+      if (entry.details) {
+        if (entry.type === 'pre-sync-snapshot') {
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">⚠️ Replaced all local bookmarks with remote data</div>`;
+        } else if (entry.type === 'undo') {
+          if (entry.details.undoType === 'move') {
+            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Restored to: ${entry.details.restoredToFolder}</div>`;
+          } else if (entry.details.undoType === 'update') {
+            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Reverted title from: "${entry.details.previousTitle}"</div>`;
+          } else {
+            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Undid ${entry.details.undoType} operation</div>`;
+          }
+        } else if (entry.type === 'move' && entry.details.oldParent && entry.details.newParent) {
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">From: ${entry.details.oldParent} → ${entry.details.newParent}</div>`;
+        } else if (entry.type === 'update') {
+          if (entry.details.oldTitle && entry.details.newTitle && entry.details.oldTitle !== entry.details.newTitle) {
+            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Renamed from: ${entry.details.oldTitle}</div>`;
+          }
+          if (entry.details.oldUrl && entry.details.newUrl && entry.details.oldUrl !== entry.details.newUrl) {
+            detailsHtml += `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 2px;">URL changed</div>`;
+          }
         }
       }
 
       const urlHtml = entry.url ? `<div class="changelog-url" data-url="${entry.url}" style="font-size: 11px; color: var(--md-sys-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: underline;" title="Click to copy: ${entry.url}">${entry.url}</div>` : '';
 
       let restoreButtonHtml = '';
-      if ((entry.type === 'delete' || entry.type === 'move' || entry.type === 'update') && entry.type !== 'undo') {
+      if (entry.type === 'pre-sync-snapshot') {
+        restoreButtonHtml = `
+          <button class="changelog-restore-btn" data-entry-id="${entry.id}" title="Restore pre-sync bookmarks" style="margin-left: auto; padding: 6px 12px; border: 1px solid ${iconColor}; border-radius: 6px; background: ${iconColor}; color: #000; cursor: pointer; font-size: 12px; font-weight: 600;">
+            Restore Pre-Sync Bookmarks
+          </button>
+        `;
+      } else if ((entry.type === 'delete' || entry.type === 'move' || entry.type === 'update') && entry.type !== 'undo') {
         const restoreTitle = entry.type === 'delete' ? 'Restore this item' :
                             entry.type === 'move' ? 'Move back to original location' :
                             'Revert changes';
@@ -8337,6 +8363,106 @@ async function restoreChangelogEntry(entryId) {
     if (!entry) {
       alert('Changelog entry not found.');
       return;
+    }
+
+    // Handle pre-sync-snapshot restoration
+    if (entry.type === 'pre-sync-snapshot') {
+      if (!entry.details || !entry.details.snapshot) {
+        alert('Snapshot data not found. Cannot restore pre-sync bookmarks.');
+        return;
+      }
+
+      const confirmed = confirm(
+        `⚠️ RESTORE PRE-SYNC BOOKMARKS\n\n` +
+        `This will replace ALL your current bookmarks with the bookmarks you had BEFORE the sync operation.\n\n` +
+        `Operation: ${entry.details.operation || 'Sync'}\n` +
+        `Date: ${new Date(entry.timestamp).toLocaleString()}\n\n` +
+        `Are you sure you want to proceed?`
+      );
+
+      if (!confirmed) return;
+
+      try {
+        showToast('Restoring pre-sync bookmarks...', 'info');
+
+        const snapshot = entry.details.snapshot;
+
+        // Delete all current bookmarks
+        const currentTree = await browser.bookmarks.getTree();
+        const roots = currentTree[0].children;
+        for (const root of roots) {
+          if (root.children) {
+            for (const child of root.children) {
+              try {
+                await browser.bookmarks.removeTree(child.id);
+              } catch (error) {
+                console.warn(`Failed to remove bookmark ${child.id}:`, error);
+              }
+            }
+          }
+        }
+
+        // Restore from snapshot
+        const createNodes = async (nodes, parentId) => {
+          for (const node of nodes) {
+            if (node.url) {
+              await browser.bookmarks.create({
+                parentId: parentId,
+                title: node.title || 'Untitled',
+                url: node.url
+              });
+            } else if (node.children) {
+              const newFolder = await browser.bookmarks.create({
+                parentId: parentId,
+                title: node.title || 'Untitled Folder'
+              });
+              await createNodes(node.children, newFolder.id);
+            }
+          }
+        };
+
+        // Re-fetch tree to get current root IDs
+        const freshTree = await browser.bookmarks.getTree();
+        const freshRoots = freshTree[0].children;
+        const toolbar = freshRoots.find(r => r.id === 'toolbar_____');
+        const menu = freshRoots.find(r => r.id === 'menu________');
+        const unfiled = freshRoots.find(r => r.id === 'unfiled_____');
+        const mobile = freshRoots.find(r => r.id === 'mobile______');
+
+        // Recreate bookmark structure from snapshot
+        if (snapshot.roots) {
+          if (snapshot.roots.bookmark_bar && snapshot.roots.bookmark_bar.children && toolbar) {
+            await createNodes(snapshot.roots.bookmark_bar.children, toolbar.id);
+          }
+          if (snapshot.roots.menu && snapshot.roots.menu.children && menu) {
+            await createNodes(snapshot.roots.menu.children, menu.id);
+          }
+          if (snapshot.roots.other && snapshot.roots.other.children && unfiled) {
+            await createNodes(snapshot.roots.other.children, unfiled.id);
+          }
+          if (snapshot.roots.mobile && snapshot.roots.mobile.children && mobile) {
+            await createNodes(snapshot.roots.mobile.children, mobile.id);
+          }
+        }
+
+        // Clear changelog since we've restored to a previous state
+        await clearChangelog();
+
+        showToast('✓ Pre-sync bookmarks restored successfully!', 'success');
+
+        // Refresh UI
+        await loadBookmarks();
+        renderBookmarks();
+
+        // Close changelog modal
+        closeChangelogModal();
+
+        return;
+      } catch (error) {
+        console.error('[Restore Snapshot] Error:', error);
+        showToast(`Failed to restore snapshot: ${error.message}`, 'error');
+        return;
+      }
     }
 
     // Only allow restoring certain operation types
@@ -10604,9 +10730,43 @@ function setupEventListeners() {
     const localMap = new Map();
     const remoteMap = new Map();
 
+    const rootFolderIds = ['toolbar_____', 'menu________', 'unfiled_____', 'mobile______', 'root________'];
+
+    // Normalize folder titles to handle Chrome vs Firefox naming differences
+    // IMPORTANT: Must use same normalization as Chrome for cross-browser sync
+    const normalizeTitle = (title) => {
+      // Treat empty string and "Untitled" as equivalent (empty)
+      if (!title || title === 'Untitled' || title === 'Untitled Folder') {
+        return '';
+      }
+
+      const normalized = {
+        'Bookmarks Toolbar': 'Bookmarks bar',   // Firefox → Chrome standard
+        'Bookmarks bar': 'Bookmarks bar',        // Chrome → Chrome standard
+        'Other Bookmarks': 'Other bookmarks',    // Normalize to Chrome's lowercase
+        'Other bookmarks': 'Other bookmarks',    // Chrome → Chrome standard
+        'Mobile Bookmarks': 'Mobile Bookmarks',
+        'Bookmarks Menu': 'Bookmarks Menu'
+      };
+      return normalized[title] || title;
+    };
+
     const mapItems = (node, map, parentPath = '') => {
-      const path = parentPath ? `${parentPath}/${node.title || node.id}` : (node.title || node.id);
-      map.set(node.id, { node, path, parentId: node.parentId || null });
+      // Normalize title for consistent paths, then build path
+      const normalizedTitle = normalizeTitle(node.title || '');
+      const path = parentPath ? `${parentPath}/${normalizedTitle}` : normalizedTitle;
+
+      // Don't include root folders themselves in the comparison, only their contents
+      if (!rootFolderIds.includes(node.id)) {
+        // Use content-based key instead of ID (since Chrome and Firefox use different ID systems)
+        const isBookmark = node.url || node.type === 'bookmark';
+        const key = isBookmark
+          ? `bookmark:${node.url}:${path}`
+          : `folder:${path}`;
+
+        map.set(key, { node, path, parentId: node.parentId || null, originalId: node.id });
+      }
+
       if (node.children) {
         node.children.forEach(child => mapItems(child, map, path));
       }
@@ -10626,10 +10786,10 @@ function setupEventListeners() {
       }
     }
 
-    remoteMap.forEach((remoteItem, id) => {
-      if (!localMap.has(id)) {
+    remoteMap.forEach((remoteItem, key) => {
+      if (!localMap.has(key)) {
         diff.added.push({
-          id: remoteItem.node.id,
+          id: remoteItem.originalId,
           title: remoteItem.node.title,
           path: remoteItem.path,
           type: remoteItem.node.type || (remoteItem.node.url ? 'bookmark' : 'folder'),
@@ -10638,10 +10798,10 @@ function setupEventListeners() {
       }
     });
 
-    localMap.forEach((localItem, id) => {
-      if (!remoteMap.has(id)) {
+    localMap.forEach((localItem, key) => {
+      if (!remoteMap.has(key)) {
         diff.removed.push({
-          id: localItem.node.id,
+          id: localItem.originalId,
           title: localItem.node.title,
           path: localItem.path,
           type: localItem.node.url ? 'bookmark' : 'folder',
@@ -10650,15 +10810,16 @@ function setupEventListeners() {
       }
     });
 
-    localMap.forEach((localItem, id) => {
-      const remoteItem = remoteMap.get(id);
+    localMap.forEach((localItem, key) => {
+      const remoteItem = remoteMap.get(key);
       if (remoteItem) {
         const localNode = localItem.node;
         const remoteNode = remoteItem.node;
 
-        if (localItem.parentId !== remoteItem.parentId) {
+        // Check if the path changed (item moved to different folder)
+        if (localItem.path !== remoteItem.path) {
           diff.moved.push({
-            id,
+            id: localItem.originalId,
             title: localNode.title,
             from: localItem.path,
             to: remoteItem.path,
@@ -10666,11 +10827,15 @@ function setupEventListeners() {
           });
         }
 
-        const titleDiffers = localNode.title?.toLowerCase() !== remoteNode.title?.toLowerCase();
+        // Check if modified (different title or URL)
+        // Normalize titles to ignore differences like empty string vs "Untitled"
+        const normalizedLocalTitle = normalizeTitle(localNode.title || '');
+        const normalizedRemoteTitle = normalizeTitle(remoteNode.title || '');
+        const titleDiffers = normalizedLocalTitle !== normalizedRemoteTitle;
         const urlDiffers = localNode.url !== remoteNode.url;
         if (titleDiffers || urlDiffers) {
           diff.modified.push({
-            id,
+            id: localItem.originalId,
             oldTitle: localNode.title,
             newTitle: remoteNode.title,
             oldUrl: localNode.url,
@@ -10714,16 +10879,16 @@ function setupEventListeners() {
     const firefoxRoots = [];
     if (snippetData.roots) {
       if (snippetData.roots.bookmark_bar) {
-        firefoxRoots.push(convertNode({ ...snippetData.roots.bookmark_bar, id: 'root________' }, 'root'));
+        firefoxRoots.push(convertNode({ ...snippetData.roots.bookmark_bar, id: 'toolbar_____', title: 'Bookmarks Toolbar', name: 'Bookmarks Toolbar' }, 'root'));
       }
       if (snippetData.roots.menu) {
-        firefoxRoots.push(convertNode({ ...snippetData.roots.menu, id: 'menu________' }, 'root'));
+        firefoxRoots.push(convertNode({ ...snippetData.roots.menu, id: 'menu________', title: 'Bookmarks Menu', name: 'Bookmarks Menu' }, 'root'));
       }
       if (snippetData.roots.other) {
-        firefoxRoots.push(convertNode({ ...snippetData.roots.other, id: 'unfiled_____' }, 'root'));
+        firefoxRoots.push(convertNode({ ...snippetData.roots.other, id: 'unfiled_____', title: 'Other Bookmarks', name: 'Other Bookmarks' }, 'root'));
       }
       if (snippetData.roots.mobile) {
-        firefoxRoots.push(convertNode({ ...snippetData.roots.mobile, id: 'mobile_____' }, 'root'));
+        firefoxRoots.push(convertNode({ ...snippetData.roots.mobile, id: 'mobile______', title: 'Mobile Bookmarks', name: 'Mobile Bookmarks' }, 'root'));
       }
     }
 
@@ -10731,6 +10896,17 @@ function setupEventListeners() {
       id: 'root',
       children: firefoxRoots
     }];
+  }
+
+  // Calculate SHA-256 checksum for conflict detection
+  async function calculateChecksum(data) {
+    const { checksum, lastModified, version, editLock, ...dataToHash } = data;
+    const str = JSON.stringify(dataToHash, Object.keys(dataToHash).sort());
+    const buffer = new TextEncoder().encode(str);
+    const hash = await crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(hash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   // Convert Firefox bookmarks to Snippet format
@@ -10763,10 +10939,10 @@ function setupEventListeners() {
     const roots = {};
     if (firefoxTree && firefoxTree[0] && firefoxTree[0].children) {
       for (const rootFolder of firefoxTree[0].children) {
-        const key = rootFolder.root === 'bookmarkToolbar' ? 'bookmark_bar' :
-                    rootFolder.root === 'unsorted' ? 'other' :
-                    rootFolder.root === 'mobile' ? 'mobile' :
-                    rootFolder.root === 'bookmarkMenu' ? 'menu' : null;
+        const key = rootFolder.id === 'toolbar_____' ? 'bookmark_bar' :
+                    rootFolder.id === 'unfiled_____' ? 'other' :
+                    rootFolder.id === 'mobile______' ? 'mobile' :
+                    rootFolder.id === 'menu________' ? 'menu' : null;
         if (key) {
           roots[key] = convertNode(rootFolder);
         }
@@ -10814,6 +10990,135 @@ function setupEventListeners() {
   
     snippetData.checksum = await calculateChecksum(snippetData);
     return snippetData;
+  }
+
+  // Show sync diff dialog
+  async function showSyncDiffDialog(diff, remoteSnippetData) {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background: var(--md-sys-color-surface, #1e1e1e); padding: 24px; border-radius: 12px; max-width: 700px; width: 90%; max-height: 80%; overflow-y: auto; color: var(--md-sys-color-on-surface, #e0e0e0);';
+
+    const hasChanges = diff.added.length + diff.removed.length + diff.moved.length + diff.modified.length > 0;
+
+    let content = '<h2 style="margin: 0 0 16px 0; font-size: 20px;">Snippet Sync Changes</h2>';
+
+    if (!hasChanges) {
+      content += '<p style="color: var(--md-sys-color-on-surface-variant, #aaa);">No changes detected. Your local bookmarks match the Snippet.</p>';
+    } else {
+      // Summary
+      content += '<div style="margin-bottom: 20px; padding: 16px; background: var(--md-sys-color-surface-variant, #2a2a2a); border-radius: 8px;">';
+      content += '<h3 style="margin: 0 0 12px 0; font-size: 16px;">Summary</h3>';
+      if (diff.added.length > 0) content += `<div style="margin-bottom: 4px; color: #4caf50;">✓ ${diff.added.length} item(s) to add</div>`;
+      if (diff.removed.length > 0) content += `<div style="margin-bottom: 4px; color: #f44336;">✗ ${diff.removed.length} item(s) to remove</div>`;
+      if (diff.moved.length > 0) content += `<div style="margin-bottom: 4px; color: #ff9800;">➜ ${diff.moved.length} item(s) to move</div>`;
+      if (diff.modified.length > 0) content += `<div style="color: #2196f3;">✎ ${diff.modified.length} item(s) to modify</div>`;
+      content += '</div>';
+
+      // Detailed changes
+      if (diff.added.length > 0) {
+        content += '<div style="margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; font-size: 16px; color: #4caf50;">Added</h3>';
+        diff.added.forEach(item => {
+          content += `<div style="padding: 8px; margin-bottom: 4px; background: rgba(76, 175, 80, 0.1); border-left: 3px solid #4caf50; border-radius: 4px;">
+            <div style="font-weight: 500;">${item.title || 'Untitled'}</div>
+            <div style="font-size: 12px; color: #aaa;">${item.path}</div>
+            ${item.url ? `<div style="font-size: 11px; color: #888; margin-top: 4px;">${item.url}</div>` : ''}
+          </div>`;
+        });
+        content += '</div>';
+      }
+
+      if (diff.removed.length > 0) {
+        content += '<div style="margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; font-size: 16px; color: #f44336;">Removed</h3>';
+        diff.removed.forEach(item => {
+          content += `<div style="padding: 8px; margin-bottom: 4px; background: rgba(244, 67, 54, 0.1); border-left: 3px solid #f44336; border-radius: 4px;">
+            <div style="font-weight: 500;">${item.title || 'Untitled'}</div>
+            <div style="font-size: 12px; color: #aaa;">${item.path}</div>
+            ${item.url ? `<div style="font-size: 11px; color: #888; margin-top: 4px;">${item.url}</div>` : ''}
+          </div>`;
+        });
+        content += '</div>';
+      }
+
+      if (diff.moved.length > 0) {
+        content += '<div style="margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; font-size: 16px; color: #ff9800;">Moved</h3>';
+        diff.moved.forEach(item => {
+          content += `<div style="padding: 8px; margin-bottom: 4px; background: rgba(255, 152, 0, 0.1); border-left: 3px solid #ff9800; border-radius: 4px;">
+            <div style="font-weight: 500;">${item.title || 'Untitled'}</div>
+            <div style="font-size: 12px; color: #aaa;">From: ${item.from}</div>
+            <div style="font-size: 12px; color: #aaa;">To: ${item.to}</div>
+          </div>`;
+        });
+        content += '</div>';
+      }
+
+      if (diff.modified.length > 0) {
+        content += '<div style="margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; font-size: 16px; color: #2196f3;">Modified</h3>';
+        diff.modified.forEach(item => {
+          content += `<div style="padding: 8px; margin-bottom: 4px; background: rgba(33, 150, 243, 0.1); border-left: 3px solid #2196f3; border-radius: 4px;">
+            <div style="font-weight: 500;">${item.oldTitle || 'Untitled'} → ${item.newTitle || 'Untitled'}</div>
+            <div style="font-size: 12px; color: #aaa;">${item.path}</div>
+            ${item.oldUrl !== item.newUrl ? `<div style="font-size: 11px; color: #888; margin-top: 4px;">URL: ${item.oldUrl} → ${item.newUrl}</div>` : ''}
+          </div>`;
+        });
+        content += '</div>';
+      }
+    }
+
+    content += `
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 20px;">
+        ${hasChanges ? `
+          <button id="mergeButton" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-tertiary, #4caf50); color: var(--md-sys-color-on-tertiary, #fff); cursor: pointer; font-size: 14px; font-weight: 600;">
+            Merge (Recommended)
+          </button>
+          <div style="display: flex; gap: 12px;">
+            <button id="pushLocalToRemote" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px;">
+              Push Local to Remote
+            </button>
+            <button id="applyRemoteChanges" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error, #f44336); color: var(--md-sys-color-on-error, #fff); cursor: pointer; font-size: 14px;">
+              Pull Remote to Local
+            </button>
+          </div>
+        ` : ''}
+        <button id="closeDiffDialog" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">
+          Cancel
+        </button>
+      </div>
+    `;
+
+    dialog.innerHTML = content;
+    modal.appendChild(dialog);
+    document.body.appendChild(modal);
+
+    const mergeBtn = dialog.querySelector('#mergeButton');
+    if (mergeBtn) {
+      mergeBtn.addEventListener('click', async () => {
+        modal.remove();
+        await mergeBidirectional();
+      });
+    }
+
+    const pushBtn = dialog.querySelector('#pushLocalToRemote');
+    if (pushBtn) {
+      pushBtn.addEventListener('click', async () => {
+        modal.remove();
+        await syncToSnippet();
+      });
+    }
+
+    const applyBtn = dialog.querySelector('#applyRemoteChanges');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', async () => {
+        modal.remove();
+        await applyRemoteChangesToFirefox(remoteSnippetData);
+      });
+    }
+
+    dialog.querySelector('#closeDiffDialog').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
   }
 
   // Sync from Snippet to Firefox bookmarks
@@ -10948,10 +11253,22 @@ function setupEventListeners() {
   // Update GitLab button icon
   function updateGitLabButtonIcon() {
     const gitlabBtnIcon = document.getElementById('gitlabBtnIcon');
-    if (!gitlabBtnIcon) return;
+    const gitlabBtn = document.getElementById('gitlabBtn');
+    if (!gitlabBtnIcon || !gitlabBtn) return;
 
-    // Always use GitLab logo for consistency with website version
-    gitlabBtnIcon.innerHTML = '<path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>';
+    const isLoggedIn = snippetToken && snippetId;
+
+    if (isLoggedIn) {
+      // Show logout icon and update tooltip for logged in state
+      gitlabBtnIcon.innerHTML = '<path d="M17,7l-1.41,1.41L18.17,11H8v2h10.17l-2.58,2.59L17,17l5-5L17,7z M4,5h8V3H4C2.9,3 2,3.9 2,5v14c0,1.1 0.9,2 2,2h8v-2H4V5z"/>';
+      gitlabBtn.title = 'Logout from GitLab account';
+      gitlabBtn.setAttribute('aria-label', 'Logout from GitLab account');
+    } else {
+      // Show GitLab logo and update tooltip for not logged in state
+      gitlabBtnIcon.innerHTML = '<path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>';
+      gitlabBtn.title = 'Connect your GitLab account';
+      gitlabBtn.setAttribute('aria-label', 'GitLab account settings');
+    }
   }
 
   // Show GitLab disconnect dialog
@@ -11262,7 +11579,7 @@ function setupEventListeners() {
   }
 
   // Apply remote changes to local Firefox bookmarks (full replace)
-  async function applyRemoteChangesToFirefox(remoteSnippetData) {
+  async function applyRemoteChangesToFirefox(remoteSnippetData, skipSnapshot = false) {
     // This is a DESTRUCTIVE operation - it will override local bookmarks
     // Show double confirmation dialog
     return new Promise((resolve) => {
@@ -11319,12 +11636,31 @@ function setupEventListeners() {
           // Get current bookmark tree
           const currentTree = await browser.bookmarks.getTree();
 
+          // Only create snapshot if not already done (e.g., by merge operation)
+          if (!skipSnapshot) {
+            // STEP 1: Take a snapshot of current bookmarks before destructive sync
+            const preSyncSnapshot = await firefoxBookmarksToSnippetFormat(currentTree);
+
+            // STEP 2: Clear all old changelog entries (they will have invalid IDs after sync)
+            await clearChangelog();
+
+            // STEP 3: Add a special changelog entry for this sync operation with full snapshot
+            await addChangelogEntry('pre-sync-snapshot', 'sync', 'Pull Remote to Local', null, {
+              snapshot: preSyncSnapshot,
+              timestamp: Date.now(),
+              operation: 'Pull Remote to Local'
+            });
+          }
+
           // Get root folders (Firefox has toolbar, menu, unfiled, mobile)
           const roots = currentTree[0].children;
 
           // Remove all existing bookmarks from each root folder
+          console.log('[SYNC] Deleting existing bookmarks...');
           for (const root of roots) {
+            console.log(`[SYNC] Processing root: ${root.title} (${root.id}, type: ${root.type})`);
             if (root.children) {
+              console.log(`[SYNC] Deleting ${root.children.length} children from ${root.title}`);
               for (const child of root.children) {
                 try {
                   await browser.bookmarks.removeTree(child.id);
@@ -11335,60 +11671,95 @@ function setupEventListeners() {
             }
           }
 
+          console.log('[SYNC] Re-fetching bookmark tree after deletion...');
+          // Re-fetch the tree to get current state
+          const freshTree = await browser.bookmarks.getTree();
+          const freshRoots = freshTree[0].children;
+
           // Add new bookmarks from Snippet
-          const createNodes = async (nodes, parentId) => {
+          let createdCount = 0;
+          let errorCount = 0;
+          const createNodes = async (nodes, parentId, path = '') => {
+            if (!nodes || !Array.isArray(nodes)) {
+              console.warn('[createNodes] Invalid nodes array:', nodes);
+              return;
+            }
+
             for (const node of nodes) {
-              if (node.url) {
-                // Create bookmark
-                await browser.bookmarks.create({
-                  parentId: parentId,
-                  title: node.title,
-                  url: node.url
-                });
-              } else if (node.children) {
-                // Create folder
-                const newFolder = await browser.bookmarks.create({
-                  parentId: parentId,
-                  title: node.title
-                });
-                await createNodes(node.children, newFolder.id);
+              try {
+                if (node.url) {
+                  // Create bookmark
+                  console.log(`[createNodes] Creating bookmark: "${node.title}" at ${path}`);
+                  await browser.bookmarks.create({
+                    parentId: parentId,
+                    title: node.title || 'Untitled',
+                    url: node.url
+                  });
+                  createdCount++;
+                } else if (node.children) {
+                  // Create folder
+                  console.log(`[createNodes] Creating folder: "${node.title}" at ${path}`);
+                  const newFolder = await browser.bookmarks.create({
+                    parentId: parentId,
+                    title: node.title || 'Untitled Folder'
+                  });
+                  createdCount++;
+                  await createNodes(node.children, newFolder.id, `${path}/${node.title || 'Untitled'}`);
+                }
+              } catch (error) {
+                console.error(`[createNodes] Failed to create "${node.title}" at ${path}:`, error);
+                errorCount++;
               }
             }
           };
 
-          // Find Firefox root folder IDs
-          const toolbar = roots.find(r => r.type === 'toolbar');
-          const menu = roots.find(r => r.type === 'menu');
-          const unfiled = roots.find(r => r.type === 'unfiled');
-          const mobile = roots.find(r => r.type === 'mobile');
+          // Find Firefox root folder IDs from the fresh tree
+          // Firefox root folders have type 'folder' but unique IDs
+          console.log('[SYNC] Fresh roots:', freshRoots.map(r => ({ id: r.id, title: r.title, type: r.type })));
+          const toolbar = freshRoots.find(r => r.id === 'toolbar_____');
+          const menu = freshRoots.find(r => r.id === 'menu________');
+          const unfiled = freshRoots.find(r => r.id === 'unfiled_____');
+          const mobile = freshRoots.find(r => r.id === 'mobile______');
 
           // Recreate bookmark structure from Snippet
+          console.log('[SYNC] Starting bookmark creation from snippet data...');
+          console.log('[SYNC] Remote roots:', Object.keys(remoteSnippetData.roots || {}));
+          console.log('[SYNC] Found Firefox roots:', { toolbar: !!toolbar, menu: !!menu, unfiled: !!unfiled, mobile: !!mobile });
+
           if (remoteSnippetData.roots) {
             if (remoteSnippetData.roots.bookmark_bar && remoteSnippetData.roots.bookmark_bar.children && toolbar) {
-              await createNodes(remoteSnippetData.roots.bookmark_bar.children, toolbar.id);
+              console.log(`[SYNC] Creating ${remoteSnippetData.roots.bookmark_bar.children.length} items in Bookmarks Toolbar...`);
+              await createNodes(remoteSnippetData.roots.bookmark_bar.children, toolbar.id, 'Bookmarks Toolbar');
             }
 
             if (remoteSnippetData.roots.menu && remoteSnippetData.roots.menu.children && menu) {
-              await createNodes(remoteSnippetData.roots.menu.children, menu.id);
+              console.log(`[SYNC] Creating ${remoteSnippetData.roots.menu.children.length} items in Bookmarks Menu...`);
+              await createNodes(remoteSnippetData.roots.menu.children, menu.id, 'Bookmarks Menu');
             }
 
             if (remoteSnippetData.roots.other && remoteSnippetData.roots.other.children && unfiled) {
-              await createNodes(remoteSnippetData.roots.other.children, unfiled.id);
+              console.log(`[SYNC] Creating ${remoteSnippetData.roots.other.children.length} items in Other Bookmarks...`);
+              await createNodes(remoteSnippetData.roots.other.children, unfiled.id, 'Other Bookmarks');
             }
 
             if (remoteSnippetData.roots.mobile && remoteSnippetData.roots.mobile.children && mobile) {
-              await createNodes(remoteSnippetData.roots.mobile.children, mobile.id);
+              console.log(`[SYNC] Creating ${remoteSnippetData.roots.mobile.children.length} items in Mobile Bookmarks...`);
+              await createNodes(remoteSnippetData.roots.mobile.children, mobile.id, 'Mobile Bookmarks');
             }
           }
 
+          console.log(`[SYNC] Bookmark creation complete! Created: ${createdCount}, Errors: ${errorCount}`);
+
           // Update local version tracking
-          await snippetSync.setLocalVersion(remoteSnippetData.version || 1);
+          snippetLocalVersion = remoteSnippetData.version || 1;
+          await safeStorage.set({ snippet_local_version: snippetLocalVersion });
 
           showToast('Bookmarks synced successfully!');
           resolve(true);
 
           // Reload the bookmark view
-          await loadAndRenderBookmarks();
+          await loadBookmarks();
+          renderBookmarks();
         } catch (error) {
           console.error('Failed to apply remote changes:', error);
           showToast(`Error: ${error.message}`, 'error');
@@ -11542,7 +11913,7 @@ function setupEventListeners() {
 
       // Update snippet with merged data
       console.log('[mergeLocalBookmarksIntoSnippet] Updating snippet with merged data...');
-      await updateBookmarksInSnippet(snippetId, mergedTree, snippetData.version + 1);
+      await updateBookmarksInSnippet(mergedTree, snippetData.version + 1);
       console.log('[mergeLocalBookmarksIntoSnippet] Snippet updated successfully');
 
     } catch (error) {
@@ -11660,6 +12031,47 @@ function setupEventListeners() {
     }
   }
 
+  // Bidirectional merge: merges both local and remote changes together
+  async function mergeBidirectional() {
+    try {
+      showToast('Merging local and remote bookmarks...', 'info');
+
+      // Get both trees
+      const remoteData = await readBookmarksFromSnippet(snippetId);
+      const localTree = await browser.bookmarks.getTree();
+      const localInSnippetFormat = await firefoxBookmarksToSnippetFormat(localTree);
+
+      // STEP 1: Take a snapshot of current bookmarks before destructive merge
+      const preSyncSnapshot = JSON.parse(JSON.stringify(localInSnippetFormat));
+
+      // STEP 2: Clear all old changelog entries (they will have invalid IDs after merge)
+      await clearChangelog();
+
+      // STEP 3: Add a special changelog entry for this merge operation with full snapshot
+      await addChangelogEntry('pre-sync-snapshot', 'sync', 'Bidirectional Merge', null, {
+        snapshot: preSyncSnapshot,
+        timestamp: Date.now(),
+        operation: 'Bidirectional Merge'
+      });
+
+      // Merge in both directions
+      // First: merge remote into local
+      const remoteIntoLocal = mergeBookmarksIntoTree(remoteData, localInSnippetFormat);
+
+      // Second: merge local into the result (to ensure we don't lose any local changes)
+      const fullyMerged = mergeBookmarksIntoTree(localInSnippetFormat, remoteIntoLocal);
+
+      // Apply merged result to both local and remote (skip snapshot since we already took one above)
+      await applyRemoteChangesToFirefox(fullyMerged, true);
+      await updateBookmarksInSnippet(fullyMerged);
+
+      showToast('Merge completed successfully! All bookmarks preserved.', 'success');
+    } catch (error) {
+      console.error('[MergeBidirectional] Error:', error);
+      showToast(`Merge failed: ${error.message}`, 'error');
+    }
+  }
+
   async function handleSelectExistingSnippet() {
     try {
       showToast('Loading your Snippets...');
@@ -11721,9 +12133,9 @@ function setupEventListeners() {
             } else if (mergeChoice === 'merge') {
               // Merge local bookmarks into selected snippet
               showToast('Merging local bookmarks into snippet...');
-              await mergeLocalBookmarksIntoSnippet(selectedSnippetId);
               snippetId = selectedSnippetId;
               await safeStorage.set({ bmz_snippet_id: snippetId });
+              await mergeLocalBookmarksIntoSnippet(selectedSnippetId);
               updateGitLabButtonIcon();
               showToast('Merged and connected to snippet: ' + snippetId);
             } else if (mergeChoice === 'replace') {

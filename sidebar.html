@@ -2252,67 +2252,66 @@
       color: var(--md-sys-color-on-surface);
     }
 
-    /* Success Toast Styles */
-    #successToast {
+    /* Toast Container - stacks from bottom */
+    .toast-container {
       position: fixed;
-      top: 24px;
-      right: 24px;
-      z-index: 10001;
-      animation: slideIn 0.3s ease-out;
+      bottom: 60px; /* Just above status bar */
+      left: 0;
+      right: 0;
+      z-index: 10002;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      pointer-events: none;
+      padding: 0 16px;
     }
-    
-    #successToast.hidden {
-      display: none;
+
+    .toast {
+      pointer-events: auto;
+      width: 100%;
+      max-width: 500px;
+      animation: slideInFromBottom 0.3s ease-out;
     }
-    
-    #successToast .error-toast-content {
+
+    .toast.removing {
+      animation: slideOutToBottom 0.3s ease-out forwards;
+    }
+
+    .toast-content {
       display: flex;
       align-items: flex-start;
       gap: 12px;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    .toast-success .toast-content {
       background: var(--md-sys-color-success-container, #dcfce7);
       border: 1px solid var(--md-sys-color-success, #16a34a);
       color: var(--md-sys-color-on-success-container, #14532d);
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
-      min-width: 320px;
-      max-width: 480px;
-    }
-    
-    /* Error Toast Styles */
-    .error-toast {
-      position: fixed;
-      top: 24px;
-      right: 24px;
-      z-index: 10002;
-      animation: slideIn 0.3s ease-out;
-    }
-    
-    .error-toast.hidden {
-      display: none;
-    }
-    
-    .error-toast-content {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      background: var(--md-sys-color-error-container);
-      border: 1px solid var(--md-sys-color-error);
-      color: var(--md-sys-color-on-error-container);
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
-      min-width: 320px;
-      max-width: 480px;
     }
 
-    .error-toast-actions {
+    .toast-error .toast-content {
+      background: var(--md-sys-color-error-container, #fee2e2);
+      border: 1px solid var(--md-sys-color-error, #dc2626);
+      color: var(--md-sys-color-on-error-container, #7f1d1d);
+    }
+
+    .toast-info .toast-content {
+      background: var(--md-sys-color-primary-container);
+      border: 1px solid var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary-container);
+    }
+
+    .toast-actions {
       display: flex;
       align-items: center;
       gap: 8px;
     }
 
-    .error-btn {
+    .toast-btn {
       background: var(--md-sys-color-error);
       color: var(--md-sys-color-on-error);
       border: none;
@@ -2325,14 +2324,13 @@
       white-space: nowrap;
     }
 
-    .error-btn:hover {
+    .toast-btn:hover {
       opacity: 0.9;
       transform: scale(1.05);
     }
 
-    .error-dismiss {
+    .toast-dismiss {
       background: transparent;
-      color: var(--md-sys-color-on-error-container);
       border: none;
       font-size: 24px;
       line-height: 1;
@@ -2345,9 +2343,11 @@
       justify-content: center;
       border-radius: 4px;
       transition: all 0.2s;
+      color: inherit;
+      pointer-events: auto;
     }
 
-    .error-dismiss:hover {
+    .toast-dismiss:hover {
       background: rgba(0, 0, 0, 0.1);
     }
 
@@ -2359,6 +2359,28 @@
       to {
         opacity: 1;
         transform: translateX(0);
+      }
+    }
+
+    @keyframes slideInFromBottom {
+      from {
+        opacity: 0;
+        transform: translateY(100px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideOutToBottom {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(100px);
       }
     }
 
@@ -2386,9 +2408,14 @@
 <body class="blue-dark">
   <div class="header">
     <div class="header-settings">
-      <button id="manualSyncBtn" class="btn btn-icon" title="Sync bookmarks with GitLab snippets (Shift+Click to force push)" style="margin-right: 8px;">
-        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/>
+      <button id="manualSyncBtn" class="btn btn-icon" title="Sync bookmarks with GitLab snippets (Shift+Click to force push)">
+        <svg width="100%" height="100%" viewBox="0 0 24 24" style="display: block;">
+          <!-- GitLab icon as main/background (full size) -->
+          <path fill="#000000" d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
+          <!-- Sync arrows in center (overlay, shifted down) -->
+          <g transform="translate(12, 16) scale(0.56) translate(-12, -12)">
+            <path fill="#ffffff" d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/>
+          </g>
         </svg>
       </button>
       <button id="gitlabBtn" class="btn btn-icon" title="Connect your GitLab account" aria-label="GitLab account settings">
@@ -3007,8 +3034,8 @@
       </button>
       <span class="scan-btn-label">Scan All Bookmarks</span>
       <button class="stop-scan-btn" id="stopScanBtn" title="Stop Scanning" aria-label="Stop scanning" style="display: none;">
-        <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M18,18H6V6H18V18Z"/>
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8.27,3L3,8.27V15.73L8.27,21H15.73L21,15.73V8.27L15.73,3M8.41,7L12,10.59L15.59,7L17,8.41L13.41,12L17,15.59L15.59,17L12,13.41L8.41,17L7,15.59L10.59,12L7,8.41"/>
         </svg>
       </button>
     </div>
@@ -3146,37 +3173,8 @@
     </div>
   </div>
 
-  <!-- Success Toast -->
-  <div id="successToast" class="error-toast hidden" role="alert" aria-live="polite">
-    <div class="error-toast-content">
-      <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; color: var(--md-sys-color-success);">
-        <path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M11,16.5L6.5,12L7.91,10.59L11,13.67L16.59,8.09L18,9.5L11,16.5Z"/>
-      </svg>
-      <div style="flex: 1;">
-        <div id="successMessage" style="font-weight: 600; margin-bottom: 2px;">Success</div>
-      </div>
-      <div class="error-toast-actions">
-        <button id="successDismiss" class="error-dismiss">×</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Error Toast -->
-  <div id="errorToast" class="error-toast hidden" role="alert" aria-live="assertive">
-    <div class="error-toast-content">
-      <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; color: #dc2626;">
-        <path d="M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16"/>
-      </svg>
-      <div style="flex: 1;">
-        <div id="errorTitle" style="font-weight: 600; margin-bottom: 2px;">Error</div>
-        <div id="errorMessage" style="font-size: 12px; opacity: 0.9;">An unexpected error occurred</div>
-      </div>
-      <div class="error-toast-actions">
-        <button id="errorReload" class="error-btn">Reload</button>
-        <button id="errorDismiss" class="error-dismiss">×</button>
-      </div>
-    </div>
-  </div>
+  <!-- Toast Container (stacks from bottom) -->
+  <div id="toastContainer" class="toast-container"></div>
 
   <!-- Drag Mode Info Banner -->
   <div id="dragModeOverlay" style="display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; pointer-events: none;">
@@ -3227,6 +3225,6 @@
   </div>
 
   <script src="qrcode-lib.js"></script>
-  <script src="sidebar.js?v=20251117014"></script>
+  <script src="sidebar.js?v=20260104130149"></script>
 </body>
 </html>

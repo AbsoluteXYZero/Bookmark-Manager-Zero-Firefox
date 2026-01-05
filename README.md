@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
-    <img src="https://img.shields.io/badge/version-3.2-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-3.6-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -168,6 +168,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - 📋 **Duplicate Detection** - Find and manage duplicate bookmarks
 - ⏮️ **Undo System** - Restore recently deleted bookmarks
 - 📜 **Bookmark Changelog** - Track all bookmark and folder changes (creates, moves, deletes, renames) with persistent history
+- 💾 **Pre-Sync Snapshot Protection** - Automatic snapshots before sync operations with one-click restore to undo mistaken syncs
 - 🌍 **Favicon Display** - Show website icons
 
 ## Installation
@@ -569,7 +570,67 @@ Please report security vulnerabilities via GitLab Issues (mark as security issue
 
 ## Changelog
 
-### v3.2 (Current) - Real-time Progress Updates (All Scan Types)
+### v3.6 (Current) - Pre-Sync Snapshot & Restore
+
+**New Features:**
+- 💾 **Pre-Sync Snapshot Protection** - Automatic safety net for sync operations
+  - Creates complete bookmark snapshot before destructive sync operations (Pull Remote to Local, Bidirectional Merge)
+  - Stores full bookmark tree state before replacing with remote data
+  - Allows one-click restoration to pre-sync state if sync was done mistakenly
+  - Accessible via changelog with prominent "Restore Pre-Sync Bookmarks" button
+  - Clears old changelog entries (invalid IDs after sync) automatically
+  - Prevents data loss from accidental sync operations
+
+**How It Works:**
+- When you perform "Pull Remote to Local" or "Bidirectional Merge", a snapshot is automatically created
+- Changelog shows sync operation with orange sync icon and restore button
+- Click "Restore Pre-Sync Bookmarks" to undo the sync and restore your previous bookmarks
+- Confirms before restoration with clear warning about replacing current bookmarks
+- Works across all sync operations that replace bookmark IDs
+
+**User Experience:**
+- Clear visual indicators in changelog (orange sync icon)
+- Detailed confirmation dialogs prevent accidental restoration
+- Full transparency about what will be replaced
+- No manual backups needed - automatic protection for every sync
+
+---
+
+### v3.5 - Pretty-Printed Snippets
+
+**Improvements:**
+- 📄 **Pretty-Printed JSON Snippets** - GitLab snippets now use formatted JSON for better readability
+  - Changed from single-line compact JSON to pretty-printed format with 2-space indentation
+  - Makes snippet content much easier to read and debug when viewing in GitLab
+  - All future snippet creations and updates will use formatted JSON
+
+---
+
+### v3.4 - GitLab Sync Bug Fixes
+
+**Bug Fixes:**
+- 🐛 **Fixed GitLab Snippet Merge Error** - Resolved "No Snippet ID provided" error when merging local bookmarks into snippet
+  - Fixed parameter order mismatch in `updateBookmarksInSnippet()` function call at sidebar.js:11545
+  - Fixed global `snippetId` variable being set after merge operation instead of before at sidebar.js:11724-11725
+  - Merge operation now properly sets snippet ID before attempting to update
+  - Ensures smooth GitLab sync setup when merging local bookmarks with existing snippets
+- 🐛 **Fixed Missing calculateChecksum Function** - Resolved "calculateChecksum is not defined" error when creating new snippets
+  - Added missing standalone `calculateChecksum()` function at sidebar.js:10737
+  - Function was already present as a class method but missing as standalone utility
+  - Fixes snippet creation and update operations
+- 🐛 **Fixed Empty Snippet Creation** - Resolved issue where creating new snippet would create empty bookmark folders
+  - Fixed Firefox bookmark tree root folder detection at sidebar.js:10777-10780
+  - Changed from checking non-existent `rootFolder.root` property to checking `rootFolder.id`
+  - Now correctly identifies Firefox root folders: toolbar_____, menu________, unfiled_____, mobile______
+  - Snippets now properly include all bookmarks and folders when created
+- 🐛 **Fixed GitLab Button Not Updating** - GitLab button now properly changes to logout icon when logged in
+  - Updated `updateGitLabButtonIcon()` function at sidebar.js:10960-10978
+  - Button now shows logout icon when connected and GitLab logo when disconnected
+  - Matches Chrome version behavior for consistency
+
+---
+
+### v3.3 - Real-time Progress Updates (All Scan Types)
 
 **Improvements:**
 - 📊 **Universal Real-time Progress** - ALL scan types now update progress after every individual bookmark
