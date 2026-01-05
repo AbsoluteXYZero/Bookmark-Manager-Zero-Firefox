@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
-    <img src="https://img.shields.io/badge/version-3.6-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-3.7-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -570,7 +570,23 @@ Please report security vulnerabilities via GitLab Issues (mark as security issue
 
 ## Changelog
 
-### v3.6 (Current) - Pre-Sync Snapshot & Restore
+### v3.7 (Current) - UI Improvements
+
+**New Features:**
+- 🎨 **Enhanced GitLab Login Button** - GitLab tanuki icon now displays "LOGIN" text overlay for clarity
+  - Bold black text on white tanuki makes it immediately obvious this is a login button
+  - Automatically switches to logout icon when authenticated
+  - Improves user experience by making button purpose crystal clear
+
+**Improvements:**
+- 🔄 **Conditional Manual Sync Button** - Manual sync button now only appears when logged in
+  - Hides when not authenticated to keep UI clean
+  - Automatically shows/hides based on GitLab authentication state
+  - Reduces UI clutter for users not using GitLab sync
+
+---
+
+### v3.6 - Pre-Sync Snapshot & Restore
 
 **New Features:**
 - 💾 **Pre-Sync Snapshot Protection** - Automatic safety net for sync operations

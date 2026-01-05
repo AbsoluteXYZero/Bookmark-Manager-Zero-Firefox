@@ -11254,6 +11254,7 @@ function setupEventListeners() {
   function updateGitLabButtonIcon() {
     const gitlabBtnIcon = document.getElementById('gitlabBtnIcon');
     const gitlabBtn = document.getElementById('gitlabBtn');
+    const manualSyncBtn = document.getElementById('manualSyncBtn');
     if (!gitlabBtnIcon || !gitlabBtn) return;
 
     const isLoggedIn = snippetToken && snippetId;
@@ -11263,11 +11264,15 @@ function setupEventListeners() {
       gitlabBtnIcon.innerHTML = '<path d="M17,7l-1.41,1.41L18.17,11H8v2h10.17l-2.58,2.59L17,17l5-5L17,7z M4,5h8V3H4C2.9,3 2,3.9 2,5v14c0,1.1 0.9,2 2,2h8v-2H4V5z"/>';
       gitlabBtn.title = 'Logout from GitLab account';
       gitlabBtn.setAttribute('aria-label', 'Logout from GitLab account');
+      // Show manual sync button when logged in
+      if (manualSyncBtn) manualSyncBtn.style.display = '';
     } else {
-      // Show GitLab logo and update tooltip for not logged in state
-      gitlabBtnIcon.innerHTML = '<path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>';
+      // Show GitLab logo with "LOGIN" text overlay and update tooltip for not logged in state
+      gitlabBtnIcon.innerHTML = '<path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/><text x="12" y="15" font-size="5" font-weight="900" fill="#000000" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" letter-spacing="0.2">LOGIN</text>';
       gitlabBtn.title = 'Connect your GitLab account';
       gitlabBtn.setAttribute('aria-label', 'GitLab account settings');
+      // Hide manual sync button when not logged in
+      if (manualSyncBtn) manualSyncBtn.style.display = 'none';
     }
   }
 
