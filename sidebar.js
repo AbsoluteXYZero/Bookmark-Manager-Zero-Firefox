@@ -3459,17 +3459,7 @@ function setupBlocklistProgressListener() {
         updateBookmarkInTree(message.result.id, updates);
 
         // Update only the specific bookmark element (fast, non-blocking)
-        // Get the bookmark data to access its URL
-        const bookmark = findBookmarkById(bookmarkTree, message.result.id);
-        if (bookmark) {
-          updateBookmarkStatusInDOM(
-            message.result.id,
-            message.result.linkStatus,
-            message.result.safetyStatus,
-            message.result.safetySources || [],
-            bookmark.url
-          );
-        }
+        updateBookmarkStatusInDOM(message.result.id, updates);
       }
     } else if (message.type === 'scanComplete') {
       console.log(`[Background Scan] Complete - ${message.scanned}/${message.total} bookmarks scanned`);
@@ -4612,18 +4602,16 @@ async function autoCheckBookmarkStatuses() {
     // Update results for this batch (update data and DOM immediately)
     results.forEach(result => {
       // Find the original bookmark to get the URL
-      const bookmark = batch.find(b => b.id === result.id);
-      const url = bookmark ? bookmark.url : '';
-
       // Update the data structure
-      updateBookmarkInTree(result.id, {
+      const updates = {
         linkStatus: result.linkStatus,
         safetyStatus: result.safetyStatus,
         safetySources: result.safetySources
-      });
+      };
+      updateBookmarkInTree(result.id, updates);
 
       // Update the DOM immediately for this bookmark
-      updateBookmarkStatusInDOM(result.id, result.linkStatus, result.safetyStatus, result.safetySources, url);
+      updateBookmarkStatusInDOM(result.id, updates);
     });
 
     console.log(`Checked batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(bookmarksToCheck.length / BATCH_SIZE)} (${results.length} bookmarks)`);
@@ -6888,32 +6876,63 @@ function updateBookmarkInTree(bookmarkId, updates) {
 }
 
 // Update status indicators in DOM for a specific bookmark (without full re-render)
-function updateBookmarkStatusInDOM(bookmarkId, linkStatus, safetyStatus, safetySources, url) {
-  const bookmarkElement = document.querySelector(`.bookmark-item[data-id="${bookmarkId}"]`);
-  if (!bookmarkElement) return;
-
-  const statusIndicators = bookmarkElement.querySelector('.status-indicators');
-  if (!statusIndicators) return;
-
-  // Rebuild the status indicators HTML
-  // Shield (safety) on top, chain (link status) below
-  let statusIndicatorsHtml = '';
-  if (displayOptions.safetyStatus && safetyStatus) {
-    statusIndicatorsHtml += getShieldHtml(safetyStatus, url, safetySources);
-  }
-  if (displayOptions.liveStatus && linkStatus) {
-    statusIndicatorsHtml += getStatusDotHtml(linkStatus, url);
+function updateBookmarkStatusInDOM(bookmarkId, updates) {
+  const bookmarkElement = document.querySelector(`[data-id="${bookmarkId}"]`);
+  if (!bookmarkElement || !bookmarkElement.classList.contains('bookmark-item')) {
+    return; // Bookmark not currently visible or is a folder
   }
 
-  statusIndicators.innerHTML = statusIndicatorsHtml;
+  // Get the bookmark data from tree to access its URL
+  const bookmark = findBookmarkById(bookmarkTree, bookmarkId);
+  if (!bookmark) return;
 
-// FORCE IMMEDIATE DOM REFLOW to ensure visual update and prevent race condition
-statusIndicators.offsetHeight; // Trigger layout calculation
+  // Update status indicators container (for list view)
+  const statusIndicatorsContainer = bookmarkElement.querySelector('.status-indicators');
+  if (statusIndicatorsContainer && (displayOptions.safetyStatus || displayOptions.liveStatus)) {
+    let statusHtml = '';
 
-// Additional safeguard: force style recalculation on the parent element
-bookmarkElement.style.display = 'flex';
-bookmarkElement.offsetHeight; // Force complete reflow
-bookmarkElement.style.display = '';
+    if (displayOptions.safetyStatus && updates.safetyStatus) {
+      statusHtml += getShieldHtml(updates.safetyStatus, bookmark.url, updates.safetySources || []);
+    }
+
+    if (displayOptions.liveStatus && updates.linkStatus) {
+      statusHtml += getStatusDotHtml(updates.linkStatus, bookmark.url);
+    }
+
+    statusIndicatorsContainer.innerHTML = statusHtml;
+  }
+
+  // Update top row indicators (for grid view)
+  const topRow = bookmarkElement.querySelector('.bookmark-top-row');
+  if (topRow) {
+    // Update shield in top row
+    if (displayOptions.safetyStatus && updates.safetyStatus) {
+      const shieldHtml = getShieldHtml(updates.safetyStatus, bookmark.url, updates.safetySources || []);
+      const shieldContainer = topRow.querySelector('.safety-shield');
+      if (shieldContainer) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = shieldHtml;
+        const newShield = tempDiv.firstChild;
+        if (newShield) {
+          shieldContainer.replaceWith(newShield);
+        }
+      }
+    }
+
+    // Update link status in top row
+    if (displayOptions.liveStatus && updates.linkStatus) {
+      const linkStatusHtml = getStatusDotHtml(updates.linkStatus, bookmark.url);
+      const linkStatusContainer = topRow.querySelector('.link-status');
+      if (linkStatusContainer) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = linkStatusHtml;
+        const newLinkStatus = tempDiv.firstChild;
+        if (newLinkStatus) {
+          linkStatusContainer.replaceWith(newLinkStatus);
+        }
+      }
+    }
+  }
 }
 
 // Whitelist a bookmark (trust it regardless of safety checks)
