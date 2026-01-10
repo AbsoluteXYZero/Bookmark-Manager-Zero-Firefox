@@ -3458,10 +3458,17 @@ function setupBlocklistProgressListener() {
 
         updateBookmarkInTree(message.result.id, updates);
 
-        // Re-render if the bookmark is currently visible
-        const bookmarkElement = document.querySelector(`[data-id="${message.result.id}"]`);
-        if (bookmarkElement) {
-          renderBookmarks();
+        // Update only the specific bookmark element (fast, non-blocking)
+        // Get the bookmark data to access its URL
+        const bookmark = findBookmarkById(bookmarkTree, message.result.id);
+        if (bookmark) {
+          updateBookmarkStatusInDOM(
+            message.result.id,
+            message.result.linkStatus,
+            message.result.safetyStatus,
+            message.result.safetySources || [],
+            bookmark.url
+          );
         }
       }
     } else if (message.type === 'scanComplete') {
