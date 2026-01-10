@@ -1740,6 +1740,16 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (!isSameDay(now, lastUpdate) || maliciousUrlsSet.size === 0) {
         console.log('[Blocklist] Ensuring database is up to date...');
         await updateBlocklistDatabase();
+      } else {
+        console.log('[Blocklist] Using cached data from today');
+        // Send complete message so UI updates properly even when using cache
+        browser.runtime.sendMessage({
+          type: 'blocklistComplete',
+          domains: maliciousUrlsSet.size,
+          totalEntries: maliciousUrlsSet.size,
+          sources: BLOCKLIST_SOURCES.length,
+          success: true
+        }).catch(() => {}); // Ignore if no listeners
       }
       if (blocklistLoading) {
         await new Promise(resolve => {
