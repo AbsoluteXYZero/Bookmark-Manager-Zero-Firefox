@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
-    <img src="https://img.shields.io/badge/version-3.8-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-3.9-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -277,7 +277,7 @@ The extension can optionally use external services for enhanced features. **All 
 
 ### Default Services (can be disabled)
 - **WordPress mshots** - Website screenshot previews
-- **8 Blocklist Sources** - Dual URLhaus coverage (Active + Historical), BlockList Project (Malware/Phishing/Scam), HaGeZi TIF, Phishing-Filter, OISD Big
+- **9 Blocklist Sources** - Dual URLhaus coverage (Active + Historical), BlockList Project (Malware/Phishing/Scam), HaGeZi TIF, Phishing-Filter, OISD Big, FMHY Filterlist
 - **URLVoid** - Multi-source reputation analysis from 30+ security engines
 - **Google Favicons** - Website icons
 
@@ -402,7 +402,7 @@ The extension checks URLs against multiple threat databases to identify maliciou
 
 #### Phase 1: Blocklist Lookup (Free, No API Key Required)
 
-URLs are checked against eight community-maintained blocklists with dual URLhaus coverage:
+URLs are checked against nine community-maintained blocklists with dual URLhaus coverage:
 
 | Source | Type | Description | Entries |
 |--------|------|-------------|---------|
@@ -414,8 +414,9 @@ URLs are checked against eight community-maintained blocklists with dual URLhaus
 | **[HaGeZi TIF](https://github.com/hagezi/dns-blocklists)** | Threat Intel Feeds | Comprehensive malware, phishing, and scam domains | 608K |
 | **[Phishing-Filter](https://gitlab.com/malware-filter/phishing-filter)** | Phishing URLs | Aggregated phishing database from OpenPhish & PhishTank | ~21K |
 | **[OISD Big](https://oisd.nl/)** | Multi-source | Comprehensive blocklist aggregator covering malware, ads, trackers | ~215K |
+| **[FMHY Filterlist](https://github.com/fmhy/FMHYFilterlist)** | Unsafe Sites | Fake activators, malware distributors, unsafe download sites | ~282 |
 
-**Total Coverage**: **~1.35M unique malicious domains** after deduplication (from 1.6M total entries)
+**Total Coverage**: **~1.35M unique malicious domains** after deduplication
 
 **Implementation Details:**
 - Blocklists are downloaded and cached locally in IndexedDB
@@ -570,7 +571,17 @@ Please report security vulnerabilities via GitLab Issues (mark as security issue
 
 ## Changelog
 
-### v3.8 (Current) - Performance & Initialization Fixes
+### v3.9 (Current) - Added FMHY Filterlist
+
+**New Features:**
+- 🛡️ **Added FMHY Filterlist** - New blocklist source from the FMHY community
+  - Covers fake Windows activators (KMS-Pico variants), malware distributors, and unsafe download sites
+  - ~282 curated domains from actively maintained community list
+  - Complements existing blocklists with hand-curated unsafe site coverage
+
+---
+
+### v3.8 - Performance & Initialization Fixes
 
 **Bug Fixes:**
 - 🐛 **Fixed Status Bar Initialization** - Status bar now properly updates from "downloading blocklists (8/8)" to "Ready" on first load
@@ -1160,6 +1171,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **[HaGeZi TIF](https://github.com/hagezi/dns-blocklists)** - Threat Intelligence Feeds blocklist (608K entries)
 - **[Phishing-Filter](https://gitlab.com/malware-filter/phishing-filter)** - OpenPhish & PhishTank aggregated database (~21K entries)
 - **[OISD Big](https://oisd.nl/)** - Comprehensive blocklist aggregator (~215K entries)
+- **[FMHY Filterlist](https://github.com/fmhy/FMHYFilterlist)** - Curated unsafe sites list (~282 entries)
 - **[corsproxy.io](https://corsproxy.io/)** - CORS proxy service enabling access to abuse.ch official list
 - **[Google Safe Browsing API](https://developers.google.com/safe-browsing)** - Optional threat intelligence (requires API key)
 - **[Yandex Safe Browsing](https://yandex.com/dev/safebrowsing/)** - Optional geographic threat diversity (requires API key)

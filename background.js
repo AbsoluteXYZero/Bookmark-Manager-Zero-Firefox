@@ -682,6 +682,12 @@ const BLOCKLIST_SOURCES = [
     // Using GitHub mirror to avoid CORS issues with oisd.nl direct download
     url: 'https://raw.githubusercontent.com/sjhgvr/oisd/refs/heads/main/domainswild2_big.txt',
     format: 'domains' // Wildcard domains format
+  },
+  {
+    name: 'FMHY Filterlist',
+    // FMHY unsafe sites list - fake activators, malware distributors, unsafe piracy sites
+    url: 'https://raw.githubusercontent.com/fmhy/FMHYFilterlist/main/filterlist-basic-domains.txt',
+    format: 'domains' // Plain domain list (one per line)
   }
 ];
 
