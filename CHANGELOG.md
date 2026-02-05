@@ -7,6 +7,7 @@
 - Curated list of ~5K malware, scam, and phishing domains
 - Actively maintained with regular updates
 - Complements existing blocklists with hand-curated security coverage
+- Moved the syncChanges event emission to AFTER the data is saved in sync
 
 ---
 
