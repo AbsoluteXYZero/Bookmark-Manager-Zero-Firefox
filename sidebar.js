@@ -1660,18 +1660,7 @@ class SyncManager {
           return false; // Don't auto-sync, wait for user confirmation
         }
 
-        // No deletions - auto-sync with notification
-        if (diff.added.length > 0 || diff.moved.length > 0 || diff.modified.length > 0) {
-          // Emit event with diff data
-          this.emitEvent('syncChanges', {
-            diff,
-            remoteData,
-            requiresConfirmation: false,
-            message: `Remote has ${diff.added.length} addition(s), ${diff.moved.length} move(s), ${diff.modified.length} modification(s).`
-          });
-        }
-
-        // Save remote data to local
+        // Save remote data to local BEFORE emitting event
         await this.saveLocalBookmarks(remoteData);
         console.log('[SyncFromRemote] Saved remote data to local storage');
 
@@ -1680,6 +1669,17 @@ class SyncManager {
 
         this.lastSyncTime = Date.now();
         await safeStorage.set({ lastSync: this.lastSyncTime });
+
+        // No deletions - notify UI after data is saved
+        if (diff.added.length > 0 || diff.moved.length > 0 || diff.modified.length > 0) {
+          // Emit event with diff data (after save so UI can reload)
+          this.emitEvent('syncChanges', {
+            diff,
+            remoteData,
+            requiresConfirmation: false,
+            message: `Remote has ${diff.added.length} addition(s), ${diff.moved.length} move(s), ${diff.modified.length} modification(s).`
+          });
+        }
 
         console.log('[SyncFromRemote] Sync complete, version:', remoteData.version);
         return true; // Indicate that data was updated
