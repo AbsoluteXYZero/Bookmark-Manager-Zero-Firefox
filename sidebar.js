@@ -1338,20 +1338,15 @@ class SyncManager {
     }
     this._initialized = true;
 
-    console.log('[Init] Sync manager initializing...');
     this.provider = await authManager.getPreference('syncProvider') || 'gitlab';
-    console.log('Sync provider set to:', this.provider);
 
     // Load snippet ID from storage
     const savedId = snippetAdapter.loadSavedSnippetId();
     if (savedId) {
       this.snippetId = savedId;
-      console.log('Loaded Snippet ID from storage:', savedId);
 
       // Start auto-sync timer when GitLab account is connected
       this.startAutoSync();
-    } else {
-      console.log('[Init] No GitLab account connected - auto-sync disabled');
     }
   }
 
@@ -1847,11 +1842,8 @@ class SyncManager {
    * Load bookmarks from local storage
    */
   async loadLocalBookmarks() {
-    console.log('[SyncManager.loadLocalBookmarks] Loading from local storage...');
     const bookmarksRecord = await safeStorage.get('bookmarkTree');
-    console.log('[SyncManager.loadLocalBookmarks] Retrieved:', bookmarksRecord);
     const result = bookmarksRecord.bookmarkTree ? bookmarksRecord.bookmarkTree : this.getEmptyBookmarkTree();
-    console.log('[SyncManager.loadLocalBookmarks] Returning:', result);
     return result;
   }
 
@@ -1859,10 +1851,8 @@ class SyncManager {
    * Save bookmarks to local storage
    */
   async saveLocalBookmarks(bookmarkTree) {
-    console.log('[SyncManager.saveLocalBookmarks] Saving bookmarks to local storage:', bookmarkTree);
     try {
       await safeStorage.set({ bookmarkTree });
-      console.log('[SyncManager.saveLocalBookmarks] Successfully saved');
     } catch (error) {
       console.error('[SyncManager.saveLocalBookmarks] Failed to save:', error);
       throw error;
@@ -2509,8 +2499,6 @@ async function showSnippetSetup() {
  * Show main application after authentication (adapted from website)
  */
 async function showMainApp() {
-  console.log('[showMainApp] Starting main app initialization...');
-
   // Hide login screen
   const authSetupModal = document.getElementById('authSetupModal');
   if (authSetupModal) {
@@ -2525,12 +2513,10 @@ async function showMainApp() {
 
   // Initialize sync manager
   await syncManager.init();
-  console.log('Sync manager initialized');
 
   // Skip snippet setup and remote sync if in local mode
   const isLocalMode = localStorage.getItem('bmz_local_mode') === 'true';
   if (isLocalMode) {
-    console.log('[App] Local mode - skipping remote sync');
 
     // Hide logout button in local mode
     const logoutBtn = document.getElementById('logoutBtn');
@@ -2565,19 +2551,15 @@ async function showMainApp() {
   // Prevent duplicate sync operations
   if (!syncInProgress) {
     syncInProgress = true;
-    console.log('[App] Syncing bookmarks from remote...');
     try {
       // Check if we already have the latest data from checkSnippetSetup()
       // We can check if local bookmarks are already loaded and match the remote
       const localBookmarks = await syncManager.loadLocalBookmarks();
       const hasLocalBookmarks = localBookmarks && localBookmarks.roots && Object.keys(localBookmarks.roots).length > 0;
 
-      if (hasLocalBookmarks) {
-        console.log('[App] Already have bookmarks loaded, skipping sync');
-      } else {
+      if (!hasLocalBookmarks) {
         await syncManager.syncFromRemote();
       }
-      console.log('[App] Sync from remote complete');
     } catch (error) {
       console.warn('[App] Sync from remote failed, will use cached data:', error);
     } finally {
@@ -2587,16 +2569,12 @@ async function showMainApp() {
 
   // Load bookmarks and initialize UI
   await loadBookmarksAndInit();
-
-  console.log('Main app loaded successfully');
 }
 
 /**
  * Load bookmarks and initialize the main UI
  */
 async function loadBookmarksAndInit() {
-  console.log('[App] Loading bookmarks and initializing UI...');
-
   try {
     // Load bookmarks from local storage or remote
     await loadBookmarks();
@@ -3347,7 +3325,6 @@ async function loadFolderScanTimestamps() {
     const result = await browser.storage.local.get('folderScanTimestamps');
     if (result.folderScanTimestamps) {
       folderScanTimestamps = result.folderScanTimestamps;
-      console.log(`[Folder Scan Cache] Loaded timestamps for ${Object.keys(folderScanTimestamps).length} folders`);
     }
   } catch (error) {
     console.error('[Folder Scan Cache] Error loading timestamps:', error);
@@ -3359,7 +3336,6 @@ async function saveFolderScanTimestamp(folderId) {
   try {
     folderScanTimestamps[folderId] = Date.now();
     await browser.storage.local.set({ folderScanTimestamps });
-    console.log(`[Folder Scan Cache] Saved timestamp for folder ${folderId}`);
   } catch (error) {
     console.error('[Folder Scan Cache] Error saving timestamp:', error);
   }
@@ -3539,8 +3515,6 @@ async function initMainUI() {
 
 // Initialize (entry point - now handles authentication flow)
 async function init() {
-  console.log('Initializing Bookmark Manager Zero Firefox extension...');
-
   // Start the authentication and initialization flow
   await checkAuthAndInit();
 }
@@ -3950,7 +3924,6 @@ async function loadStartFolder() {
   try {
     const result = await safeStorage.get('startFolderId');
     startFolderId = result.startFolderId || null;
-    console.log(`Loaded start folder: ${startFolderId || 'Root'}`);
   } catch (error) {
     console.error('Error loading start folder preference:', error);
     startFolderId = null;
@@ -6908,7 +6881,7 @@ function updateBookmarkStatusInDOM(bookmarkId, updates) {
     // Update shield in top row
     if (displayOptions.safetyStatus && updates.safetyStatus) {
       const shieldHtml = getShieldHtml(updates.safetyStatus, bookmark.url, updates.safetySources || []);
-      const shieldContainer = topRow.querySelector('.safety-shield');
+      const shieldContainer = topRow.querySelector('.shield-indicator');
       if (shieldContainer) {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = shieldHtml;
@@ -6922,7 +6895,7 @@ function updateBookmarkStatusInDOM(bookmarkId, updates) {
     // Update link status in top row
     if (displayOptions.liveStatus && updates.linkStatus) {
       const linkStatusHtml = getStatusDotHtml(updates.linkStatus, bookmark.url);
-      const linkStatusContainer = topRow.querySelector('.link-status');
+      const linkStatusContainer = topRow.querySelector('.status-icon');
       if (linkStatusContainer) {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = linkStatusHtml;
@@ -11216,14 +11189,11 @@ function setupEventListeners() {
       }
 
       try {
-        console.log('[Snippet AutoSync] Running auto-sync...');
         await syncFromSnippet();
       } catch (error) {
         console.error('[Snippet AutoSync] Auto-sync failed:', error);
       }
     }, syncInterval);
-
-    console.log('[Snippet AutoSync] Auto-sync enabled (10-minute interval)');
   }
 
   // Stop auto-syncing Snippet
@@ -11231,7 +11201,6 @@ function setupEventListeners() {
     if (snippetSyncInterval) {
       clearInterval(snippetSyncInterval);
       snippetSyncInterval = null;
-      console.log('[Snippet AutoSync] Auto-sync disabled');
     }
   }
 
@@ -11253,20 +11222,17 @@ function setupEventListeners() {
 
       if (timeSinceLastSync < snippetMinSyncInterval) {
         const delayMs = snippetMinSyncInterval - timeSinceLastSync;
-        console.log('[SnippetPushSync] Rate limit: waiting', delayMs, 'ms before next sync');
         snippetPushDebounceTimer = setTimeout(markSnippetChanges, delayMs);
         return;
       }
 
       try {
-        console.log('[SnippetPushSync] Syncing local changes to Snippet...');
         await syncToSnippet();
       } catch (error) {
         console.error('[SnippetPushSync] Failed to sync:', error);
         // Retry after 5 seconds
         setTimeout(() => {
           if (snippetId && snippetToken && navigator.onLine) {
-            console.log('[SnippetPushSync] Retrying sync after 5 seconds...');
             syncToSnippet().catch(err => {
               console.error('[SnippetPushSync] Retry failed:', err);
             });
@@ -11925,27 +11891,20 @@ function setupEventListeners() {
   // Merge local bookmarks into existing snippet
   async function mergeLocalBookmarksIntoSnippet(snippetId) {
     try {
-      console.log('[mergeLocalBookmarksIntoSnippet] Starting merge process for snippet:', snippetId);
-
       // Get current snippet data
       const snippetData = await readBookmarksFromSnippet(snippetId);
-      console.log('[mergeLocalBookmarksIntoSnippet] Retrieved snippet data');
 
       // Get local Firefox bookmarks
       const localTree = await browser.bookmarks.getTree();
-      console.log('[mergeLocalBookmarksIntoSnippet] Retrieved local Firefox bookmarks');
 
       // Convert Firefox bookmarks to snippet format
       const localBookmarksInSnippetFormat = firefoxBookmarksToSnippetFormat(localTree[0]);
 
       // Merge local bookmarks into snippet data
       const mergedTree = mergeBookmarksIntoTree(localBookmarksInSnippetFormat, snippetData);
-      console.log('[mergeLocalBookmarksIntoSnippet] Merged tree created');
 
       // Update snippet with merged data
-      console.log('[mergeLocalBookmarksIntoSnippet] Updating snippet with merged data...');
       await updateBookmarksInSnippet(mergedTree, snippetData.version + 1);
-      console.log('[mergeLocalBookmarksIntoSnippet] Snippet updated successfully');
 
     } catch (error) {
       console.error('[mergeLocalBookmarksIntoSnippet] Error:', error);
@@ -11957,8 +11916,6 @@ function setupEventListeners() {
   // Preserves folder structure and merges into existing folders with same names
   function mergeBookmarksIntoTree(sourceTree, targetTree) {
     try {
-      console.log('[mergeBookmarksIntoTree] Merging bookmarks with folder structure preservation...');
-
       // Create a deep copy of the target tree
       const mergedTree = JSON.parse(JSON.stringify(targetTree));
 
@@ -11994,7 +11951,6 @@ function setupEventListeners() {
 
         if (existingFolder) {
           // Folder exists, merge contents
-          console.log(`[mergeBookmarksIntoTree] Merging into existing folder: ${sourceFolder.title}`);
           if (sourceFolder.children) {
             // Recursively merge each child
             sourceFolder.children.forEach(child => {
@@ -12012,16 +11968,12 @@ function setupEventListeners() {
                     id: `merged-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // New ID
                     dateAdded: Date.now()
                   });
-                  console.log(`[mergeBookmarksIntoTree] Added bookmark: ${child.title}`);
-                } else {
-                  console.log(`[mergeBookmarksIntoTree] Skipped duplicate bookmark: ${child.title}`);
                 }
               }
             });
           }
         } else {
           // Folder doesn't exist, add entire folder structure with regenerated IDs
-          console.log(`[mergeBookmarksIntoTree] Adding new folder: ${sourceFolder.title}`);
           const newFolder = regenerateIds(JSON.parse(JSON.stringify(sourceFolder)));
           targetParentChildren.push(newFolder);
         }
@@ -12050,9 +12002,6 @@ function setupEventListeners() {
                     id: `merged-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // New ID
                     dateAdded: Date.now()
                   });
-                  console.log(`[mergeBookmarksIntoTree] Added individual bookmark to ${rootKey}: ${item.title}`);
-                } else {
-                  console.log(`[mergeBookmarksIntoTree] Skipped duplicate bookmark in ${rootKey}: ${item.title}`);
                 }
               }
             });
@@ -12060,7 +12009,6 @@ function setupEventListeners() {
         });
       }
 
-      console.log('[mergeBookmarksIntoTree] Merge complete with folder structure preservation');
       return mergedTree;
     } catch (error) {
       console.error('[mergeBookmarksIntoTree] Error:', error);

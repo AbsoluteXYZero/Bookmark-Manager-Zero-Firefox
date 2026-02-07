@@ -785,28 +785,67 @@ const checkURLVoidScraping = async (url) => {
 
     console.log(`[URLVoid Scraping] Checking ${hostname}`);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
     const urlvoidUrl = `https://www.urlvoid.com/scan/${encodeURIComponent(hostname)}/`;
-    const response = await fetch(urlvoidUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
+    let html = null;
+
+    // Try direct fetch first (extensions have elevated privileges)
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(urlvoidUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
+        }
+      });
+
+      clearTimeout(timeout);
+
+      if (response.ok) {
+        html = await response.text();
+        console.log(`[URLVoid Scraping] Direct fetch succeeded for ${hostname}`);
+      } else {
+        console.log(`[URLVoid Scraping] Direct fetch failed: ${response.status}`);
       }
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      console.log(`[URLVoid Scraping] Failed to fetch URLVoid for ${hostname}: ${response.status}`);
-      return 'unknown';
+    } catch (directError) {
+      console.log(`[URLVoid Scraping] Direct fetch error: ${directError.message}`);
     }
 
-    const html = await response.text();
+    // Fallback to CORS proxies if direct fetch failed
+    if (!html) {
+      console.log(`[URLVoid Scraping] Trying CORS proxy fallback for ${hostname}`);
+      const corsProxies = [
+        `https://corsproxy.io/?${encodeURIComponent(urlvoidUrl)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(urlvoidUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlvoidUrl)}`
+      ];
 
-    console.log(`[URLVoid Scraping] HTML length: ${html.length}`);
-    console.log(`[URLVoid Scraping] Contains "detected":`, html.includes('detected'));
+      // Race all proxies in parallel
+      const fetchPromises = corsProxies.map(async (proxiedUrl) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+
+        try {
+          const response = await fetch(proxiedUrl, { signal: controller.signal });
+          clearTimeout(timeout);
+
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return await response.text();
+        } catch (error) {
+          clearTimeout(timeout);
+          throw error;
+        }
+      });
+
+      try {
+        html = await Promise.any(fetchPromises);
+        console.log(`[URLVoid Scraping] Proxy fallback succeeded for ${hostname}`);
+      } catch (aggregateError) {
+        console.log(`[URLVoid Scraping] All proxies failed for ${hostname}`);
+        return 'unknown';
+      }
+    }
 
     const detectedPattern = /detected/gi;
     const detectedMatches = html.match(detectedPattern) || [];
