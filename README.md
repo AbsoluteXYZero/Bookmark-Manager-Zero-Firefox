@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
-    <img src="https://img.shields.io/badge/version-4.1-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-4.2-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">

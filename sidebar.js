@@ -4756,20 +4756,6 @@ function renderBookmarks() {
 
   renderNodes(filtered, bookmarkList);
 
-  // Restore open menu state if menu was open before re-render
-  if (openMenuBookmarkId) {
-    // Use setTimeout to ensure DOM is fully rendered
-    setTimeout(() => {
-      const bookmarkDiv = document.querySelector(`[data-bookmark-id="${openMenuBookmarkId}"], [data-folder-id="${openMenuBookmarkId}"]`);
-      if (bookmarkDiv) {
-        const menu = bookmarkDiv.querySelector('.bookmark-actions');
-        if (menu) {
-          menu.classList.add('show');
-        }
-      }
-    }, 0);
-  }
-
   // Add a drop zone at the end of the root to allow dropping items there
   const dropZone = document.createElement('div');
   dropZone.className = 'root-drop-zone';
@@ -5111,56 +5097,6 @@ function createFolderElement(folder) {
       </div>
       <div class="folder-title">${escapeHtml(folderTitle)}</div>
       <button class="bookmark-menu-btn folder-menu-btn" aria-label="More actions for ${escapeHtml(folderTitle)} folder" aria-haspopup="true" aria-expanded="false">⋮</button>
-      <div class="bookmark-actions">
-        <button class="action-btn" data-action="rescan-folder">
-          <span class="icon">
-            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/>
-            </svg>
-          </span>
-          <span>Rescan Bookmarks in Folder</span>
-        </button>
-        <button class="action-btn" data-action="add-bookmark">
-          <span class="icon">
-            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/>
-            </svg>
-          </span>
-          <span>Add Bookmark Here</span>
-        </button>
-        <button class="action-btn" data-action="add-subfolder">
-          <span class="icon">
-            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M13,19V13H19V11H13V5H11V11H5V13H11V19H13M20,18H22V20H2V18H4V10A2,2 0 0,1 6,8H10V6A2,2 0 0,1 12,4H16A2,2 0 0,1 18,6V8H20A2,2 0 0,1 22,10V18M18,10H6V18H18V10M16,6H12V8H16V6Z"/>
-            </svg>
-          </span>
-          <span>Add Subfolder Here</span>
-        </button>
-        <button class="action-btn" data-action="rename">
-          <span class="icon">
-            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/>
-            </svg>
-          </span>
-          <span>Rename</span>
-        </button>
-        <button class="action-btn" data-action="move-to">
-          <span class="icon">
-            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18Z"/>
-            </svg>
-          </span>
-          <span>Move to...</span>
-        </button>
-        <button class="action-btn danger" data-action="delete">
-          <span class="icon">
-            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
-            </svg>
-          </span>
-          <span>Delete</span>
-        </button>
-      </div>
     </div>
     <div class="folder-children ${isExpanded ? 'show' : ''}" style="border-left: 2px solid #818cf8 !important;"></div>
   `;
@@ -5168,12 +5104,10 @@ function createFolderElement(folder) {
   // Add click handler for folder toggle
   const header = folderDiv.querySelector('.folder-header');
   const menuBtn = header.querySelector('.folder-menu-btn');
-  const actionsMenu = header.querySelector('.bookmark-actions');
 
   header.addEventListener('click', (e) => {
-    // Don't toggle if clicking menu button, menu items, or checkbox
+    // Don't toggle if clicking menu button or checkbox
     if (e.target.closest('.folder-menu-btn') ||
-        e.target.closest('.bookmark-actions') ||
         e.target.closest('.item-checkbox')) {
       return;
     }
@@ -5192,24 +5126,14 @@ function createFolderElement(folder) {
   // Add menu button handler
   menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleFolderMenu(folderDiv);
+    toggleFolderMenu(folder);
   });
 
   // Add right-click context menu support for folder
   folderDiv.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleFolderMenu(folderDiv);
-  });
-
-  // Add action button handlers
-  actionsMenu.querySelectorAll('.action-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const action = btn.dataset.action;
-      await handleFolderAction(action, folder);
-      closeAllMenus();
-    });
+    toggleFolderMenu(folder);
   });
 
   // Drag and drop handlers for folders (attach to header, not entire folderDiv)
@@ -5336,128 +5260,6 @@ function createBookmarkElement(bookmark) {
       ${bookmarkInfoHtml}
     </div>
     <button class="bookmark-menu-btn" aria-label="More actions for ${escapeHtml(bookmarkTitle)}" aria-haspopup="true" aria-expanded="false">⋮</button>
-    <div class="bookmark-actions">
-      <button class="action-btn" data-action="open">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M3.9,12C3.9,10.29 5.29,8.9 7,8.9H11V7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H11V15.1H7C5.29,15.1 3.9,13.71 3.9,12M8,13H16V11H8V13M17,7H13V8.9H17C18.71,8.9 20.1,10.29 20.1,12C20.1,13.71 18.71,15.1 17,15.1H13V17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7Z"/>
-          </svg>
-        </span>
-        <span>Open</span>
-      </button>
-      <button class="action-btn" data-action="open-new-tab">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/>
-          </svg>
-        </span>
-        <span>Open in New Tab</span>
-      </button>
-      <button class="action-btn" data-action="open-new-window">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M19,19H5V5H19M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M13.96,12.29L11.21,15.83L9.25,13.47L6.5,17H17.5L13.96,12.29Z"/>
-          </svg>
-        </span>
-        <span>Open in New Window</span>
-      </button>
-      <button class="action-btn" data-action="reader-view">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M21,4H3A2,2 0 0,0 1,6V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19V6A2,2 0 0,0 21,4M3,19V6H11V19H3M21,19H13V6H21V19M14,9.5H20V11H14V9.5M14,12H20V13.5H14V12M14,14.5H20V16H14V14.5Z"/>
-          </svg>
-        </span>
-        <span>Open with Textise</span>
-      </button>
-      <button class="action-btn" data-action="save-pdf">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10.1,11.4C10.08,11.44 9.81,13.16 8,16.09C8,16.09 4.5,17.91 5.33,19.27C6,20.35 7.65,19.23 9.07,16.59C9.07,16.59 10.89,15.95 13.31,15.77C13.31,15.77 17.17,17.5 17.7,15.66C18.22,13.8 14.64,14.22 14,14.41C14,14.41 12,13.06 11.5,11.2C11.5,11.2 12.64,7.25 10.89,7.3C9.14,7.35 9.8,10.43 10.1,11.4M10.91,12.44C10.94,12.45 11.38,13.65 12.8,14.9C12.8,14.9 10.47,15.36 9.41,15.8C9.41,15.8 10.41,14.07 10.91,12.44M14.84,15.16C15.42,15 17,14.91 16.88,15.45C16.78,15.97 14.88,15.23 14.84,15.16M10.58,10.34C10.58,10.34 9.7,8.24 10.38,8.23C11.07,8.22 10.88,10.05 10.58,10.34Z"/>
-          </svg>
-        </span>
-        <span>Save Page as PDF</span>
-      </button>
-      <button class="action-btn" data-action="recheck">
-        <span class="icon">
-          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-        </span>
-        <span>Recheck Security Status</span>
-      </button>
-      <button class="action-btn" data-action="whitelist">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z"/>
-          </svg>
-        </span>
-        <span>Whitelist (Trust Site)</span>
-      </button>
-      <button class="action-btn" data-action="virustotal">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,5A3,3 0 0,1 15,8A3,3 0 0,1 12,11A3,3 0 0,1 9,8A3,3 0 0,1 12,5M17.13,17C15.92,18.85 14.11,20.24 12,20.92C9.89,20.24 8.08,18.85 6.87,17C6.53,16.5 6.24,16 6,15.47C6,13.82 8.71,12.47 12,12.47C15.29,12.47 18,13.79 18,15.47C17.76,16 17.47,16.5 17.13,17Z"/>
-          </svg>
-        </span>
-        <span>Check on VirusTotal</span>
-      </button>
-      <button class="action-btn" data-action="qr-code">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M3,11H11V3H3M5,5H9V9H5M13,3V11H21V3M19,9H15V5H19M3,21H11V13H3M5,15H9V19H5M19,19V21H21V19M13,13H15V15H13M15,15H17V17H15M17,17H19V19H17M19,13V15H21V13M13,21H15V19H13M15,19H17V21H15Z"/>
-          </svg>
-        </span>
-        <span>Generate QR Code</span>
-      </button>
-      <button class="action-btn" data-action="wayback-save">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/>
-          </svg>
-        </span>
-        <span>Save to Wayback Machine</span>
-      </button>
-      <button class="action-btn" data-action="wayback-browse">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M16.59,7.58L10,14.17L7.41,11.59L6,13L10,17L18,9L16.59,7.58Z"/>
-          </svg>
-        </span>
-        <span>Browse Wayback Snapshots</span>
-      </button>
-      <button class="action-btn" data-action="copy-url">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"/>
-          </svg>
-        </span>
-        <span>Copy URL</span>
-      </button>
-      <button class="action-btn" data-action="edit">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/>
-          </svg>
-        </span>
-        <span>Edit</span>
-      </button>
-      <button class="action-btn" data-action="move-to">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18Z"/>
-          </svg>
-        </span>
-        <span>Move to...</span>
-      </button>
-      <button class="action-btn danger" data-action="delete">
-        <span class="icon">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
-          </svg>
-        </span>
-        <span>Delete</span>
-      </button>
-    </div>
     <div class="bookmark-preview-container">
       <div class="preview-loading">Loading...</div>
       <img class="preview-image" alt="Preview" data-url="${escapeHtml(bookmark.url)}" />
@@ -5466,9 +5268,8 @@ function createBookmarkElement(bookmark) {
 
   // Add click handler for bookmark (open in current tab)
   bookmarkDiv.addEventListener('click', (e) => {
-    // Don't open if clicking on menu, actions, preview, status indicators, or checkbox
+    // Don't open if clicking on menu, preview, status indicators, or checkbox
     if (e.target.closest('.bookmark-menu-btn') ||
-        e.target.closest('.bookmark-actions') ||
         e.target.closest('.bookmark-preview-container') ||
         e.target.closest('.status-indicators') ||
         e.target.closest('.bookmark-top-row') ||
@@ -5502,24 +5303,14 @@ function createBookmarkElement(bookmark) {
   const menuBtn = bookmarkDiv.querySelector('.bookmark-menu-btn');
   menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleBookmarkMenu(bookmarkDiv);
+    toggleBookmarkMenu(bookmark);
   });
 
   // Add right-click context menu support
   bookmarkDiv.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleBookmarkMenu(bookmarkDiv);
-  });
-
-  // Add action handlers
-  const actions = bookmarkDiv.querySelectorAll('.action-btn');
-  actions.forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      handleBookmarkAction(btn.dataset.action, bookmark);
-      closeAllMenus();
-    });
+    toggleBookmarkMenu(bookmark);
   });
 
   // Drag and drop handlers
@@ -6155,161 +5946,161 @@ function toggleFolder(folderId, folderElement) {
   renderBookmarks();
 }
 
-// Toggle bookmark menu
-function toggleBookmarkMenu(bookmarkDiv) {
-  const menu = bookmarkDiv.querySelector('.bookmark-actions');
-  const isOpen = menu.classList.contains('show');
-  const bookmarkId = bookmarkDiv.dataset.bookmarkId;
-
-  // Close all other menus
-  closeAllMenus();
-
-  // Toggle this menu
-  if (!isOpen) {
-    menu.classList.add('show');
-    openMenuBookmarkId = bookmarkId; // Track which menu is open
-
-    // Reposition menu if it overflows viewport
-    repositionMenuIfNeeded(menu, bookmarkDiv);
-  } else {
-    openMenuBookmarkId = null;
-  }
+// Toggle bookmark menu - opens context menu modal
+function toggleBookmarkMenu(bookmark) {
+  openContextMenuModal(bookmark, false);
 }
 
-// Toggle folder menu
-function toggleFolderMenu(folderDiv) {
-  const menu = folderDiv.querySelector('.bookmark-actions');
-  const isOpen = menu.classList.contains('show');
-  const folderId = folderDiv.dataset.folderId;
-
-  // Close all other menus
-  closeAllMenus();
-
-  // Toggle this menu
-  if (!isOpen) {
-    menu.classList.add('show');
-    openMenuBookmarkId = folderId; // Track which menu is open
-
-    // Reposition menu if it overflows viewport
-    repositionMenuIfNeeded(menu, folderDiv);
-  } else {
-    openMenuBookmarkId = null;
-  }
+// Toggle folder menu - opens context menu modal
+function toggleFolderMenu(folder) {
+  openContextMenuModal(folder, true);
 }
 
-// Reposition menu if it would overflow the viewport
-function repositionMenuIfNeeded(menu, parentElement) {
-  // Use requestAnimationFrame to ensure menu is rendered before measuring
-  requestAnimationFrame(() => {
-    const menuRect = menu.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const parentRect = parentElement.getBoundingClientRect();
-    const menuHeight = menuRect.height;
+// Open context menu as a modal panel
+function openContextMenuModal(item, isFolder) {
+  const modal = document.getElementById('contextMenuModal');
+  const title = document.getElementById('contextMenuModalTitle');
+  const body = document.getElementById('contextMenuModalBody');
 
-    // Get toolbar height to ensure menus don't extend behind it
-    const toolbar = document.querySelector('.toolbar');
-    const toolbarHeight = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+  // Set title
+  const displayTitle = item.title || (isFolder ? 'Untitled Folder' : 'Untitled Bookmark');
+  title.textContent = displayTitle;
 
-    // Calculate available space above and below the parent element
-    // Space above should not include area behind toolbar
-    const spaceAbove = parentRect.top - toolbarHeight;
-    const spaceBelow = viewportHeight - parentRect.bottom;
+  // Build action buttons
+  let buttonsHtml = '';
 
-    // Reset styles
-    menu.style.maxHeight = '';
-    menu.style.overflowY = '';
+  if (isFolder) {
+    buttonsHtml = `
+      <button class="action-btn" data-action="rescan-folder">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/></svg></span>
+        <span>Rescan Bookmarks in Folder</span>
+      </button>
+      <button class="action-btn" data-action="add-bookmark">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg></span>
+        <span>Add Bookmark Here</span>
+      </button>
+      <button class="action-btn" data-action="add-subfolder">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M13,19V13H19V11H13V5H11V11H5V13H11V19H13M20,18H22V20H2V18H4V10A2,2 0 0,1 6,8H10V6A2,2 0 0,1 12,4H16A2,2 0 0,1 18,6V8H20A2,2 0 0,1 22,10V18M18,10H6V18H18V10M16,6H12V8H16V6Z"/></svg></span>
+        <span>Add Subfolder Here</span>
+      </button>
+      <button class="action-btn" data-action="rename">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg></span>
+        <span>Rename</span>
+      </button>
+      <button class="action-btn" data-action="move-to">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18Z"/></svg></span>
+        <span>Move to...</span>
+      </button>
+      <button class="action-btn danger" data-action="delete">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg></span>
+        <span>Delete</span>
+      </button>
+    `;
+  } else {
+    buttonsHtml = `
+      <button class="action-btn" data-action="open">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M3.9,12C3.9,10.29 5.29,8.9 7,8.9H11V7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H11V15.1H7C5.29,15.1 3.9,13.71 3.9,12M8,13H16V11H8V13M17,7H13V8.9H17C18.71,8.9 20.1,10.29 20.1,12C20.1,13.71 18.71,15.1 17,15.1H13V17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7Z"/></svg></span>
+        <span>Open</span>
+      </button>
+      <button class="action-btn" data-action="open-new-tab">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/></svg></span>
+        <span>Open in New Tab</span>
+      </button>
+      <button class="action-btn" data-action="open-new-window">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M19,19H5V5H19M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M13.96,12.29L11.21,15.83L9.25,13.47L6.5,17H17.5L13.96,12.29Z"/></svg></span>
+        <span>Open in New Window</span>
+      </button>
+      <button class="action-btn" data-action="reader-view">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M21,4H3A2,2 0 0,0 1,6V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19V6A2,2 0 0,0 21,4M3,19V6H11V19H3M21,19H13V6H21V19M14,9.5H20V11H14V9.5M14,12H20V13.5H14V12M14,14.5H20V16H14V14.5Z"/></svg></span>
+        <span>Open with Textise</span>
+      </button>
+      <button class="action-btn" data-action="save-pdf">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10.1,11.4C10.08,11.44 9.81,13.16 8,16.09C8,16.09 4.5,17.91 5.33,19.27C6,20.35 7.65,19.23 9.07,16.59C9.07,16.59 10.89,15.95 13.31,15.77C13.31,15.77 17.17,17.5 17.7,15.66C18.22,13.8 14.64,14.22 14,14.41C14,14.41 12,13.06 11.5,11.2C11.5,11.2 12.64,7.25 10.89,7.3C9.14,7.35 9.8,10.43 10.1,11.4M10.91,12.44C10.94,12.45 11.38,13.65 12.8,14.9C12.8,14.9 10.47,15.36 9.41,15.8C9.41,15.8 10.41,14.07 10.91,12.44M14.84,15.16C15.42,15 17,14.91 16.88,15.45C16.78,15.97 14.88,15.23 14.84,15.16M10.58,10.34C10.58,10.34 9.7,8.24 10.38,8.23C11.07,8.22 10.88,10.05 10.58,10.34Z"/></svg></span>
+        <span>Save Page as PDF</span>
+      </button>
+      <button class="action-btn" data-action="recheck">
+        <span class="icon"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></span>
+        <span>Recheck Security Status</span>
+      </button>
+      <button class="action-btn" data-action="whitelist">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z"/></svg></span>
+        <span>Whitelist (Trust Site)</span>
+      </button>
+      <button class="action-btn" data-action="virustotal">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,5A3,3 0 0,1 15,8A3,3 0 0,1 12,11A3,3 0 0,1 9,8A3,3 0 0,1 12,5M17.13,17C15.92,18.85 14.11,20.24 12,20.92C9.89,20.24 8.08,18.85 6.87,17C6.53,16.5 6.24,16 6,15.47C6,13.82 8.71,12.47 12,12.47C15.29,12.47 18,13.79 18,15.47C17.76,16 17.47,16.5 17.13,17Z"/></svg></span>
+        <span>Check on VirusTotal</span>
+      </button>
+      <button class="action-btn" data-action="qr-code">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M3,11H11V3H3M5,5H9V9H5M13,3V11H21V3M19,9H15V5H19M3,21H11V13H3M5,15H9V19H5M19,19V21H21V19M13,13H15V15H13M15,15H17V17H15M17,17H19V19H17M19,13V15H21V13M13,21H15V19H13M15,19H17V21H15Z"/></svg></span>
+        <span>Generate QR Code</span>
+      </button>
+      <button class="action-btn" data-action="wayback-save">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg></span>
+        <span>Save to Wayback Machine</span>
+      </button>
+      <button class="action-btn" data-action="wayback-browse">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M16.59,7.58L10,14.17L7.41,11.59L6,13L10,17L18,9L16.59,7.58Z"/></svg></span>
+        <span>Browse Wayback Snapshots</span>
+      </button>
+      <button class="action-btn" data-action="copy-url">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"/></svg></span>
+        <span>Copy URL</span>
+      </button>
+      <button class="action-btn" data-action="edit">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg></span>
+        <span>Edit</span>
+      </button>
+      <button class="action-btn" data-action="move-to">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18Z"/></svg></span>
+        <span>Move to...</span>
+      </button>
+      <button class="action-btn danger" data-action="delete">
+        <span class="icon"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg></span>
+        <span>Delete</span>
+      </button>
+    `;
+  }
 
-    // Determine positioning
-    let positionAbove = false;
-    let needsConstraint = false;
-    let constrainedHeight = 0;
+  body.innerHTML = buttonsHtml;
 
-    if (menuHeight <= spaceBelow) {
-      // Fits below - use default positioning
-      positionAbove = false;
-    } else if (menuHeight <= spaceAbove) {
-      // Fits above - position menu above
-      positionAbove = true;
-    } else if (spaceBelow >= spaceAbove) {
-      // More space below - constrain height
-      positionAbove = false;
-      needsConstraint = true;
-      constrainedHeight = Math.max(spaceBelow - 8, 100);
-    } else {
-      // More space above - constrain height
-      positionAbove = true;
-      needsConstraint = true;
-      constrainedHeight = Math.max(spaceAbove - 8, 100);
-    }
-
-    // Apply positioning
-    if (positionAbove) {
-      menu.style.top = 'auto';
-      menu.style.bottom = '100%';
-      menu.style.marginTop = '0';
-      menu.style.marginBottom = '4px';
-    } else {
-      menu.style.top = '100%';
-      menu.style.bottom = 'auto';
-      menu.style.marginTop = '4px';
-      menu.style.marginBottom = '0';
-    }
-
-    // Apply height constraint if needed
-    if (needsConstraint) {
-      menu.style.maxHeight = `${constrainedHeight}px`;
-      menu.style.overflowY = 'auto';
-    }
-
-    // Final safety check - ensure menu is within viewport after positioning
-    requestAnimationFrame(() => {
-      const finalRect = menu.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const margin = 16; // Safety margin from edges
-
-      // Check if menu extends behind toolbar at top
-      if (finalRect.top < toolbarHeight) {
-        const overflow = toolbarHeight - finalRect.top;
-        const currentMaxHeight = parseInt(menu.style.maxHeight) || finalRect.height;
-        menu.style.maxHeight = `${currentMaxHeight - overflow - 8}px`;
-        menu.style.overflowY = 'auto';
-        // Reposition menu to start just below toolbar if positioned above
-        if (positionAbove) {
-          menu.style.top = `${toolbarHeight}px`;
-          menu.style.bottom = 'auto';
-          menu.style.position = 'fixed';
-        }
-      }
-
-      // Check if menu extends beyond bottom of viewport
-      if (finalRect.bottom > viewportHeight) {
-        const overflow = finalRect.bottom - viewportHeight;
-        const currentMaxHeight = parseInt(menu.style.maxHeight) || finalRect.height;
-        menu.style.maxHeight = `${currentMaxHeight - overflow - 8}px`;
-        menu.style.overflowY = 'auto';
-      }
-
-      // Check if menu extends beyond left edge
-      if (finalRect.left < margin) {
-        menu.style.left = `${margin - parentRect.left}px`;
-        menu.style.right = 'auto';
-      }
-
-      // Check if menu extends beyond right edge
-      if (finalRect.right > viewportWidth - margin) {
-        // Position menu so its right edge is at viewport - margin
-        menu.style.left = 'auto';
-        menu.style.right = `${parentRect.right - (viewportWidth - margin)}px`;
-      }
-
-      // Ensure menu width doesn't exceed viewport width minus margins
-      const maxWidth = viewportWidth - (margin * 2);
-      if (finalRect.width > maxWidth) {
-        menu.style.maxWidth = `${maxWidth}px`;
-        menu.style.overflowX = 'hidden';
+  // Add click handlers to all action buttons
+  body.querySelectorAll('.action-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      closeContextMenuModal();
+      if (isFolder) {
+        await handleFolderAction(action, item);
+      } else {
+        await handleBookmarkAction(action, item);
       }
     });
   });
+
+  // Show modal
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+  trapFocus(modal);
+}
+
+// Close context menu modal
+function closeContextMenuModal() {
+  const modal = document.getElementById('contextMenuModal');
+  if (!modal || modal.classList.contains('hidden')) return;
+  const content = modal.querySelector('.context-menu-modal-content');
+  if (content) {
+    content.classList.add('closing');
+    content.addEventListener('animationend', () => {
+      content.classList.remove('closing');
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+      releaseFocusTrap();
+    }, { once: true });
+  } else {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    releaseFocusTrap();
+  }
 }
 
 // Handle folder actions
@@ -6810,16 +6601,7 @@ function positionFixedDropdown(dropdown, button) {
 // Close all open menus
 function closeAllMenus() {
   openMenuBookmarkId = null; // Clear tracked menu state
-  document.querySelectorAll('.bookmark-actions.show').forEach(menu => {
-    menu.classList.remove('show');
-    // Reset positioning styles
-    menu.style.top = '';
-    menu.style.bottom = '';
-    menu.style.marginTop = '';
-    menu.style.marginBottom = '';
-    menu.style.maxHeight = '';
-    menu.style.overflowY = '';
-  });
+  closeContextMenuModal();
 
   // Close and reset toolbar menus
   [settingsMenu, themeMenu, viewMenu, zoomMenu].forEach(menu => {
@@ -10275,7 +10057,7 @@ function setupEventListeners() {
       return;
     }
 
-    if (!e.target.closest('.bookmark-actions') &&
+    if (!e.target.closest('#contextMenuModal .modal-content') &&
         !e.target.closest('.bookmark-menu-btn') &&
         !e.target.closest('.bookmark-preview-container') &&
         !e.target.closest('.settings-menu') &&
@@ -10379,6 +10161,20 @@ function setupEventListeners() {
       saveMoveToModal();
     } else if (e.key === 'Escape') {
       closeMoveToModal();
+    }
+  });
+
+  // Context menu modal event listeners
+  const contextMenuModal = document.getElementById('contextMenuModal');
+  const contextMenuModalClose = document.getElementById('contextMenuModalClose');
+  const contextMenuModalOverlay = contextMenuModal.querySelector('.modal-overlay');
+
+  contextMenuModalClose.addEventListener('click', closeContextMenuModal);
+  contextMenuModalOverlay.addEventListener('click', closeContextMenuModal);
+
+  contextMenuModal.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeContextMenuModal();
     }
   });
 
@@ -12138,6 +11934,23 @@ function setupEventListeners() {
             </div>
           </button>
 
+          <button id="replaceRemote" style="
+            background: var(--md-sys-color-secondary-container, #2a3a2a);
+            color: var(--md-sys-color-on-secondary-container, #b8f0b8);
+            border: none;
+            padding: 12px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            text-align: left;
+            border-left: 4px solid #4caf50;
+          ">
+            <div style="font-weight: 500;">Replace Remote Snippet with Local</div>
+            <div style="font-size: 0.9em; opacity: 0.8; margin-top: 4px;">
+              Overwrite the ${snippetText} with your local bookmarks
+            </div>
+          </button>
+
           <button id="replaceLocal" style="
             background: var(--md-sys-color-error-container, #3a2a2a);
             color: var(--md-sys-color-on-error-container, #ffb4ab);
@@ -12149,7 +11962,7 @@ function setupEventListeners() {
             text-align: left;
             border-left: 4px solid var(--md-sys-color-error, #f87171);
           ">
-            <div style="font-weight: 500;">Replace with Snippet</div>
+            <div style="font-weight: 500;">Replace Local with Remote Snippet</div>
             <div style="font-size: 0.9em; opacity: 0.8; margin-top: 4px;">
               Use the ${snippetText} only (your local bookmarks will be lost)
             </div>
@@ -12169,6 +11982,11 @@ function setupEventListeners() {
       dialog.querySelector('#doMerge').addEventListener('click', () => {
         modal.remove();
         resolve('merge');
+      });
+
+      dialog.querySelector('#replaceRemote').addEventListener('click', () => {
+        modal.remove();
+        resolve('replace-remote');
       });
 
       dialog.querySelector('#replaceLocal').addEventListener('click', () => {
@@ -12198,6 +12016,18 @@ function setupEventListeners() {
 
     } catch (error) {
       console.error('[mergeLocalBookmarksIntoSnippet] Error:', error);
+      throw error;
+    }
+  }
+
+  // Replace remote snippet with local Firefox bookmarks
+  async function replaceRemoteWithLocal(snippetId) {
+    try {
+      const localTree = await browser.bookmarks.getTree();
+      const localInSnippetFormat = await firefoxBookmarksToSnippetFormat(localTree);
+      await updateBookmarksInSnippet(localInSnippetFormat);
+    } catch (error) {
+      console.error('[replaceRemoteWithLocal] Error:', error);
       throw error;
     }
   }
@@ -12413,6 +12243,18 @@ function setupEventListeners() {
               await mergeLocalBookmarksIntoSnippet(selectedSnippetId);
               updateGitLabButtonIcon();
               showToast('Merged and connected to snippet: ' + snippetId);
+            } else if (mergeChoice === 'replace-remote') {
+              // Replace remote snippet with local bookmarks
+              snippetId = selectedSnippetId;
+              await safeStorage.set({ bmz_snippet_id: snippetId });
+              updateGitLabButtonIcon();
+              try {
+                await replaceRemoteWithLocal(selectedSnippetId);
+                showToast('Remote snippet replaced with local bookmarks.');
+              } catch (error) {
+                console.error('Failed to replace remote snippet:', error);
+                showToast(`Error: ${error.message}`, 'error');
+              }
             } else if (mergeChoice === 'replace') {
               // Replace local bookmarks with snippet data
               snippetId = selectedSnippetId;

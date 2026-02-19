@@ -280,8 +280,7 @@
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
     }
 
-    /* Context menu blur - ONLY when .show class is active */
-    .enhanced-gray .bookmark-actions.show,
+    /* Context menu blur for settings menus */
     .enhanced-gray .settings-menu {
       backdrop-filter: blur(40px) saturate(180%) !important;
       -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
@@ -290,8 +289,7 @@
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
     }
 
-    /* Tinted theme context menus - light style like header */
-    .tinted .bookmark-actions.show,
+    /* Tinted theme settings menus - light style like header */
     .tinted .settings-menu {
       backdrop-filter: blur(40px) saturate(180%) !important;
       -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
@@ -832,16 +830,6 @@
       z-index: 2;
     }
 
-    /* Disable hover transform when menu is open to prevent position shifts */
-    .bookmark-item:has(.bookmark-actions.show) {
-      z-index: 10000;
-      transform: none;
-    }
-
-    .bookmark-item:has(.bookmark-actions.show):hover {
-      transform: none;
-    }
-
     .bookmark-item:active {
       cursor: grabbing;
       transform: scale(1.02);
@@ -1160,29 +1148,7 @@
     }
 
     .bookmark-actions {
-      position: absolute;
-      top: 100%;
-      right: 12px;
-      margin-top: 2px;
-      background: var(--md-sys-color-surface);
-      border: 1px solid var(--md-sys-color-outline-variant);
-      border-radius: 12px;
-      padding: 6px 0;
-      box-shadow: var(--md-elevation-3);
-      z-index: 9999;
-      min-width: 180px;
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(-2px);
-      transition: opacity 0.15s ease, visibility 0.15s ease, transform 0.15s ease;
-      pointer-events: none;
-    }
-
-    .bookmark-actions.show {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
-      pointer-events: auto;
+      display: none;
     }
 
     .action-btn {
@@ -1443,15 +1409,6 @@
 
     .folder-item:hover {
       z-index: 2;
-    }
-
-    /* Boost z-index when folder menu is open */
-    .folder-item:has(.bookmark-actions.show) {
-      z-index: 10000;
-    }
-
-    .folder-item:has(.bookmark-actions.show) .folder-header {
-      transform: none;
     }
 
     .folder-header {
@@ -2165,6 +2122,75 @@
       justify-content: flex-end;
       padding: 16px 24px;
       border-top: 1px solid var(--md-sys-color-outline-variant);
+    }
+
+    /* Context Menu Modal - slides in from right edge */
+    #contextMenuModal {
+      align-items: stretch;
+      justify-content: flex-end;
+    }
+
+    .context-menu-modal-content {
+      max-width: 85%;
+      max-height: 100vh;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 16px 0 0 16px;
+      animation: contextMenuSlideIn 0.25s ease-out;
+    }
+
+    .context-menu-modal-content .modal-header {
+      flex-shrink: 0;
+    }
+
+    .context-menu-modal-content.closing {
+      animation: contextMenuSlideOut 0.2s ease-in forwards;
+    }
+
+    .context-menu-modal-content .modal-body {
+      padding: 8px 0;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .context-menu-modal-content .action-btn {
+      width: 100%;
+      padding: 14px 20px;
+      font-size: 13px;
+    }
+
+    .context-menu-modal-content .action-btn .icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    .context-menu-modal-content .action-btn .icon svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    @keyframes contextMenuSlideIn {
+      from {
+        opacity: 0;
+        transform: translateX(100%);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes contextMenuSlideOut {
+      from {
+        opacity: 1;
+        transform: translateX(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateX(100%);
+      }
     }
 
     /* Undo Toast Styles */
@@ -3178,6 +3204,19 @@
       <div class="modal-footer">
         <button class="btn" id="moveToModalCancel">Cancel</button>
         <button class="btn btn-primary" id="moveToModalSave">Move</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Menu Modal -->
+  <div id="contextMenuModal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content context-menu-modal-content">
+      <div class="modal-header">
+        <h3 id="contextMenuModalTitle"></h3>
+        <button class="modal-close" id="contextMenuModalClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="contextMenuModalBody">
       </div>
     </div>
   </div>

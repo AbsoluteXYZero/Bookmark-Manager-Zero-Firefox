@@ -1,6 +1,16 @@
 ## Changelog
 
-### v4.1 (Current) - Move To, Keyboard Shortcuts & Drag Improvements
+### v4.2 (Current) - Context Menu Redesign
+
+**New Features:**
+- **Replace Remote Snippet with Local** - New option in the sync setup dialog when connecting a GitLab snippet. Overwrites the remote snippet with your current local bookmarks, in addition to the existing Keep Local, Merge, and Replace Local with Remote Snippet options.
+
+**Improvements:**
+- **Context Menu Redesign** - Right-click and hamburger menus now open as a slide-in panel from the right edge of the sidebar instead of a fragile absolute-positioned popup. Eliminates clipping, size inconsistencies, and overlap issues. Click outside or press Escape to dismiss.
+
+---
+
+### v4.1 - Move To, Keyboard Shortcuts & Drag Improvements
 
 **New Features:**
 - **Move to... Context Menu** - Right-click any bookmark or folder and select "Move to..." to relocate it via a modal folder picker
