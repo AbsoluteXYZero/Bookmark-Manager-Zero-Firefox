@@ -4516,6 +4516,12 @@ async function autoCheckBookmarkStatuses() {
   if (scanStatusBar) scanStatusBar.classList.add('scanning');
   if (scanProgress) scanProgress.textContent = `Scanning: 0/${totalToScan}`;
 
+  // Show stop button, hide rescan button
+  const stopBtn = document.getElementById('stopScanBtn');
+  const rescanBtn = document.getElementById('rescanAllBtn');
+  if (stopBtn) stopBtn.style.display = 'flex';
+  if (rescanBtn) rescanBtn.style.display = 'none';
+
   for (let i = 0; i < bookmarksToCheck.length; i += BATCH_SIZE) {
     // Check if scan was cancelled
     if (scanCancelled) {
@@ -4601,6 +4607,10 @@ async function autoCheckBookmarkStatuses() {
   // Update status bar to show complete
   if (scanProgress) scanProgress.textContent = 'Scan complete';
   if (scanStatusBar) scanStatusBar.classList.remove('scanning');
+
+  // Hide stop button, show rescan button
+  if (stopBtn) stopBtn.style.display = 'none';
+  if (rescanBtn) rescanBtn.style.display = 'flex';
 
   // Clear checkedBookmarks to free memory after scan completes
   checkedBookmarks.clear();
@@ -5134,6 +5144,14 @@ function createFolderElement(folder) {
           </span>
           <span>Rename</span>
         </button>
+        <button class="action-btn" data-action="move-to">
+          <span class="icon">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18Z"/>
+            </svg>
+          </span>
+          <span>Move to...</span>
+        </button>
         <button class="action-btn danger" data-action="delete">
           <span class="icon">
             <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
@@ -5159,8 +5177,13 @@ function createFolderElement(folder) {
         e.target.closest('.item-checkbox')) {
       return;
     }
-    // In multi-select mode, don't toggle folder
+    // In multi-select mode, toggle the checkbox
     if (multiSelectMode) {
+      const checkbox = folderDiv.querySelector('.item-checkbox');
+      if (checkbox) {
+        checkbox.checked = !checkbox.checked;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       return;
     }
     toggleFolder(folder.id, folderDiv);
@@ -5418,6 +5441,14 @@ function createBookmarkElement(bookmark) {
         </span>
         <span>Edit</span>
       </button>
+      <button class="action-btn" data-action="move-to">
+        <span class="icon">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18Z"/>
+          </svg>
+        </span>
+        <span>Move to...</span>
+      </button>
       <button class="action-btn danger" data-action="delete">
         <span class="icon">
           <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
@@ -5444,11 +5475,26 @@ function createBookmarkElement(bookmark) {
         e.target.closest('.item-checkbox')) {
       return;
     }
-    // Don't open if in multi-select mode
+    // In multi-select mode, toggle the checkbox
     if (multiSelectMode) {
+      const checkbox = bookmarkDiv.querySelector('.item-checkbox');
+      if (checkbox) {
+        checkbox.checked = !checkbox.checked;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       return;
     }
-    // Open in active tab
+    // Shift+click: open in new window
+    if (e.shiftKey) {
+      browser.windows.create({ url: bookmark.url });
+      return;
+    }
+    // Ctrl+click (Cmd+click on Mac): open in new tab
+    if (e.ctrlKey || e.metaKey) {
+      openBookmarkUrl(bookmark.url, true);
+      return;
+    }
+    // Default: open in active tab
     openBookmarkUrl(bookmark.url, false);
   });
 
@@ -5834,6 +5880,57 @@ async function loadPreviewPopupSetting() {
 loadPreviewPopupSetting();
 
 // Drag and drop helper functions
+// Auto-scroll during drag when cursor is near top/bottom edges
+// Note: capture phase is required because child drag handlers call stopPropagation()
+let dragScrollInterval = null;
+let isDragging = false;
+
+document.addEventListener('dragstart', () => { isDragging = true; }, true);
+document.addEventListener('dragend', () => { isDragging = false; stopDragScroll(); }, true);
+document.addEventListener('drop', () => { isDragging = false; stopDragScroll(); }, true);
+
+bookmarkList.addEventListener('dragover', (e) => {
+  if (!isDragging) return;
+  const rect = bookmarkList.getBoundingClientRect();
+  const scrollZone = 60;
+  const maxSpeed = 20;
+  const y = e.clientY - rect.top;
+  const bottomY = rect.bottom - e.clientY;
+
+  if (y < scrollZone) {
+    const speed = Math.ceil(maxSpeed * (1 - y / scrollZone));
+    startDragScroll(-speed);
+  } else if (bottomY < scrollZone) {
+    const speed = Math.ceil(maxSpeed * (1 - bottomY / scrollZone));
+    startDragScroll(speed);
+  } else {
+    stopDragScroll();
+  }
+}, true);
+
+bookmarkList.addEventListener('dragleave', (e) => {
+  if (!bookmarkList.contains(e.relatedTarget)) {
+    stopDragScroll();
+  }
+}, true);
+
+function startDragScroll(speed) {
+  if (dragScrollInterval) cancelAnimationFrame(dragScrollInterval);
+  const scroll = () => {
+    bookmarkList.scrollTop += speed;
+    dragScrollInterval = requestAnimationFrame(scroll);
+  };
+  dragScrollInterval = requestAnimationFrame(scroll);
+}
+
+function stopDragScroll() {
+  if (dragScrollInterval) {
+    cancelAnimationFrame(dragScrollInterval);
+    dragScrollInterval = null;
+  }
+}
+
+
 function handleDragOver(e, targetElement) {
   const rect = targetElement.getBoundingClientRect();
   const height = rect.height;
@@ -6244,6 +6341,10 @@ async function handleFolderAction(action, folder) {
 
     case 'rename':
       openEditModal(folder, true);
+      break;
+
+    case 'move-to':
+      openMoveToModal(folder, true);
       break;
 
     case 'delete':
@@ -7200,6 +7301,10 @@ async function handleBookmarkAction(action, bookmark) {
       openEditModal(bookmark, false);
       break;
 
+    case 'move-to':
+      openMoveToModal(bookmark, false);
+      break;
+
     case 'delete':
       if (confirm(`Delete "${bookmark.title}"?`)) {
         await deleteBookmark(bookmark.id);
@@ -7593,6 +7698,162 @@ async function saveNewFolder() {
   } catch (error) {
     console.error('Error creating folder:', error);
     alert('Failed to create folder');
+  }
+}
+
+// Track item being moved for the Move To modal
+let moveToItem = null;
+let moveToIsFolder = false;
+
+// Open move-to modal
+async function openMoveToModal(item, isFolder) {
+  // Prevent moving Firefox's built-in root folders
+  const protectedFolderIds = ['menu________', 'toolbar_____', 'unfiled_____', 'mobile______', 'root________'];
+  if (isFolder && protectedFolderIds.includes(item.id)) {
+    alert('Cannot move built-in Firefox bookmark folders.');
+    return;
+  }
+
+  moveToItem = item;
+  moveToIsFolder = isFolder;
+
+  const modal = document.getElementById('moveToModal');
+  const itemNameDisplay = document.getElementById('moveToItemName');
+  const folderSelect = document.getElementById('moveToFolder');
+  const sortCheckbox = document.getElementById('sortMoveToFoldersAlpha');
+
+  // Show item name
+  const itemLabel = isFolder ? `\uD83D\uDCC1 ${item.title || 'Unnamed Folder'}` : (item.title || 'Unnamed Bookmark');
+  itemNameDisplay.textContent = itemLabel;
+
+  // Load sort preference and populate dropdown
+  const sortPref = localStorage.getItem('sortFoldersAlphabetically') === 'true';
+  sortCheckbox.checked = sortPref;
+  populateFolderDropdown(folderSelect, sortPref);
+
+  // Remove the "Root" option — Firefox doesn't allow items at the actual root level
+  const rootOption = folderSelect.querySelector('option[value=""]');
+  if (rootOption) rootOption.remove();
+
+  // If moving a folder, remove itself and all its descendants from the dropdown
+  if (isFolder) {
+    try {
+      const subtree = await browser.bookmarks.getSubTree(item.id);
+      const descendantIds = new Set();
+      const collectIds = (nodes) => {
+        for (const node of nodes) {
+          descendantIds.add(node.id);
+          if (node.children) collectIds(node.children);
+        }
+      };
+      collectIds(subtree);
+
+      Array.from(folderSelect.options).forEach(option => {
+        if (descendantIds.has(option.value)) {
+          option.remove();
+        }
+      });
+    } catch (error) {
+      console.error('Error filtering descendant folders:', error);
+    }
+  }
+
+  // Pre-select the item's current parent folder
+  if (item.parentId && folderSelect.querySelector(`option[value="${item.parentId}"]`)) {
+    folderSelect.value = item.parentId;
+  } else if (folderSelect.options.length > 0) {
+    folderSelect.selectedIndex = 0;
+  }
+
+  // Sort checkbox handler
+  const sortHandler = (e) => {
+    const sortAlpha = e.target.checked;
+    localStorage.setItem('sortFoldersAlphabetically', sortAlpha);
+    populateFolderDropdown(folderSelect, sortAlpha);
+    const rootOpt = folderSelect.querySelector('option[value=""]');
+    if (rootOpt) rootOpt.remove();
+
+    if (isFolder) {
+      try {
+        browser.bookmarks.getSubTree(item.id).then(subtree => {
+          const descendantIds = new Set();
+          const collectIds = (nodes) => {
+            for (const node of nodes) {
+              descendantIds.add(node.id);
+              if (node.children) collectIds(node.children);
+            }
+          };
+          collectIds(subtree);
+          Array.from(folderSelect.options).forEach(option => {
+            if (descendantIds.has(option.value)) {
+              option.remove();
+            }
+          });
+        });
+      } catch (error) {
+        console.error('Error filtering descendant folders on sort:', error);
+      }
+    }
+
+    if (item.parentId && folderSelect.querySelector(`option[value="${item.parentId}"]`)) {
+      folderSelect.value = item.parentId;
+    }
+  };
+
+  sortCheckbox.removeEventListener('change', sortCheckbox._moveToHandler);
+  sortCheckbox._moveToHandler = sortHandler;
+  sortCheckbox.addEventListener('change', sortHandler);
+
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+  trapFocus(modal);
+}
+
+// Close move-to modal
+function closeMoveToModal() {
+  const modal = document.getElementById('moveToModal');
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+  releaseFocusTrap();
+  moveToItem = null;
+  moveToIsFolder = false;
+}
+
+// Execute the move
+async function saveMoveToModal() {
+  if (!moveToItem) return;
+
+  const folderSelect = document.getElementById('moveToFolder');
+  const destinationId = folderSelect.value;
+
+  if (!destinationId) {
+    alert('Please select a destination folder.');
+    return;
+  }
+
+  if (destinationId === moveToItem.parentId) {
+    alert('The item is already in this folder.');
+    return;
+  }
+
+  try {
+    const oldParent = moveToItem.parentId ? await getFolderPath(moveToItem.parentId) : 'Root';
+
+    await browser.bookmarks.move(moveToItem.id, { parentId: destinationId });
+
+    const newParent = await getFolderPath(destinationId);
+    const itemType = moveToItem.url ? 'bookmark' : 'folder';
+    await addChangelogEntry('move', itemType, moveToItem.title, moveToItem.url || null, {
+      oldParent,
+      newParent
+    });
+
+    closeMoveToModal();
+    await loadBookmarks();
+    renderBookmarks();
+  } catch (error) {
+    console.error('Error moving item:', error);
+    alert('Failed to move item: ' + error.message);
   }
 }
 
@@ -8864,6 +9125,10 @@ async function bulkRecheckItems() {
 
   const itemsToRecheck = Array.from(selectedItems);
 
+  // Get current bookmark tree
+  const tree = await browser.bookmarks.getTree();
+  const allBookmarks = tree[0].children || [];
+
   // Find all bookmarks in selected items (including bookmarks in selected folders)
   const bookmarksToRecheck = [];
 
@@ -8895,6 +9160,10 @@ async function bulkMoveItems() {
     alert('No items selected. Please select items to move.');
     return;
   }
+
+  // Get current bookmark tree
+  const tree = await browser.bookmarks.getTree();
+  const allBookmarks = tree[0].children || [];
 
   // Get all folders for selection
   const folders = getAllFolders(allBookmarks);
@@ -10092,6 +10361,27 @@ function setupEventListeners() {
     }
   });
 
+  // Move To modal event listeners
+  const moveToModal = document.getElementById('moveToModal');
+  const moveToModalClose = document.getElementById('moveToModalClose');
+  const moveToModalCancel = document.getElementById('moveToModalCancel');
+  const moveToModalSave = document.getElementById('moveToModalSave');
+  const moveToModalOverlay = moveToModal.querySelector('.modal-overlay');
+
+  moveToModalClose.addEventListener('click', closeMoveToModal);
+  moveToModalCancel.addEventListener('click', closeMoveToModal);
+  moveToModalSave.addEventListener('click', saveMoveToModal);
+  moveToModalOverlay.addEventListener('click', closeMoveToModal);
+
+  moveToModal.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveMoveToModal();
+    } else if (e.key === 'Escape') {
+      closeMoveToModal();
+    }
+  });
+
   // Duplicates modal event listeners
   const duplicatesModal = document.getElementById('duplicatesModal');
   const duplicatesModalClose = document.getElementById('duplicatesModalClose');
@@ -11121,14 +11411,14 @@ function setupEventListeners() {
   }
 
   // Sync from Snippet to Firefox bookmarks
-  async function syncFromSnippet() {
+  async function syncFromSnippet(silent = false) {
     if (!snippetId) {
       showToast('No Snippet connected', 'error');
       return;
     }
 
     try {
-      showToast('Checking for Snippet updates...');
+      if (!silent) showToast('Checking for Snippet updates...');
 
       const remoteData = await readBookmarksFromSnippet(snippetId);
       const localTree = await browser.bookmarks.getTree();
@@ -11139,7 +11429,7 @@ function setupEventListeners() {
       const hasChanges = diff.added.length + diff.removed.length + diff.moved.length + diff.modified.length > 0;
 
       if (!hasChanges) {
-        showToast('No changes detected. Bookmarks are in sync.');
+        if (!silent) showToast('No changes detected. Bookmarks are in sync.');
         return;
       }
 
@@ -11151,14 +11441,14 @@ function setupEventListeners() {
   }
 
   // Sync from Firefox bookmarks to Snippet
-  async function syncToSnippet() {
+  async function syncToSnippet(silent = false) {
     if (!snippetId) {
       showToast('No Snippet connected', 'error');
       return;
     }
 
     try {
-      showToast('Syncing to Snippet...');
+      if (!silent) showToast('Syncing to Snippet...');
 
       const firefoxTree = await browser.bookmarks.getTree();
       const snippetData = await firefoxBookmarksToSnippetFormat(firefoxTree);
@@ -11168,7 +11458,7 @@ function setupEventListeners() {
       snippetLocalVersion = (snippetData.version || 1);
       await safeStorage.set({ snippet_local_version: snippetLocalVersion });
 
-      showToast('Synced to Snippet successfully!');
+      if (!silent) showToast('Synced to Snippet successfully!');
     } catch (error) {
       console.error('Sync to Snippet failed:', error);
       showToast(`Error: ${error.message}`, 'error');
@@ -12216,23 +12506,26 @@ function setupEventListeners() {
       }
 
       manualSyncBtn.disabled = true;
-      const originalContent = manualSyncBtn.innerHTML;
-      manualSyncBtn.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="animation: spin 1s linear infinite;"><path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/></svg>';
+      manualSyncBtn.classList.add('syncing');
 
       try {
         if (forcePush) {
-          await syncToSnippet();
-          showToast('Bookmarks pushed to GitLab successfully', 'success');
+          await syncToSnippet(true);
         } else {
-          await syncFromSnippet();
-          showToast('Sync completed successfully', 'success');
+          await syncFromSnippet(true);
         }
+        // Success: show green arrows for 5 seconds instead of toast
+        manualSyncBtn.classList.remove('syncing');
+        manualSyncBtn.classList.add('sync-success');
+        setTimeout(() => {
+          manualSyncBtn.classList.remove('sync-success');
+        }, 5000);
       } catch (error) {
         console.error('[ManualSync] Sync failed:', error);
+        manualSyncBtn.classList.remove('syncing');
         showToast(`Sync failed: ${error.message}`, 'error');
       } finally {
         manualSyncBtn.disabled = false;
-        manualSyncBtn.innerHTML = originalContent;
       }
     });
   }

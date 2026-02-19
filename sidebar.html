@@ -2403,6 +2403,18 @@
         transform: rotate(360deg);
       }
     }
+
+    /* Manual sync button animation states */
+    #manualSyncBtn.syncing svg {
+      animation: spin 1s linear infinite;
+    }
+    #manualSyncBtn.sync-success #syncArrows path {
+      fill: #4caf50;
+      transition: fill 0.3s ease;
+    }
+    #manualSyncBtn.sync-success:not(.syncing) #syncArrows path {
+      fill: #4caf50;
+    }
   </style>
 </head>
 <body class="blue-dark">
@@ -2413,7 +2425,7 @@
           <!-- GitLab icon as main/background (full size) -->
           <path fill="#000000" d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
           <!-- Sync arrows in center (overlay, shifted down) -->
-          <g transform="translate(12, 16) scale(0.56) translate(-12, -12)">
+          <g id="syncArrows" transform="translate(12, 16) scale(0.56) translate(-12, -12)">
             <path fill="#ffffff" d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/>
           </g>
         </svg>
@@ -3136,6 +3148,36 @@
       <div class="modal-footer">
         <button class="btn" id="addFolderModalCancel">Cancel</button>
         <button class="btn btn-primary" id="addFolderModalSave">Create Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Move To Modal -->
+  <div id="moveToModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="moveToModalTitle" aria-hidden="true">
+    <div class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="moveToModalTitle">Move to Folder</h3>
+        <button class="modal-close" id="moveToModalClose" aria-label="Close dialog">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Item:</label>
+          <div id="moveToItemName" style="font-weight: 500; padding: 4px 0; word-break: break-word;"></div>
+        </div>
+        <div class="form-group">
+          <label for="moveToFolder">Destination folder:</label>
+          <select id="moveToFolder" class="form-input">
+          </select>
+          <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" id="sortMoveToFoldersAlpha" style="cursor: pointer;">
+            <span>Sort alphabetically</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="moveToModalCancel">Cancel</button>
+        <button class="btn btn-primary" id="moveToModalSave">Move</button>
       </div>
     </div>
   </div>
