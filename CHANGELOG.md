@@ -6,6 +6,7 @@
 - **Replace Remote Snippet with Local** - New option in the sync setup dialog when connecting a GitLab snippet. Overwrites the remote snippet with your current local bookmarks, in addition to the existing Keep Local, Merge, and Replace Local with Remote Snippet options.
 
 **Improvements:**
+- **Drag-and-Drop Reliability** - Overhauled drop zone logic. Each item now acts as a single unified drop target (top half = insert before, bottom half = insert after) replacing the previous three competing zones per gap. Folder headers additionally support drop-into on the bottom half. Fixed an index offset bug that caused items to land one position too far down when reordering within the same folder.
 - **Context Menu Redesign** - Right-click and hamburger menus now open as a slide-in panel from the right edge of the sidebar instead of a fragile absolute-positioned popup. Eliminates clipping, size inconsistencies, and overlap issues. Click outside or press Escape to dismiss.
 
 ---
