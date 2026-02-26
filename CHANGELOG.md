@@ -1,6 +1,15 @@
 ## Changelog
 
-### v4.2 (Current) - Context Menu Redesign
+### v4.3 (Current) - Multi-Select Bulk Open
+
+**New Features:**
+- **Long-Press to Multi-Select** - Click and hold any bookmark or folder for 750ms to enter multi-select mode. The held item is automatically added to the selection. Drag-and-drop is fully preserved — moving the mouse during the hold cancels the timer and initiates a drag as normal.
+- **Open in New Tabs** - New bulk action button opens all selected bookmarks as background tabs in the current window. Also recurses into selected folders.
+- **Open in New Windows** - New bulk action button opens each selected bookmark in its own separate window.
+
+---
+
+### v4.2 - Context Menu Redesign
 
 **New Features:**
 - **Replace Remote Snippet with Local** - New option in the sync setup dialog when connecting a GitLab snippet. Overwrites the remote snippet with your current local bookmarks, in addition to the existing Keep Local, Merge, and Replace Local with Remote Snippet options.
