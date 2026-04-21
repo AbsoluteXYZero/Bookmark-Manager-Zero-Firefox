@@ -2118,7 +2118,7 @@ function showAuthSetup() {
           box-sizing: border-box;
         ">
         <div style="margin-top: 8px; font-size: 12px; color: var(--md-sys-color-on-surface-variant); line-height: 1.4;">
-          Create a token at <a href="https://gitlab.com/-/profile/personal_access_tokens" target="_blank" style="color: var(--md-sys-color-primary);">GitLab → User Settings → Access Tokens</a> with "api" scope.
+          Create a token at <a href="https://gitlab.com/-/user_settings/personal_access_tokens" target="_blank" style="color: var(--md-sys-color-primary);">GitLab → User Settings → Access Tokens</a> with "api" scope.
         </div>
       </div>
 
@@ -11484,7 +11484,7 @@ function setupEventListeners() {
         <p style="margin: 0 0 16px 0; color: var(--md-sys-color-on-surface-variant, #aaa); font-size: 14px;">
           Click below to create a GitLab Personal Access Token with the "api" scope. ⚠️ Important: This token is only shown once — save it securely (e.g., in a notes app or password manager) immediately.<br><br>You can create or rotate tokens anytime, but saving now avoids repeated creation. Multiple tokens work as long as they have the "api" scope.
         </p>
-        <a href="https://gitlab.com/-/profile/personal_access_tokens?name=Bookmark+Manager+Zero&scopes=api" target="_blank" style="display: inline-block; margin-bottom: 16px; padding: 8px 16px; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); text-decoration: none; border-radius: 8px; font-size: 13px;">
+        <a href="https://gitlab.com/-/user_settings/personal_access_tokens?name=Bookmark+Manager+Zero&scopes=api" target="_blank" style="display: inline-block; margin-bottom: 16px; padding: 8px 16px; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); text-decoration: none; border-radius: 8px; font-size: 13px;">
           Create Token on GitLab →
         </a>
         <div style="margin-bottom: 16px;">

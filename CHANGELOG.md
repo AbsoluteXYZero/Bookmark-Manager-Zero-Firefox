@@ -1,6 +1,13 @@
 ## Changelog
 
-### v4.3 (Current) - Multi-Select Bulk Open
+### v4.4 (Current) - Bug Fixes
+
+**Bug Fixes:**
+- **Fixed GitLab Token Link** - "Create Token on GitLab" button now points to the correct URL after GitLab moved Personal Access Tokens from `/-/profile/` to `/-/user_settings/`.
+
+---
+
+### v4.3 - Multi-Select Bulk Open
 
 **New Features:**
 - **Long-Press to Multi-Select** - Click and hold any bookmark or folder for 750ms to enter multi-select mode. The held item is automatically added to the selection. Drag-and-drop is fully preserved — moving the mouse during the hold cancels the timer and initiates a drag as normal.
