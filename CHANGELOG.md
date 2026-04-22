@@ -1,6 +1,35 @@
 ## Changelog
 
-### v4.4 (Current) - Bug Fixes
+### v4.7 (Current) - Bug Fix
+
+**Bug Fixes:**
+- **Skip merge dialog when bookmarks already match** - When connecting to an existing GitLab snippet, BMZ now compares a checksum of the local bookmarks against the remote snippet before showing the replace/merge dialog. If they are identical, the snippet is connected silently with no dialog shown. The dialog still appears as normal when local and remote differ.
+
+---
+
+### v4.6 - Bug Fix
+
+**Bug Fixes:**
+- **Fixed "Set Up Sync" in announcement card** - Resolved `openSnippetSyncDialog is not defined` error when clicking "Set Up Sync" in the v4.5 announcement card. The function was scoped inside `setupEventListeners()` and not accessible from the card's click handler. Promoted to a module-level reference assigned at startup.
+
+---
+
+### v4.5 - GitLab OAuth & Supabase Sync
+
+**New Features:**
+- **GitLab OAuth Login for supabase** - Native GitLab OAuth via `browser.identity.launchWebAuthFlow`is. A popup window opens GitLab's own login/authorization page; no credentials are ever entered in the extension.
+- **Supabase-Backed PAT Storage** - GitLab Personal Access Tokens can now be stored encrypted in Supabase (`gitlab_tokens` table) and automatically synced across devices. Token is encrypted with AES-GCM using the Supabase user UID as the key before upload.
+- **Token Storage Mode** - New selector in sync setup lets users choose between Local (this device only) and Supabase (auto-sync across devices). Mode persists across sessions.
+- **Disconnect: This Device vs All Devices** - When disconnecting in Supabase mode, users can choose to disconnect just the current device (leaves token in Supabase for other devices) or disconnect all devices (deletes token from Supabase).
+
+**Improvements:**
+- **401 Auto-Retry** - All Supabase API calls now use an `authFetch` wrapper that automatically refreshes the session token and retries once on 401 before failing.
+- **OAuth Error Surfacing** - If GitLab or Supabase returns an error in the redirect URL (e.g. access denied, misconfigured provider), the human-readable error message is now shown to the user instead of a generic failure.
+- **GitLab Button Logic** - GitLab toolbar button now shows the disconnect dialog when a snippet is connected, and opens sync setup otherwise. Manual sync button always opens the setup dialog rather than attempting a sync with no snippet connected.
+
+---
+
+### v4.4 - Bug Fixes
 
 **Bug Fixes:**
 - **Fixed GitLab Token Link** - "Create Token on GitLab" button now points to the correct URL after GitLab moved Personal Access Tokens from `/-/profile/` to `/-/user_settings/`.

@@ -107,6 +107,13 @@
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
 
+    .enhanced-blue .announcement-card {
+      border-radius: 14px;
+      background: var(--md-sys-color-surface-variant);
+      border: 0.5px solid rgba(255, 165, 0, 0.35);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
     .enhanced-blue .scan-status-bar {
       border-radius: 14px;
       background: var(--md-sys-color-surface-variant);
@@ -785,6 +792,86 @@
     }
 
     .setup-card-dismiss-btn:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    /* Announcement Card */
+    .announcement-card {
+      background: var(--md-sys-color-primary-container);
+      border: 2px solid #e8a020;
+      border-left: 5px solid #e8a020;
+      border-radius: 16px;
+      padding: 20px 20px 16px;
+      margin-bottom: 24px;
+      box-shadow: var(--md-elevation-2);
+    }
+
+    .announcement-card-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #e8a020;
+      background: rgba(232, 160, 32, 0.12);
+      border: 1px solid rgba(232, 160, 32, 0.35);
+      border-radius: 20px;
+      padding: 3px 10px;
+      margin-bottom: 10px;
+    }
+
+    .announcement-card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--md-sys-color-on-primary-container);
+      margin-bottom: 10px;
+    }
+
+    .announcement-card-body {
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--md-sys-color-on-primary-container);
+      margin-bottom: 16px;
+    }
+
+    .announcement-card-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .announcement-card-setup-btn {
+      flex: 1;
+      padding: 10px 16px;
+      background: #e8a020;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .announcement-card-setup-btn:hover {
+      background: #cf8c18;
+      transform: translateY(-1px);
+      box-shadow: var(--md-elevation-2);
+    }
+
+    .announcement-card-dismiss-btn {
+      flex: 1;
+      padding: 10px 16px;
+      background: transparent;
+      color: var(--md-sys-color-on-primary-container);
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .announcement-card-dismiss-btn:hover {
       background: rgba(0, 0, 0, 0.05);
     }
 
@@ -2524,6 +2611,15 @@
               <option value="30">30 days</option>
             </select>
           </label>
+          <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
+          <button class="action-btn" id="revealGitlabTokenBtn">
+            <span class="icon">
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/>
+              </svg>
+            </span>
+            <span>Reveal GitLab Token</span>
+          </button>
           <div style="border-top: 1px solid var(--md-sys-color-outline-variant); margin: 6px 0;"></div>
           <label class="action-btn" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
