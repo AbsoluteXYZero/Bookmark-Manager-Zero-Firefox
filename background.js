@@ -641,9 +641,8 @@ function isSameDay(timestamp1, timestamp2) {
 const BLOCKLIST_SOURCES = [
   {
     name: 'URLhaus (Active)',
-    // Official abuse.ch list - actively distributing malware URLs (updated every 5 minutes)
-    // Using cors-anywhere alternative proxy
-    url: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent('https://urlhaus.abuse.ch/downloads/text/'),
+    // Fetched from dedicated GitHub repo (updated daily via GitHub Actions)
+    url: 'https://raw.githubusercontent.com/AbsoluteXYZero/urlhaus-list/main/urlhaus-active.txt',
     format: 'urlhaus_text' // Full URLs with paths
   },
   {
