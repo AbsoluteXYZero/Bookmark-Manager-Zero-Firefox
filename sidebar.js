@@ -3259,6 +3259,26 @@ let backgroundPosition = { x: 50, y: 50 }; // Background image position (%)
 let backgroundScale = 100; // Background image scale (%)
 let checkedBookmarks = new Set(); // Track which bookmarks have been checked to prevent infinite loops
 let scanCancelled = false; // Flag to cancel ongoing scans
+/* [ZeroLabs] 2026-06-20 12:21 AM - added: single-source scan control state */
+let autoScanDepth = 0; // Re-entrancy count for front-end autoCheck loops
+let backgroundScanActive = false; // Whether the worker scan is running
+// One owner for the Stop/Rescan buttons: Stop visible iff any scan is active
+function updateScanControls() {
+  const stopBtn = document.getElementById('stopScanBtn');
+  const rescanBtn = document.getElementById('rescanAllBtn');
+  const active = autoScanDepth > 0 || backgroundScanActive;
+  if (stopBtn) stopBtn.style.display = active ? 'flex' : 'none';
+  if (rescanBtn) rescanBtn.style.display = active ? 'none' : 'flex';
+}
+// Cancel every scan engine: front-end loops (via flag) and the worker (via message)
+async function cancelAllScans() {
+  scanCancelled = true;
+  try {
+    await browser.runtime.sendMessage({ action: 'stopScan' });
+  } catch (error) {
+    console.error('Error stopping background scan:', error);
+  }
+}
 let linkCheckingEnabled = true; // Toggle for link checking
 let safetyCheckingEnabled = true; // Toggle for safety checking
 let whitelistedUrls = new Set(); // URLs whitelisted by user
@@ -3388,11 +3408,9 @@ async function syncBackgroundScanStatus() {
         scanProgress.textContent = `Scanning: ${status.scanned}/${status.total}`;
       }
 
-      // Show stop button, hide rescan button
-      const stopBtn = document.getElementById('stopScanBtn');
-      const rescanBtn = document.getElementById('rescanAllBtn');
-      if (stopBtn) stopBtn.style.display = 'flex';
-      if (rescanBtn) rescanBtn.style.display = 'none';
+      /* [ZeroLabs] 2026-06-20 12:21 AM - edited: route button via updateScanControls */
+      backgroundScanActive = true;
+      updateScanControls();
     }
   } catch (error) {
     console.error('Error syncing background scan status:', error);
@@ -3434,11 +3452,9 @@ function setupBlocklistProgressListener() {
       console.log(`[Background Scan] Started - ${message.total} bookmarks`);
       if (scanProgress) scanProgress.textContent = `Scanning: 0/${message.total}`;
 
-      // Show stop button, hide rescan button
-      const stopBtn = document.getElementById('stopScanBtn');
-      const rescanBtn = document.getElementById('rescanAllBtn');
-      if (stopBtn) stopBtn.style.display = 'flex';
-      if (rescanBtn) rescanBtn.style.display = 'none';
+      /* [ZeroLabs] 2026-06-20 12:21 AM - edited: route button via updateScanControls */
+      backgroundScanActive = true;
+      updateScanControls();
     } else if (message.type === 'scanProgress') {
       // Update progress in status bar
       if (scanProgress) {
@@ -3466,21 +3482,17 @@ function setupBlocklistProgressListener() {
       if (scanProgress) scanProgress.textContent = 'Ready';
       if (scanStatusBar) scanStatusBar.classList.remove('scanning');
 
-      // Show rescan button, hide stop button
-      const stopBtn = document.getElementById('stopScanBtn');
-      const rescanBtn = document.getElementById('rescanAllBtn');
-      if (stopBtn) stopBtn.style.display = 'none';
-      if (rescanBtn) rescanBtn.style.display = 'flex';
+      /* [ZeroLabs] 2026-06-20 12:21 AM - edited: route button via updateScanControls */
+      backgroundScanActive = false;
+      updateScanControls();
     } else if (message.type === 'scanCancelled') {
       console.log(`[Background Scan] Cancelled - ${message.scanned}/${message.total} bookmarks scanned`);
       if (scanProgress) scanProgress.textContent = 'Ready';
       if (scanStatusBar) scanStatusBar.classList.remove('scanning');
 
-      // Show rescan button, hide stop button
-      const stopBtn = document.getElementById('stopScanBtn');
-      const rescanBtn = document.getElementById('rescanAllBtn');
-      if (stopBtn) stopBtn.style.display = 'none';
-      if (rescanBtn) rescanBtn.style.display = 'flex';
+      /* [ZeroLabs] 2026-06-20 12:21 AM - edited: route button via updateScanControls */
+      backgroundScanActive = false;
+      updateScanControls();
     }
   });
 }
@@ -3516,6 +3528,7 @@ async function initMainUI() {
   loadContainerOpacity();
   // loadCustomTextColor(); // Moved to after event listener setup (line ~5388)
   loadCheckingSettings();
+  loadScanConcurrency();
   await loadSetupCardFlag();
   await loadV45AnnouncementFlag();
   await loadWhitelist();
@@ -4232,6 +4245,31 @@ function loadCheckingSettings() {
   if (safetyCheckbox) safetyCheckbox.checked = safetyCheckingEnabled;
 }
 
+/* [ZeroLabs] 2026-06-20 10:50 AM - added: load + sync scan concurrency + jitter sliders */
+async function loadScanConcurrency() {
+  let concurrency = 5; // Default cap (matches background.js MAX_CONCURRENT_NETWORK)
+  let jitter = 0;      // Default: no jitter
+  try {
+    const result = await browser.storage.local.get(['scanConcurrency', 'scanJitter']);
+    if (result.scanConcurrency) concurrency = result.scanConcurrency;
+    if (result.scanJitter !== undefined) jitter = result.scanJitter;
+  } catch (e) {}
+
+  const cSlider = document.getElementById('scanConcurrencySlider');
+  const cLabel = document.getElementById('scanConcurrencyValue');
+  if (cSlider) cSlider.value = concurrency;
+  if (cLabel) cLabel.textContent = concurrency;
+
+  const jSlider = document.getElementById('scanJitterSlider');
+  const jLabel = document.getElementById('scanJitterValue');
+  if (jSlider) jSlider.value = jitter;
+  if (jLabel) jLabel.textContent = jitter + 'ms';
+
+  // Push saved values to the background limiter
+  browser.runtime.sendMessage({ action: 'setScanConcurrency', value: concurrency }).catch(() => {});
+  browser.runtime.sendMessage({ action: 'setScanJitter', value: jitter }).catch(() => {});
+}
+
 // Apply zoom
 function applyZoom() {
   const zoomFactor = zoomLevel / 100;
@@ -4541,17 +4579,20 @@ async function autoCheckBookmarkStatuses() {
   if (scanStatusBar) scanStatusBar.classList.add('scanning');
   if (scanProgress) scanProgress.textContent = `Scanning: 0/${totalToScan}`;
 
-  // Show stop button, hide rescan button
-  const stopBtn = document.getElementById('stopScanBtn');
-  const rescanBtn = document.getElementById('rescanAllBtn');
-  if (stopBtn) stopBtn.style.display = 'flex';
-  if (rescanBtn) rescanBtn.style.display = 'none';
+  /* [ZeroLabs] 2026-06-20 12:21 AM - edited: re-entrant scan + central button owner */
+  // Only the outermost scan clears the cancel flag, so a Stop pressed during
+  // overlapping auto-checks (one per folder expansion) cancels them all instead
+  // of a later invocation silently un-cancelling the earlier ones.
+  if (autoScanDepth === 0) scanCancelled = false;
+  autoScanDepth++;
+  updateScanControls();
 
+  try {
   for (let i = 0; i < bookmarksToCheck.length; i += BATCH_SIZE) {
     // Check if scan was cancelled
     if (scanCancelled) {
       console.log('Scan cancelled, stopping...');
-      return;
+      break;
     }
 
     const batch = bookmarksToCheck.slice(i, i + BATCH_SIZE);
@@ -4626,24 +4667,26 @@ async function autoCheckBookmarkStatuses() {
     }
   }
 
-  // Render once at the end of all batches
-  renderBookmarks();
+  } finally {
+    /* [ZeroLabs] 2026-06-20 10:35 AM - edited: only outermost scan settles status */
+    // Render once at the end (or on cancel) of all batches
+    renderBookmarks();
 
-  // Update status bar to show complete
-  if (scanProgress) scanProgress.textContent = 'Scan complete';
-  if (scanStatusBar) scanStatusBar.classList.remove('scanning');
+    autoScanDepth = Math.max(0, autoScanDepth - 1);
+    updateScanControls();
 
-  // Hide stop button, show rescan button
-  if (stopBtn) stopBtn.style.display = 'none';
-  if (rescanBtn) rescanBtn.style.display = 'flex';
+    // Only the last overlapping scan finalizes the status bar
+    if (autoScanDepth === 0) {
+      checkedBookmarks.clear();
+      if (scanProgress) scanProgress.textContent = scanCancelled ? 'Scan stopped' : 'Scan complete';
+      if (scanStatusBar) scanStatusBar.classList.remove('scanning');
 
-  // Clear checkedBookmarks to free memory after scan completes
-  checkedBookmarks.clear();
-
-  // Reset status to "Ready" after 2 seconds
-  setTimeout(() => {
-    if (scanProgress) scanProgress.textContent = 'Ready';
-  }, 2000);
+      // Reset status to "Ready" after 2 seconds (unless a new scan started)
+      setTimeout(() => {
+        if (autoScanDepth === 0 && scanProgress) scanProgress.textContent = 'Ready';
+      }, 2000);
+    }
+  }
 
   console.log(`Finished checking link status for ${bookmarksToCheck.length} bookmarks (safety checks disabled - use Test VT button)`);
 }
@@ -9583,6 +9626,29 @@ function setupEventListeners() {
     console.log(`Safety checking ${safetyCheckingEnabled ? 'enabled' : 'disabled'}`);
   });
 
+  /* [ZeroLabs] 2026-06-20 10:50 AM - added: scan concurrency + jitter sliders (DNS load) */
+  const scanConcurrencySlider = document.getElementById('scanConcurrencySlider');
+  const scanConcurrencyValueLabel = document.getElementById('scanConcurrencyValue');
+  if (scanConcurrencySlider) {
+    scanConcurrencySlider.addEventListener('input', (e) => {
+      const value = parseInt(e.target.value, 10);
+      if (scanConcurrencyValueLabel) scanConcurrencyValueLabel.textContent = value;
+      browser.storage.local.set({ scanConcurrency: value });
+      browser.runtime.sendMessage({ action: 'setScanConcurrency', value }).catch(() => {});
+    });
+  }
+
+  const scanJitterSlider = document.getElementById('scanJitterSlider');
+  const scanJitterValueLabel = document.getElementById('scanJitterValue');
+  if (scanJitterSlider) {
+    scanJitterSlider.addEventListener('input', (e) => {
+      const value = parseInt(e.target.value, 10);
+      if (scanJitterValueLabel) scanJitterValueLabel.textContent = value + 'ms';
+      browser.storage.local.set({ scanJitter: value });
+      browser.runtime.sendMessage({ action: 'setScanJitter', value }).catch(() => {});
+    });
+  }
+
   // Accent color picker
   accentColorPicker.addEventListener('input', (e) => {
     const color = e.target.value;
@@ -9956,8 +10022,11 @@ function setupEventListeners() {
     const stopScanBtn = document.getElementById('stopScanBtn');
     if (stopScanBtn) {
       stopScanBtn.addEventListener('click', async () => {
-        // Stop background scan
-        await browser.runtime.sendMessage({ action: 'stopScan' });
+        /* [ZeroLabs] 2026-06-20 12:21 AM - edited: cancel front-end + worker scans */
+        // Cancel BOTH engines: the front-end auto-check loop (via scanCancelled)
+        // and the background worker scan. Previously only the worker was stopped,
+        // so Stop was a no-op against the auto-check that runs on load/expand.
+        await cancelAllScans();
         console.log('User requested scan cancellation');
       });
     }
@@ -11603,9 +11672,6 @@ function setupEventListeners() {
     content += `
       <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 20px;">
         ${hasChanges ? `
-          <button id="mergeButton" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-tertiary, #4caf50); color: var(--md-sys-color-on-tertiary, #fff); cursor: pointer; font-size: 14px; font-weight: 600;">
-            Merge (Recommended)
-          </button>
           <div style="display: flex; gap: 12px;">
             <button id="pushLocalToRemote" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px;">
               Push Local to Remote
@@ -11625,14 +11691,7 @@ function setupEventListeners() {
     modal.appendChild(dialog);
     document.body.appendChild(modal);
 
-    const mergeBtn = dialog.querySelector('#mergeButton');
-    if (mergeBtn) {
-      mergeBtn.addEventListener('click', async () => {
-        modal.remove();
-        await mergeBidirectional();
-      });
-    }
-
+    /* [ZeroLabs] 2026-06-20 11:01 AM - removed: per-sync merge button handler */
     const pushBtn = dialog.querySelector('#pushLocalToRemote');
     if (pushBtn) {
       pushBtn.addEventListener('click', async () => {
@@ -12965,46 +13024,7 @@ function setupEventListeners() {
     }
   }
 
-  // Bidirectional merge: merges both local and remote changes together
-  async function mergeBidirectional() {
-    try {
-      showToast('Merging local and remote bookmarks...', 'info');
-
-      // Get both trees
-      const remoteData = await readBookmarksFromSnippet(snippetId);
-      const localTree = await browser.bookmarks.getTree();
-      const localInSnippetFormat = await firefoxBookmarksToSnippetFormat(localTree);
-
-      // STEP 1: Take a snapshot of current bookmarks before destructive merge
-      const preSyncSnapshot = JSON.parse(JSON.stringify(localInSnippetFormat));
-
-      // STEP 2: Clear all old changelog entries (they will have invalid IDs after merge)
-      await clearChangelog();
-
-      // STEP 3: Add a special changelog entry for this merge operation with full snapshot
-      await addChangelogEntry('pre-sync-snapshot', 'sync', 'Bidirectional Merge', null, {
-        snapshot: preSyncSnapshot,
-        timestamp: Date.now(),
-        operation: 'Bidirectional Merge'
-      });
-
-      // Merge in both directions
-      // First: merge remote into local
-      const remoteIntoLocal = mergeBookmarksIntoTree(remoteData, localInSnippetFormat);
-
-      // Second: merge local into the result (to ensure we don't lose any local changes)
-      const fullyMerged = mergeBookmarksIntoTree(localInSnippetFormat, remoteIntoLocal);
-
-      // Apply merged result to both local and remote (skip snapshot since we already took one above)
-      await applyRemoteChangesToFirefox(fullyMerged, true);
-      await updateBookmarksInSnippet(fullyMerged);
-
-      showToast('Merge completed successfully! All bookmarks preserved.', 'success');
-    } catch (error) {
-      console.error('[MergeBidirectional] Error:', error);
-      showToast(`Merge failed: ${error.message}`, 'error');
-    }
-  }
+  /* [ZeroLabs] 2026-06-20 11:01 AM - removed: orphaned mergeBidirectional (per-sync merge) */
 
   async function handleSelectExistingSnippet() {
     try {
