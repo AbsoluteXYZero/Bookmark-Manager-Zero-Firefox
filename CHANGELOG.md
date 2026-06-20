@@ -1,6 +1,26 @@
 ## Changelog
 
-### v4.7 (Current) - Bug Fix
+<!-- [ZeroLabs] 2026-06-20 11:01 AM - added: v4.8 changelog entry -->
+### v4.8 (Current) - Sync Reliability
+
+**New Features:**
+- **Scan Intensity Slider** - New slider in Settings controls how many bookmarks are link/safety-checked at once (1-20, default 5). Each check is a live request that triggers a DNS lookup, so scanning a large library all at once could briefly overwhelm a local DNS resolver (AdGuard Home, Pi-hole) and knock out your internet. Lowering this keeps scans gentle on your network. Persists across sessions and applies live to an in-progress scan.
+- **Request Jitter Slider** - New slider in Settings adds a small random delay (0-500ms) before each scan request, spreading DNS lookups across time instead of firing them as one burst. Raise it, alongside lowering Scan Intensity, if scans still disrupt your connection.
+
+**Bug Fixes:**
+- **Stop Scan Now Works Reliably** - The octagonal stop button now appears during every scan and actually cancels it. Previously it only stopped the manual background rescan and did nothing for the automatic scan that runs on load and when expanding folders, and its visibility could flicker off mid-scan. Button state is now driven by a single source of truth, and pressing Stop cancels both scan engines.
+- **Scan Status Returns to "Ready"** - After stopping a scan, the status bar briefly shows "Scan stopped" and then settles back to "Ready" instead of sticking. Also fixed a leaked scan operation that could wedge the status bar on a stale message.
+- **Settings Slider Handle** - Fixed the slider handle sitting too low and rendering clipped; it now sits centered on the track.
+
+**Performance:**
+- **DNS-Friendly Scanning** - All scan requests now share a single global concurrency limit. The automatic on-demand scan previously bypassed the limiter entirely, so a large library could fire a wall of simultaneous DNS lookups and stall your whole network; the default cap was also lowered.
+
+**Changes:**
+- **Removed per-sync "Merge" option** - The sync diff dialog no longer offers the bidirectional "Merge (Recommended)" button. A union merge can never propagate a deletion — a bookmark removed on one device is simply re-added from the other — so it caused bookmark counts to silently grow and deletions to never stick. Sync decisions are now explicit and deletion-honoring: Push Local to Remote or Pull Remote to Local. The one-time merge offered when first connecting a snippet is unchanged.
+
+---
+
+### v4.7 - Bug Fix
 
 **Bug Fixes:**
 - **Skip merge dialog when bookmarks already match** - When connecting to an existing GitLab snippet, BMZ now compares a checksum of the local bookmarks against the remote snippet before showing the replace/merge dialog. If they are identical, the snippet is connected silently with no dialog shown. The dialog still appears as normal when local and remote differ.
