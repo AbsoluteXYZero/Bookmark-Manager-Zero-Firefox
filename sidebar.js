@@ -13621,3 +13621,48 @@ if (document.readyState === 'loading') {
 } else {
   initFirefoxExtension();
 }
+
+/* [ZeroLabs] 2026-06-20 7:18 PM - added: scale header title/subtitle to fit beside the buttons (login-aware) */
+(function () {
+  function fitHeaderText() {
+    const MARGIN = 8;                                  // px clearance from the buttons
+    ['.logo-title', '.logo-subtitle'].forEach(function (sel) {
+      const el = document.querySelector(sel);
+      if (!el) return;
+      el.style.transformOrigin = 'left center';
+      el.style.transform = '';                         // reset before measuring
+      const box = el.clientWidth - MARGIN;             // width left beside the current buttons
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const w = range.getBoundingClientRect().width;   // rendered single-line text width
+      if (w > box && box > 0) {
+        el.style.transform = 'scale(' + Math.max(0.3, box / w) + ')';
+      }
+    });
+  }
+  const schedule = function () { requestAnimationFrame(fitHeaderText); };
+  function initHeaderFit() {
+    schedule();
+    // Re-fit when the button cluster changes width (e.g. GitLab login swaps login -> sync+logout)
+    const cluster = document.querySelector('.header-settings');
+    if (cluster && window.ResizeObserver && !cluster.dataset.fitObserved) {
+      cluster.dataset.fitObserved = '1';
+      new ResizeObserver(schedule).observe(cluster);
+    }
+    // Re-fit when the title/subtitle text changes (e.g. the version string is injected after load)
+    ['.logo-title', '.logo-subtitle'].forEach(function (sel) {
+      const t = document.querySelector(sel);
+      if (t && window.MutationObserver && !t.dataset.fitTextObserved) {
+        t.dataset.fitTextObserved = '1';
+        new MutationObserver(schedule).observe(t, { childList: true, characterData: true, subtree: true });
+      }
+    });
+    window.addEventListener('resize', schedule);
+  }
+  window.fitHeaderText = fitHeaderText;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initHeaderFit);
+  } else {
+    initHeaderFit();
+  }
+})();

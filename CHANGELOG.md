@@ -1,7 +1,15 @@
 ## Changelog
 
+<!-- [ZeroLabs] 2026-06-20 7:18 PM - added: v4.9 changelog entry -->
+### v4.9 (Current) - Header Layout Fix
+
+**Bug Fixes:**
+- **Header buttons no longer overlap the title/subtitle** - The GitLab, sync, logout, and settings buttons now sit in their own reserved space in the header instead of floating over it, and the title and subtitle automatically scale down to fit the remaining width on a single line. Fixes the buttons covering the title or subtitle at narrow sidebar widths and after signing in to GitLab (which adds buttons to the row).
+
+---
+
 <!-- [ZeroLabs] 2026-06-20 11:01 AM - added: v4.8 changelog entry -->
-### v4.8 (Current) - Sync Reliability
+### v4.8 - Sync Reliability
 
 **New Features:**
 - **Scan Intensity Slider** - New slider in Settings controls how many bookmarks are link/safety-checked at once (1-20, default 5). Each check is a live request that triggers a DNS lookup, so scanning a large library all at once could briefly overwhelm a local DNS resolver (AdGuard Home, Pi-hole) and knock out your internet. Lowering this keeps scans gentle on your network. Persists across sessions and applies live to an in-progress scan.
