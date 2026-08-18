@@ -705,8 +705,17 @@ const BLOCKLIST_SOURCES = [
     format: 'hosts'
   },
   {
+    /* [ZeroLabs] 2026-08-17 4:15 PM - edited: jsdelivr 403, repo restructured (see also: Bookmark-Manager-Zero-Chrome/background.js) */
+    // Was cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/tif.txt.
+    // Two independent breakages: jsDelivr now 403s every path in this repo
+    // ("Package size exceeded the configured limit of 150 MB"), and the repo
+    // dropped the domains/ directory in favour of wildcard/, with plain domain
+    // lists renamed to *-onlydomains.txt. Switched to GitHub raw, which sends
+    // Access-Control-Allow-Origin: * and is already used by OISD and FMHY below.
+    // medium tier rather than full TIF: 7 MB vs 36.6 MB / 2.06M entries, and
+    // every domain is held twice in memory here (maliciousUrlsSet + domainSourceMap).
     name: 'HaGeZi TIF',
-    url: 'https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/tif.txt',
+    url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.medium-onlydomains.txt',
     format: 'domains' // Plain domain list (one per line)
   },
   {

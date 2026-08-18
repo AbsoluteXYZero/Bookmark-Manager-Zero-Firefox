@@ -2596,6 +2596,13 @@ let hasSeenSetupCard = true; // Default to true, will be loaded from storage
 
 // Load setup card flag from storage
 async function loadSetupCardFlag() {
+  /* [ZeroLabs] 2026-08-17 3:28 PM - added: suppress setup card in private mode */
+  // safeStorage is memory-only in private windows, so a dismissal can never
+  // persist there. Treat the card as already seen instead of re-showing it.
+  if (isPrivateMode) {
+    hasSeenSetupCard = true;
+    return;
+  }
   try {
     const result = await safeStorage.get('hasSeenSetupCard');
     hasSeenSetupCard = result.hasSeenSetupCard || false;
@@ -2622,6 +2629,12 @@ async function dismissSetupCard() {
 let hasSeenV45Announcement = true; // Default to true, will be loaded from storage
 
 async function loadV45AnnouncementFlag() {
+  /* [ZeroLabs] 2026-08-17 3:28 PM - added: suppress announcement in private mode */
+  // Same reason as the setup card: nothing persists in a private window.
+  if (isPrivateMode) {
+    hasSeenV45Announcement = true;
+    return;
+  }
   try {
     const result = await safeStorage.get('bmz_v45_announced');
     hasSeenV45Announcement = result.bmz_v45_announced || false;
@@ -3242,14 +3255,326 @@ const FOLDER_SCAN_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in millise
 let syncInProgress = false; // Track sync operations to prevent duplicates
 let theme = 'enhanced-blue';
 let viewMode = 'list';
+/* [ZeroLabs] 2026-08-17 4:15 PM - edited: added quickAccess/recent display flags */
 let displayOptions = {
   title: true,
   url: true,
   liveStatus: true,
   safetyStatus: true,
   preview: true,
-  favicon: true
+  favicon: true,
+  quickAccess: true,
+  recent: true
 };
+
+/* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access and recently opened state */
+// ============================================================================
+// QUICK ACCESS & RECENTLY OPENED
+// ============================================================================
+// A pin is a URL, never a bookmark id. Firefox ids are profile-local GUIDs and
+// a pull-from-snippet deletes and recreates every bookmark, so ids change. URLs
+// survive, and resolving them against the live tree at render time is what makes
+// "delete the bookmark, the pin disappears" work with no extra bookkeeping.
+
+const QUICK_ACCESS_KEY = 'bmz_quick_access';
+const RECENT_OPENS_KEY = 'bmz_recent_opens';
+const SECTION_STATE_KEY = 'bmz_section_state';
+const DISPLAY_SECTIONS_KEY = 'bmz_display_sections';
+const RECENT_OPENS_LIMIT = 5;
+
+let quickAccessPins = [];        // [{ url, title, pinnedAt }] - display order
+let quickAccessTombstones = [];  // [{ url, removedAt }] - so unpins survive a merge
+let quickAccessSnippetTag = null; // Which snippet these pins belong to (null = local only)
+let quickAccessMetaLoaded = false; // True once bmz-meta.json has been read for the current snippet
+let recentOpens = [];            // [{ url, openedAt }] - device local, never synced
+// The two sections share one row and behave as an accordion: at most one open.
+let activeSection = 'quickAccess'; // 'quickAccess' | 'recent' | null (both closed)
+
+// Normalize a URL for identity comparison. Scheme and host are case-insensitive,
+// a lone trailing slash is noise, everything else is significant.
+function normalizeUrlKey(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    const base = `${u.protocol}//${u.host.toLowerCase()}${u.pathname}${u.search}${u.hash}`;
+    return base.replace(/\/$/, '');
+  } catch (error) {
+    return String(url).trim();
+  }
+}
+
+// Map every bookmark in the live tree by normalized URL. First match wins, so a
+// URL bookmarked in two folders resolves to one Quick Access row.
+function buildUrlIndex() {
+  const index = new Map();
+  const walk = (nodes) => {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      if (node.url) {
+        const key = normalizeUrlKey(node.url);
+        if (key && !index.has(key)) index.set(key, node);
+      } else if (node.children) {
+        walk(node.children);
+      }
+    }
+  };
+  walk(bookmarkTree);
+  return index;
+}
+
+async function loadQuickAccess() {
+  try {
+    const result = await safeStorage.get(QUICK_ACCESS_KEY);
+    const stored = result[QUICK_ACCESS_KEY];
+    if (stored && typeof stored === 'object') {
+      quickAccessPins = Array.isArray(stored.pins) ? stored.pins : [];
+      quickAccessTombstones = Array.isArray(stored.tombstones) ? stored.tombstones : [];
+      quickAccessSnippetTag = stored.snippetId || null;
+    } else {
+      quickAccessPins = [];
+      quickAccessTombstones = [];
+      quickAccessSnippetTag = null;
+    }
+  } catch (error) {
+    console.error('Error loading quick access:', error);
+    quickAccessPins = [];
+    quickAccessTombstones = [];
+    quickAccessSnippetTag = null;
+  }
+}
+
+async function saveQuickAccess() {
+  try {
+    await safeStorage.set({
+      [QUICK_ACCESS_KEY]: {
+        snippetId: quickAccessSnippetTag,
+        pins: quickAccessPins,
+        tombstones: quickAccessTombstones
+      }
+    });
+  } catch (error) {
+    console.error('Error saving quick access:', error);
+  }
+}
+
+async function loadRecentOpens() {
+  try {
+    const result = await safeStorage.get(RECENT_OPENS_KEY);
+    recentOpens = Array.isArray(result[RECENT_OPENS_KEY]) ? result[RECENT_OPENS_KEY] : [];
+  } catch (error) {
+    console.error('Error loading recent opens:', error);
+    recentOpens = [];
+  }
+}
+
+async function saveRecentOpens() {
+  try {
+    await safeStorage.set({ [RECENT_OPENS_KEY]: recentOpens });
+  } catch (error) {
+    console.error('Error saving recent opens:', error);
+  }
+}
+
+async function loadSectionState() {
+  try {
+    const result = await safeStorage.get(SECTION_STATE_KEY);
+    const stored = result[SECTION_STATE_KEY];
+    if (stored && typeof stored === 'object' && 'active' in stored) {
+      const valid = ['quickAccess', 'recent', null];
+      activeSection = valid.includes(stored.active) ? stored.active : 'quickAccess';
+    }
+  } catch (error) {
+    console.error('Error loading section state:', error);
+  }
+}
+
+async function saveSectionState() {
+  try {
+    await safeStorage.set({ [SECTION_STATE_KEY]: { active: activeSection } });
+  } catch (error) {
+    console.error('Error saving section state:', error);
+  }
+}
+
+// The six pre-existing display options have never been persisted and still are
+// not; only the two new section toggles are, so they survive a sidebar reopen.
+async function loadDisplaySections() {
+  try {
+    const result = await safeStorage.get(DISPLAY_SECTIONS_KEY);
+    const stored = result[DISPLAY_SECTIONS_KEY];
+    if (stored && typeof stored === 'object') {
+      displayOptions.quickAccess = stored.quickAccess !== false;
+      displayOptions.recent = stored.recent !== false;
+    }
+  } catch (error) {
+    console.error('Error loading display sections:', error);
+  }
+}
+
+async function saveDisplaySections() {
+  try {
+    await safeStorage.set({
+      [DISPLAY_SECTIONS_KEY]: {
+        quickAccess: displayOptions.quickAccess,
+        recent: displayOptions.recent
+      }
+    });
+  } catch (error) {
+    console.error('Error saving display sections:', error);
+  }
+}
+
+function isPinned(url) {
+  const key = normalizeUrlKey(url);
+  if (!key) return false;
+  return quickAccessPins.some(pin => normalizeUrlKey(pin.url) === key);
+}
+
+async function pinBookmark(bookmark) {
+  if (!bookmark || !bookmark.url) return;
+  const key = normalizeUrlKey(bookmark.url);
+  if (!key || isPinned(bookmark.url)) return;
+
+  quickAccessPins.push({
+    url: bookmark.url,
+    title: bookmark.title || bookmark.url,
+    pinnedAt: Date.now()
+  });
+  // Re-pinning clears any tombstone, otherwise a merge would delete it again.
+  quickAccessTombstones = quickAccessTombstones.filter(t => normalizeUrlKey(t.url) !== key);
+
+  await saveQuickAccess();
+  markQuickAccessChanged();
+  renderBookmarks();
+}
+
+// Unpin only. This never touches the underlying bookmark.
+async function unpinUrl(url) {
+  const key = normalizeUrlKey(url);
+  if (!key) return;
+  const before = quickAccessPins.length;
+  quickAccessPins = quickAccessPins.filter(pin => normalizeUrlKey(pin.url) !== key);
+  if (quickAccessPins.length === before) return;
+
+  quickAccessTombstones = quickAccessTombstones.filter(t => normalizeUrlKey(t.url) !== key);
+  quickAccessTombstones.push({ url, removedAt: Date.now() });
+
+  await saveQuickAccess();
+  markQuickAccessChanged();
+  renderBookmarks();
+}
+
+async function reorderQuickAccess(fromKey, toKey, dropBefore) {
+  const fromIndex = quickAccessPins.findIndex(p => normalizeUrlKey(p.url) === fromKey);
+  const toIndex = quickAccessPins.findIndex(p => normalizeUrlKey(p.url) === toKey);
+  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+
+  const [moved] = quickAccessPins.splice(fromIndex, 1);
+  // Removing the source first shifts every later index down by one.
+  let insertAt = quickAccessPins.findIndex(p => normalizeUrlKey(p.url) === toKey);
+  if (!dropBefore) insertAt += 1;
+  quickAccessPins.splice(insertAt, 0, moved);
+
+  await saveQuickAccess();
+  markQuickAccessChanged();
+  renderBookmarks();
+}
+
+async function recordRecentOpen(url) {
+  if (!url) return;
+  const key = normalizeUrlKey(url);
+  if (!key) return;
+
+  // Opening the same bookmark twice in a row must not produce two rows.
+  recentOpens = recentOpens.filter(entry => normalizeUrlKey(entry.url) !== key);
+  recentOpens.unshift({ url, openedAt: Date.now() });
+  if (recentOpens.length > RECENT_OPENS_LIMIT) {
+    recentOpens = recentOpens.slice(0, RECENT_OPENS_LIMIT);
+  }
+
+  await saveRecentOpens();
+  if (displayOptions.recent) renderBookmarks();
+}
+
+// Resolve pins against the live tree, dropping any whose bookmark is gone. This
+// is what removes a pin when the bookmark is deleted, including deletions made
+// in Firefox's own bookmark manager rather than in BMZ.
+/* [ZeroLabs] 2026-08-17 4:15 PM - edited: resolve never deletes stored pins */
+// Deliberately does NOT prune. A pin whose bookmark is missing is simply not
+// rendered, which is what makes it vanish when you delete the bookmark. Deleting
+// the stored entry here was destroying pins during a sync: a pull resolves pins
+// against the OLD tree, before the incoming bookmarks have been written, so
+// every pin looked dead for that window and got erased permanently.
+function resolveQuickAccess() {
+  const index = buildUrlIndex();
+  const resolved = [];
+
+  for (const pin of quickAccessPins) {
+    const node = index.get(normalizeUrlKey(pin.url));
+    if (node) resolved.push(node);
+  }
+
+  return resolved;
+}
+
+/* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access merge for sync */
+const TOMBSTONE_MAX_AGE = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+// Merge a remote pin list into the local one. Tombstones are what make an unpin
+// stick: without them the other device's copy of the pin simply reappears on the
+// next pull. A tombstone wins only if it is newer than the pin it shadows.
+function mergeQuickAccess(remotePins, remoteTombstones) {
+  const tombstones = new Map();
+  const addTombstone = (entry) => {
+    if (!entry || !entry.url) return;
+    const key = normalizeUrlKey(entry.url);
+    const existing = tombstones.get(key);
+    if (!existing || (entry.removedAt || 0) > (existing.removedAt || 0)) {
+      tombstones.set(key, { url: entry.url, removedAt: entry.removedAt || 0 });
+    }
+  };
+  quickAccessTombstones.forEach(addTombstone);
+  (remoteTombstones || []).forEach(addTombstone);
+
+  const pins = new Map();
+  const addPin = (pin) => {
+    if (!pin || !pin.url) return;
+    const key = normalizeUrlKey(pin.url);
+    const existing = pins.get(key);
+    // Earliest pin time wins so the entry keeps its original position intent.
+    if (!existing || (pin.pinnedAt || 0) < (existing.pinnedAt || 0)) {
+      pins.set(key, { url: pin.url, title: pin.title || pin.url, pinnedAt: pin.pinnedAt || Date.now() });
+    }
+  };
+  // Local order first so this device's arrangement survives the merge.
+  quickAccessPins.forEach(addPin);
+  (remotePins || []).forEach(addPin);
+
+  const merged = [];
+  for (const [key, pin] of pins) {
+    const tomb = tombstones.get(key);
+    if (tomb && (tomb.removedAt || 0) > (pin.pinnedAt || 0)) continue; // Unpinned later than pinned
+    merged.push(pin);
+    tombstones.delete(key); // Pin outlived the tombstone, drop the tombstone
+  }
+
+  const cutoff = Date.now() - TOMBSTONE_MAX_AGE;
+  quickAccessPins = merged;
+  quickAccessTombstones = Array.from(tombstones.values()).filter(t => (t.removedAt || 0) > cutoff);
+}
+
+// Same rule as the pins: skip what cannot be resolved, never delete it.
+function resolveRecentOpens() {
+  const index = buildUrlIndex();
+  const resolved = [];
+
+  for (const entry of recentOpens) {
+    const node = index.get(normalizeUrlKey(entry.url));
+    if (node) resolved.push(node);
+  }
+
+  return resolved;
+}
 let currentEditItem = null;
 let zoomLevel = 80;
 let fontSize = 100; // Font size for bookmark/folder text (70-150%)
@@ -3531,6 +3856,11 @@ async function initMainUI() {
   loadScanConcurrency();
   await loadSetupCardFlag();
   await loadV45AnnouncementFlag();
+  /* [ZeroLabs] 2026-08-17 4:15 PM - added: load quick access and recent state */
+  await loadQuickAccess();
+  await loadRecentOpens();
+  await loadSectionState();
+  await loadDisplaySections();
   await loadWhitelist();
   await loadSafetyHistory();
   await loadFolderScanTimestamps();
@@ -4735,6 +5065,11 @@ async function openBookmarkUrl(url, openInNewTab = false) {
       return;
     }
 
+    /* [ZeroLabs] 2026-08-17 4:15 PM - added: track recent opens */
+    // Recorded past the blocked-scheme return, so a URL Firefox refused to open
+    // never counts as opened.
+    recordRecentOpen(url);
+
     // List of other privileged schemes that may work with window.open
     const privilegedSchemes = ['moz-extension', 'chrome', 'view-source', 'jar', 'resource'];
 
@@ -4865,6 +5200,14 @@ function renderBookmarks() {
     }, 0);
   }
 
+  /* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access and recent sections */
+  // Hidden while searching or filtering: the tree is already showing matches
+  // from everywhere, so mirrored rows would just duplicate the results.
+  const isNarrowing = searchTerm.length > 0 || activeFilters.length > 0;
+  if (!isNarrowing) {
+    renderSections(bookmarkList);
+  }
+
   renderNodes(filtered, bookmarkList);
 
   // Add a drop zone at the end of the root to allow dropping items there
@@ -4897,6 +5240,234 @@ function renderBookmarks() {
 
   // Update total bookmark count in status bar
   updateTotalBookmarkCount();
+}
+
+/* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access / recent section rendering */
+// ============================================================================
+// SECTION RENDERING (QUICK ACCESS + RECENTLY OPENED)
+// ============================================================================
+
+// Which list a drag started from. dataTransfer payloads are unreadable during
+// dragover in Firefox, so the drop targets need this to decide whether to accept.
+let dragContext = null; // null | 'tree' | 'tree-folder' | 'quick-access'
+
+// Which list the open context menu belongs to, so a menu opened from Quick
+// Access can offer Remove from Quick Access instead of Delete.
+let contextMenuOrigin = 'tree'; // 'tree' | 'quick-access' | 'recent'
+
+/* [ZeroLabs] 2026-08-17 4:15 PM - edited: shared split header row */
+// Both sections sit on one row, each taking half the width, and behave as an
+// accordion: opening one closes the other. Clicking the open one closes both.
+function buildSectionHeader(config, count, isActive) {
+  const header = document.createElement('div');
+  header.className = 'bmz-section-header';
+  if (isActive) header.classList.add('active');
+  header.setAttribute('role', 'button');
+  header.setAttribute('tabindex', '0');
+  header.setAttribute('aria-expanded', String(isActive));
+
+  header.innerHTML = `
+    <svg class="bmz-section-icon" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="${config.iconPath}"/>
+    </svg>
+    <span class="bmz-section-title">${escapeHtml(config.title)}</span>
+    <svg class="bmz-section-chevron" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
+    </svg>
+    <span class="bmz-section-count">${count}</span>
+  `;
+
+  const toggle = async () => {
+    activeSection = (activeSection === config.stateKey) ? null : config.stateKey;
+    await saveSectionState();
+    renderBookmarks();
+  };
+
+  header.addEventListener('click', toggle);
+  header.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle();
+    }
+  });
+
+  return header;
+}
+
+// Quick Access rows. Draggable for reorder within the section only; the tree's
+// drop handlers reject this drag context outright, so a pin can never be dropped
+// into a real folder.
+function createQuickAccessRow(bookmark) {
+  const row = createBookmarkElement(bookmark, { mirror: 'quick-access' });
+  const pinKey = normalizeUrlKey(bookmark.url);
+
+  row.draggable = true;
+  row.dataset.pinKey = pinKey;
+
+  row.addEventListener('dragstart', (e) => {
+    e.stopPropagation();
+    dragContext = 'quick-access';
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', pinKey);
+    e.dataTransfer.setData('itemType', 'quick-access');
+    row.style.opacity = '0.5';
+  });
+
+  row.addEventListener('dragend', () => {
+    dragContext = null;
+    row.style.opacity = '1';
+    document.querySelectorAll('.qa-drop-before, .qa-drop-after').forEach(el => {
+      el.classList.remove('qa-drop-before', 'qa-drop-after');
+    });
+  });
+
+  row.addEventListener('dragover', (e) => {
+    if (dragContext !== 'quick-access') return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = row.getBoundingClientRect();
+    document.querySelectorAll('.qa-drop-before, .qa-drop-after').forEach(el => {
+      el.classList.remove('qa-drop-before', 'qa-drop-after');
+    });
+    row.classList.add(e.clientY < rect.top + rect.height * 0.5 ? 'qa-drop-before' : 'qa-drop-after');
+  });
+
+  row.addEventListener('dragleave', (e) => {
+    if (!row.contains(e.relatedTarget)) {
+      row.classList.remove('qa-drop-before', 'qa-drop-after');
+    }
+  });
+
+  row.addEventListener('drop', async (e) => {
+    if (dragContext !== 'quick-access') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const dropBefore = row.classList.contains('qa-drop-before');
+    row.classList.remove('qa-drop-before', 'qa-drop-after');
+    const fromKey = e.dataTransfer.getData('text/plain');
+    dragContext = null;
+    if (fromKey && fromKey !== pinKey) {
+      await reorderQuickAccess(fromKey, pinKey, dropBefore);
+    }
+  });
+
+  return row;
+}
+
+function buildQuickAccessBody(resolved) {
+  const body = document.createElement('div');
+  body.className = 'bmz-section-body';
+
+  if (resolved.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'bmz-section-empty';
+    empty.textContent = 'Right-click any bookmark and choose Add to Quick Access, or drag one here.';
+    body.appendChild(empty);
+  } else {
+    resolved.forEach(bookmark => body.appendChild(createQuickAccessRow(bookmark)));
+  }
+
+  // Dropping a bookmark from the tree onto the body pins it. This mirrors, it
+  // never moves the original, so nothing in the real folder structure changes.
+  body.addEventListener('dragover', (e) => {
+    if (dragContext !== 'tree') return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    body.classList.add('bmz-section-drop-target');
+  });
+
+  body.addEventListener('dragleave', (e) => {
+    if (!body.contains(e.relatedTarget)) {
+      body.classList.remove('bmz-section-drop-target');
+    }
+  });
+
+  body.addEventListener('drop', async (e) => {
+    if (dragContext !== 'tree') return;
+    e.preventDefault();
+    e.stopPropagation();
+    body.classList.remove('bmz-section-drop-target');
+    const draggedId = e.dataTransfer.getData('text/plain');
+    dragContext = null;
+    const item = findBookmarkById(bookmarkTree, draggedId);
+    if (item && item.url) {
+      await pinBookmark(item);
+    }
+  });
+
+  return body;
+}
+
+function buildRecentBody(resolved) {
+  const body = document.createElement('div');
+  body.className = 'bmz-section-body';
+
+  if (resolved.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'bmz-section-empty';
+    empty.textContent = 'Bookmarks you open will appear here.';
+    body.appendChild(empty);
+  } else {
+    // Read-only mirror: no drag, no reorder. Order is recency.
+    resolved.forEach(bookmark => {
+      const row = createBookmarkElement(bookmark, { mirror: 'recent' });
+      row.draggable = false;
+      body.appendChild(row);
+    });
+  }
+
+  return body;
+}
+
+/* [ZeroLabs] 2026-08-17 4:15 PM - added: both sections share one split row */
+// One row split in two, with the open section's contents below it. If a display
+// option hides one section, the other takes the full row rather than half.
+function renderSections(container) {
+  const showQuickAccess = displayOptions.quickAccess;
+  const showRecent = displayOptions.recent;
+  if (!showQuickAccess && !showRecent) return;
+
+  // A hidden section cannot be the active one.
+  let active = activeSection;
+  if (active === 'quickAccess' && !showQuickAccess) active = showRecent ? 'recent' : null;
+  if (active === 'recent' && !showRecent) active = showQuickAccess ? 'quickAccess' : null;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'bmz-sections';
+
+  const tabs = document.createElement('div');
+  tabs.className = 'bmz-section-tabs';
+  if (showQuickAccess && showRecent) tabs.classList.add('split');
+
+  const quickResolved = showQuickAccess ? resolveQuickAccess() : [];
+  const recentResolved = showRecent ? resolveRecentOpens() : [];
+
+  if (showQuickAccess) {
+    tabs.appendChild(buildSectionHeader({
+      title: 'Quick Access',
+      stateKey: 'quickAccess',
+      iconPath: 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z'
+    }, quickResolved.length, active === 'quickAccess'));
+  }
+
+  if (showRecent) {
+    tabs.appendChild(buildSectionHeader({
+      title: 'Recent',
+      stateKey: 'recent',
+      iconPath: 'M13,3A9,9 0 0,0 4,12H1L4.89,15.89L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.51,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3M12,8V13L16.28,15.54L17,14.33L13.5,12.25V8H12Z'
+    }, recentResolved.length, active === 'recent'));
+  }
+
+  wrapper.appendChild(tabs);
+
+  if (active === 'quickAccess') {
+    wrapper.appendChild(buildQuickAccessBody(quickResolved));
+  } else if (active === 'recent') {
+    wrapper.appendChild(buildRecentBody(recentResolved));
+  }
+
+  container.appendChild(wrapper);
 }
 
 // Create a drop zone element that fills the gap between items
@@ -5241,6 +5812,10 @@ function createFolderElement(folder) {
   // Drag and drop handlers for folders (attach to header, not entire folderDiv)
   header.addEventListener('dragstart', (e) => {
     e.stopPropagation(); // Prevent event from bubbling to parent folders
+    /* [ZeroLabs] 2026-08-17 4:15 PM - added: mark drag context as tree folder */
+    // Distinct from 'tree' so the Quick Access section refuses folders; only
+    // bookmarks can be pinned.
+    dragContext = 'tree-folder';
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', folder.id);
     e.dataTransfer.setData('itemType', 'folder');
@@ -5248,13 +5823,20 @@ function createFolderElement(folder) {
   });
 
   header.addEventListener('dragend', () => {
+    /* [ZeroLabs] 2026-08-17 4:15 PM - added: clear drag context */
+    dragContext = null;
     folderDiv.style.opacity = '1';
     removeAllDropIndicators();
+    document.querySelectorAll('.bmz-section-drop-target').forEach(el => {
+      el.classList.remove('bmz-section-drop-target');
+    });
   });
 
   // Attach dragover/drop to header only, not entire folderDiv
   // This prevents intercepting drag events for bookmarks/subfolders within this folder
   header.addEventListener('dragover', (e) => {
+    /* [ZeroLabs] 2026-08-17 4:15 PM - added: reject quick access drags */
+    if (dragContext === 'quick-access') return;
     e.preventDefault();
     e.stopPropagation(); // Don't let this bubble to parent folders
     e.dataTransfer.dropEffect = 'move';
@@ -5292,14 +5874,23 @@ function createFolderElement(folder) {
 }
 
 // Create bookmark element
-function createBookmarkElement(bookmark) {
+/* [ZeroLabs] 2026-08-17 4:15 PM - edited: mirror option for section rows */
+// options.mirror ('quick-access' | 'recent') marks a row as a second copy of a
+// bookmark already rendered in the tree. Mirrors keep data-id so scan results
+// still reach them, but skip the tree drag handlers entirely.
+function createBookmarkElement(bookmark, options = {}) {
+  const isMirror = Boolean(options.mirror);
   const bookmarkDiv = document.createElement('div');
   bookmarkDiv.className = 'bookmark-item';
   if (!displayOptions.preview) {
     bookmarkDiv.classList.add('no-preview');
   }
   bookmarkDiv.dataset.id = bookmark.id;
-  bookmarkDiv.draggable = true;
+  if (isMirror) {
+    bookmarkDiv.classList.add('bookmark-item-mirror');
+    bookmarkDiv.dataset.mirror = options.mirror;
+  }
+  bookmarkDiv.draggable = !isMirror;
 
   // Get link status (default to unknown)
   const linkStatus = bookmark.linkStatus || 'unknown';
@@ -5348,7 +5939,7 @@ function createBookmarkElement(bookmark) {
   const bookmarkTitle = bookmark.title || bookmark.url;
 
   bookmarkDiv.innerHTML = `
-    ${multiSelectMode ? `<input type="checkbox" class="item-checkbox" data-id="${bookmark.id}" ${selectedItems.has(bookmark.id) ? 'checked' : ''} aria-label="Select ${escapeHtml(bookmarkTitle)}">` : ''}
+    ${multiSelectMode && !isMirror ? `<input type="checkbox" class="item-checkbox" data-id="${bookmark.id}" ${selectedItems.has(bookmark.id) ? 'checked' : ''} aria-label="Select ${escapeHtml(bookmarkTitle)}">` : ''}
     <div class="status-indicators">
       ${statusIndicatorsHtml}
     </div>
@@ -5389,6 +5980,8 @@ function createBookmarkElement(bookmark) {
     }
     // Shift+click: open in new window
     if (e.shiftKey) {
+      /* [ZeroLabs] 2026-08-17 4:15 PM - added: track recent opens */
+      recordRecentOpen(bookmark.url);
       browser.windows.create({ url: bookmark.url });
       return;
     }
@@ -5401,10 +5994,12 @@ function createBookmarkElement(bookmark) {
     openBookmarkUrl(bookmark.url, false);
   });
 
+  /* [ZeroLabs] 2026-08-17 4:15 PM - edited: record which section opened the menu */
   // Add menu toggle handler
   const menuBtn = bookmarkDiv.querySelector('.bookmark-menu-btn');
   menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    contextMenuOrigin = options.mirror || 'tree';
     toggleBookmarkMenu(bookmark);
   });
 
@@ -5412,50 +6007,63 @@ function createBookmarkElement(bookmark) {
   bookmarkDiv.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    contextMenuOrigin = options.mirror || 'tree';
     toggleBookmarkMenu(bookmark);
   });
 
-  // Drag and drop handlers
-  bookmarkDiv.addEventListener('dragstart', (e) => {
-    e.stopPropagation(); // Prevent event from bubbling to parent folders
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', bookmark.id);
-    e.dataTransfer.setData('itemType', 'bookmark');
-    bookmarkDiv.style.opacity = '0.5';
-  });
+  /* [ZeroLabs] 2026-08-17 4:15 PM - edited: skip tree drag wiring on mirror rows */
+  // Mirrors get their own handlers from the section that built them, so the
+  // move-a-real-bookmark handlers below must never be attached to one.
+  if (!isMirror) {
+    // Drag and drop handlers
+    bookmarkDiv.addEventListener('dragstart', (e) => {
+      e.stopPropagation(); // Prevent event from bubbling to parent folders
+      dragContext = 'tree';
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', bookmark.id);
+      e.dataTransfer.setData('itemType', 'bookmark');
+      bookmarkDiv.style.opacity = '0.5';
+    });
 
-  bookmarkDiv.addEventListener('dragend', () => {
-    bookmarkDiv.style.opacity = '1';
-    removeAllDropIndicators();
-  });
+    bookmarkDiv.addEventListener('dragend', () => {
+      dragContext = null;
+      bookmarkDiv.style.opacity = '1';
+      removeAllDropIndicators();
+      document.querySelectorAll('.bmz-section-drop-target').forEach(el => {
+        el.classList.remove('bmz-section-drop-target');
+      });
+    });
 
-  bookmarkDiv.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.stopPropagation(); // Don't let this bubble to parent folder header
-    e.dataTransfer.dropEffect = 'move';
-    const rect = bookmarkDiv.getBoundingClientRect();
-    removeAllDropIndicators();
-    if (e.clientY < rect.top + rect.height * 0.5) {
-      bookmarkDiv.classList.add('drop-before');
-    } else {
-      bookmarkDiv.classList.add('drop-after');
-    }
-  });
+    bookmarkDiv.addEventListener('dragover', (e) => {
+      if (dragContext === 'quick-access') return; // Pins never enter the tree
+      e.preventDefault();
+      e.stopPropagation(); // Don't let this bubble to parent folder header
+      e.dataTransfer.dropEffect = 'move';
+      const rect = bookmarkDiv.getBoundingClientRect();
+      removeAllDropIndicators();
+      if (e.clientY < rect.top + rect.height * 0.5) {
+        bookmarkDiv.classList.add('drop-before');
+      } else {
+        bookmarkDiv.classList.add('drop-after');
+      }
+    });
 
-  bookmarkDiv.addEventListener('dragleave', (e) => {
-    if (!bookmarkDiv.contains(e.relatedTarget)) {
-      bookmarkDiv.classList.remove('drop-before', 'drop-after');
-    }
-  });
+    bookmarkDiv.addEventListener('dragleave', (e) => {
+      if (!bookmarkDiv.contains(e.relatedTarget)) {
+        bookmarkDiv.classList.remove('drop-before', 'drop-after');
+      }
+    });
 
-  bookmarkDiv.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const dropBefore = bookmarkDiv.classList.contains('drop-before');
-    removeAllDropIndicators();
-    const draggedId = e.dataTransfer.getData('text/plain');
-    await handleDrop(draggedId, bookmark.id, bookmarkDiv, { dropBefore, dropAfter: !dropBefore, dropInto: false });
-  });
+    bookmarkDiv.addEventListener('drop', async (e) => {
+      if (dragContext === 'quick-access') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const dropBefore = bookmarkDiv.classList.contains('drop-before');
+      removeAllDropIndicators();
+      const draggedId = e.dataTransfer.getData('text/plain');
+      await handleDrop(draggedId, bookmark.id, bookmarkDiv, { dropBefore, dropAfter: !dropBefore, dropInto: false });
+    });
+  }
 
   // Preview hover handler - load image on first hover (only if preview is enabled)
   if (displayOptions.preview) {
@@ -5840,6 +6448,8 @@ function removeAllDropIndicators() {
 }
 
 async function handleDropToRoot(draggedId) {
+  /* [ZeroLabs] 2026-08-17 4:15 PM - added: reject quick access drags */
+  if (dragContext === 'quick-access') return;
   // Drop at the end of root (after all root items)
   const draggedItem = findBookmarkById(bookmarkTree, draggedId);
   if (!draggedItem) {
@@ -5870,6 +6480,8 @@ async function handleDropToRoot(draggedId) {
 }
 
 async function handleDropToPosition(draggedId, targetParentId, targetIndex) {
+  /* [ZeroLabs] 2026-08-17 4:15 PM - added: reject quick access drags */
+  if (dragContext === 'quick-access') return;
   const draggedItem = findBookmarkById(bookmarkTree, draggedId);
   if (!draggedItem) {
     console.error('Could not find dragged item');
@@ -5901,6 +6513,8 @@ async function handleDropToPosition(draggedId, targetParentId, targetIndex) {
 }
 
 async function handleDrop(draggedId, targetId, targetElement, dropState) {
+  /* [ZeroLabs] 2026-08-17 4:15 PM - added: reject quick access drags */
+  if (dragContext === 'quick-access') return;
   if (draggedId === targetId) return; // Can't drop on itself
 
   try {
@@ -6148,6 +6762,35 @@ function openContextMenuModal(item, isFolder) {
         <span>Delete</span>
       </button>
     `;
+
+    /* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access pin/unpin action */
+    const pinIcon = '<svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z"/></svg>';
+    const pinned = isPinned(item.url);
+    const pinButton = `
+      <button class="action-btn" data-action="${pinned ? 'unpin-quick-access' : 'pin-quick-access'}">
+        <span class="icon">${pinIcon}</span>
+        <span>${pinned ? 'Remove from Quick Access' : 'Add to Quick Access'}</span>
+      </button>
+    `;
+
+    if (contextMenuOrigin === 'quick-access') {
+      // Opened from the Quick Access section. Delete and Move to belong to the
+      // real bookmark, and neither should be reachable from a mirror, so the
+      // whole menu collapses to unpin plus the harmless actions.
+      buttonsHtml = buttonsHtml
+        .replace(/\s*<button class="action-btn danger" data-action="delete">[\s\S]*?<\/button>/, '')
+        .replace(/\s*<button class="action-btn" data-action="move-to">[\s\S]*?<\/button>/, '');
+    }
+
+    // Sits directly under Open with Textise rather than at the bottom of the
+    // menu. Function replacer, not a $1 string, so the SVG path can never be
+    // read as a substitution pattern.
+    const readerViewButton = /<button class="action-btn" data-action="reader-view">[\s\S]*?<\/button>/;
+    if (readerViewButton.test(buttonsHtml)) {
+      buttonsHtml = buttonsHtml.replace(readerViewButton, (match) => match + pinButton);
+    } else {
+      buttonsHtml += pinButton;
+    }
   }
 
   body.innerHTML = buttonsHtml;
@@ -6821,16 +7464,27 @@ function updateBookmarkInTree(bookmarkId, updates) {
 }
 
 // Update status indicators in DOM for a specific bookmark (without full re-render)
+/* [ZeroLabs] 2026-08-17 4:15 PM - edited: update every copy of a bookmark */
+// A pinned or recently opened bookmark is in the DOM more than once under the
+// same data-id. querySelector would only ever reach the first copy, leaving the
+// others stuck on a stale scan result, so every match gets updated.
 function updateBookmarkStatusInDOM(bookmarkId, updates) {
-  const bookmarkElement = document.querySelector(`[data-id="${bookmarkId}"]`);
-  if (!bookmarkElement || !bookmarkElement.classList.contains('bookmark-item')) {
-    return; // Bookmark not currently visible or is a folder
-  }
+  const matches = document.querySelectorAll(`[data-id="${bookmarkId}"]`);
+  if (!matches.length) return;
 
   // Get the bookmark data from tree to access its URL
   const bookmark = findBookmarkById(bookmarkTree, bookmarkId);
   if (!bookmark) return;
 
+  matches.forEach(bookmarkElement => {
+    if (!bookmarkElement.classList.contains('bookmark-item')) {
+      return; // Not currently visible as a bookmark row, or is a folder
+    }
+    applyStatusToElement(bookmarkElement, bookmark, updates);
+  });
+}
+
+function applyStatusToElement(bookmarkElement, bookmark, updates) {
   // Update status indicators container (for list view)
   const statusIndicatorsContainer = bookmarkElement.querySelector('.status-indicators');
   if (statusIndicatorsContainer && (displayOptions.safetyStatus || displayOptions.liveStatus)) {
@@ -7037,8 +7691,20 @@ function trackSafetyChange(url, newStatus, sources) {
 // Handle bookmark actions
 async function handleBookmarkAction(action, bookmark) {
   switch (action) {
+    /* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access pin actions */
+    case 'pin-quick-access':
+      await pinBookmark(bookmark);
+      break;
+
+    case 'unpin-quick-access':
+      // Unpin only. The bookmark itself is never touched from here.
+      await unpinUrl(bookmark.url);
+      break;
+
     case 'open':
       // Open in active tab
+      /* [ZeroLabs] 2026-08-17 4:15 PM - added: track recent opens */
+      recordRecentOpen(bookmark.url);
       const tabs = await browser.tabs.query({ active: true, currentWindow: true });
       if (tabs[0]) {
         browser.tabs.update(tabs[0].id, { url: bookmark.url });
@@ -7053,6 +7719,8 @@ async function handleBookmarkAction(action, bookmark) {
 
     case 'open-new-window':
       // Open in new window
+      /* [ZeroLabs] 2026-08-17 4:15 PM - added: track recent opens */
+      recordRecentOpen(bookmark.url);
       browser.windows.create({ url: bookmark.url });
       break;
 
@@ -9197,6 +9865,12 @@ function getAllBookmarksInFolder(folder) {
 // Module-level reference so renderBookmarks can call it before the inner function is in scope
 let openSnippetSyncDialog = null;
 
+/* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access sync bridge */
+// Same pattern: the snippet sync machinery lives inside a closure, so pin edits
+// reach it through a reference assigned at startup. No-op until then, and a
+// no-op forever for anyone not using GitLab sync.
+let markQuickAccessChanged = () => {};
+
 // Setup event listeners
 function setupEventListeners() {
   // Search
@@ -9273,6 +9947,28 @@ function setupEventListeners() {
       hidePreviewPopup();
     }
   });
+
+  /* [ZeroLabs] 2026-08-17 4:15 PM - added: section visibility toggles */
+  const displayQuickAccess = document.getElementById('displayQuickAccess');
+  const displayRecent = document.getElementById('displayRecent');
+
+  if (displayQuickAccess) {
+    displayQuickAccess.checked = displayOptions.quickAccess;
+    displayQuickAccess.addEventListener('change', async (e) => {
+      displayOptions.quickAccess = e.target.checked;
+      await saveDisplaySections();
+      renderBookmarks();
+    });
+  }
+
+  if (displayRecent) {
+    displayRecent.checked = displayOptions.recent;
+    displayRecent.addEventListener('change', async (e) => {
+      displayOptions.recent = e.target.checked;
+      await saveDisplaySections();
+      renderBookmarks();
+    });
+  }
 
   // Filter chips
   document.querySelectorAll('.filter-chip').forEach(chip => {
@@ -11280,10 +11976,103 @@ function setupEventListeners() {
     }
   }
 
+  /* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access meta file in snippet */
+  // Pins live in their own file so a client that has never heard of Quick Access
+  // cannot blank them: GitLab only rewrites the files named in the request, and
+  // every older build names only bookmarks.json.
+  const META_FILE = 'bmz-meta.json';
+  let metaFileExists = false;
+
+  async function readQuickAccessMeta(id = null) {
+    const useId = id || snippetId;
+    if (!useId) return null;
+
+    try {
+      const response = await fetch(`https://gitlab.com/api/v4/snippets/${useId}`, {
+        headers: getSnippetHeaders()
+      });
+      if (!response.ok) return null;
+
+      const snippet = await response.json();
+      const metaFile = snippet.files?.find(f =>
+        f.path === META_FILE || f.file_name === META_FILE
+      );
+
+      // A snippet with no meta file means no pins yet, which is the normal state
+      // of every snippet that existed before this feature. Not an error.
+      if (!metaFile) {
+        metaFileExists = false;
+        return { pins: [], tombstones: [] };
+      }
+      metaFileExists = true;
+
+      let content = metaFile.content;
+      if (!content) {
+        const fileResponse = await fetch(
+          `https://gitlab.com/api/v4/snippets/${useId}/files/main/${META_FILE}/raw`,
+          { headers: getSnippetHeaders() }
+        );
+        if (!fileResponse.ok) return { pins: [], tombstones: [] };
+        content = await fileResponse.text();
+      }
+
+      if (!content || content.trim() === '') return { pins: [], tombstones: [] };
+
+      const parsed = JSON.parse(content);
+      return {
+        pins: Array.isArray(parsed.quickAccess) ? parsed.quickAccess : [],
+        tombstones: Array.isArray(parsed.quickAccessRemoved) ? parsed.quickAccessRemoved : []
+      };
+    } catch (error) {
+      console.error('Failed to read quick access meta from Snippet:', error);
+      return null;
+    }
+  }
+
+  // Pull the pins for a snippet and fold them into the local list. Until this
+  // has run for the current snippet, pushes must not include the meta file.
+  async function loadQuickAccessForSnippet(id = null) {
+    const useId = id || snippetId;
+    if (!useId) return;
+
+    const remote = await readQuickAccessMeta(useId);
+    if (!remote) return; // Network or auth failure; keep local as-is and retry later
+
+    if (quickAccessSnippetTag && quickAccessSnippetTag !== useId) {
+      // Switched snippets. The cached pins belong to the previous snippet and
+      // must not leak into this one, so they are discarded rather than merged.
+      quickAccessPins = [];
+      quickAccessTombstones = [];
+    }
+
+    mergeQuickAccess(remote.pins, remote.tombstones);
+    quickAccessSnippetTag = useId;
+    quickAccessMetaLoaded = true;
+    await saveQuickAccess();
+    renderBookmarks();
+  }
+
+  function buildQuickAccessMetaContent() {
+    return JSON.stringify({
+      metaVersion: 1,
+      lastModified: Date.now(),
+      quickAccess: quickAccessPins,
+      quickAccessRemoved: quickAccessTombstones
+    }, null, 2);
+  }
+
   // Update bookmarks in snippet
   async function updateBookmarksInSnippet(bookmarkTree, version = null) {
     if (!snippetId) {
       throw new Error('No Snippet ID provided');
+    }
+
+    /* [ZeroLabs] 2026-08-17 4:15 PM - added: load pins before any push */
+    // Every push path goes through here (plain sync, merge, replace-remote), and
+    // hooking only syncToSnippet meant the merge and replace paths silently
+    // omitted the meta file. Loading here makes all of them correct.
+    if (!quickAccessMetaLoaded || quickAccessSnippetTag !== snippetId) {
+      await loadQuickAccessForSnippet(snippetId);
     }
 
     try {
@@ -11294,24 +12083,40 @@ function setupEventListeners() {
         lastModified: Date.now()
       };
 
+      /* [ZeroLabs] 2026-08-17 4:15 PM - edited: push quick access meta alongside */
+      const files = [
+        {
+          action: 'update',
+          file_path: 'bookmarks.json',
+          content: JSON.stringify(dataWithMeta, null, 2)
+        }
+      ];
+
+      // Only ever write pins for a snippet whose meta has already been read.
+      // Otherwise a snippet switch followed by a fast auto-sync would overwrite
+      // the new snippet's pins with the previous snippet's cache.
+      if (quickAccessMetaLoaded && quickAccessSnippetTag === snippetId) {
+        files.push({
+          action: metaFileExists ? 'update' : 'create',
+          file_path: META_FILE,
+          content: buildQuickAccessMetaContent()
+        });
+      }
+
       const response = await fetch(`https://gitlab.com/api/v4/snippets/${snippetId}`, {
         method: 'PUT',
         headers: getSnippetHeaders(),
-        body: JSON.stringify({
-          files: [
-            {
-              action: 'update',
-              file_path: 'bookmarks.json',
-              content: JSON.stringify(dataWithMeta, null, 2)
-            }
-          ]
-        })
+        body: JSON.stringify({ files })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Failed to update Snippet: ${response.status} - ${errorText}`);
       }
+
+      // A successful write means the file is there now, so later pushes update
+      // rather than create.
+      if (files.length > 1) metaFileExists = true;
 
       console.log('Updated bookmarks in Snippet:', snippetId);
       return await response.json();
@@ -11354,6 +12159,27 @@ function setupEventListeners() {
       return normalized[title] || title;
     };
 
+    /* [ZeroLabs] 2026-08-17 4:15 PM - added: match browser-rewritten internal URLs */
+    // BMZ stores and transmits every URL verbatim, but chrome.bookmarks.create
+    // canonicalizes browser-internal URLs before writing them, so a bookmark
+    // pushed as about:debugging#/runtime/this-firefox comes back from Chrome as
+    // chrome://debugging/#/runtime/this-firefox. Nothing in BMZ changed it and
+    // neither did the user, so the diff must not report it as an edit.
+    //
+    // Comparison only. Nothing is rewritten, stored, or applied: each browser
+    // keeps the URL its own engine insists on.
+    const normalizeUrlForDiff = (url) => {
+      if (!url) return url;
+      const scheme = /^(about:|chrome:\/\/)/i.exec(url);
+      if (!scheme) return url; // Ordinary URLs are compared exactly as before
+
+      let rest = url.slice(scheme[0].length);
+      // chrome:// parses the first segment as a host and gives it a trailing
+      // slash that the opaque about: form does not have
+      rest = rest.replace(/\/(?=#)/, '').replace(/\/$/, '');
+      return `internal:${rest.toLowerCase()}`;
+    };
+
     const mapItems = (node, map, parentPath = '') => {
       // Normalize title for consistent paths, then build path
       const normalizedTitle = normalizeTitle(node.title || '');
@@ -11364,7 +12190,7 @@ function setupEventListeners() {
         // Use content-based key instead of ID (since Chrome and Firefox use different ID systems)
         const isBookmark = node.url || node.type === 'bookmark';
         const key = isBookmark
-          ? `bookmark:${node.url}:${path}`
+          ? `bookmark:${normalizeUrlForDiff(node.url)}:${path}`
           : `folder:${path}`;
 
         map.set(key, { node, path, parentId: node.parentId || null, originalId: node.id });
@@ -11435,7 +12261,10 @@ function setupEventListeners() {
         const normalizedLocalTitle = normalizeTitle(localNode.title || '');
         const normalizedRemoteTitle = normalizeTitle(remoteNode.title || '');
         const titleDiffers = normalizedLocalTitle !== normalizedRemoteTitle;
-        const urlDiffers = localNode.url !== remoteNode.url;
+        /* [ZeroLabs] 2026-08-17 4:15 PM - edited: ignore browser-rewritten internal URLs */
+        // Same normalization as the content key above. Without it the pair
+        // matches as the same bookmark and then immediately reports as an edit.
+        const urlDiffers = normalizeUrlForDiff(localNode.url) !== normalizeUrlForDiff(remoteNode.url);
         if (titleDiffers || urlDiffers) {
           diff.modified.push({
             id: localItem.originalId,
@@ -11728,6 +12557,11 @@ function setupEventListeners() {
     snippetIsSyncing = true;
     try {
       if (!silent) showToast('Checking for Snippet updates...');
+
+      /* [ZeroLabs] 2026-08-17 4:15 PM - added: converge pins on every pull */
+      // Ahead of the no-changes early return below, because pins can differ even
+      // when the bookmarks themselves are identical.
+      await loadQuickAccessForSnippet(snippetId);
 
       const remoteData = await readBookmarksFromSnippet(snippetId);
       const localTree = await browser.bookmarks.getTree();
@@ -12118,6 +12952,14 @@ function setupEventListeners() {
     modal.querySelector('#closeRevealModal').addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
   }
+
+  /* [ZeroLabs] 2026-08-17 4:15 PM - added: bind quick access sync bridge */
+  // Pinning marks the snippet dirty exactly like a bookmark edit does, so pins
+  // ride the existing 30s debounce instead of firing their own request.
+  markQuickAccessChanged = () => {
+    if (!snippetId || !snippetToken) return;
+    markSnippetChanges();
+  };
 
   // Open GitLab Snippet sync dialog
   openSnippetSyncDialog = async function() {
@@ -13077,6 +13919,7 @@ function setupEventListeners() {
           const hasLocalBookmarks = await checkLocalBookmarksExist();
 
           if (hasLocalBookmarks) {
+            /* [ZeroLabs] 2026-08-17 4:15 PM - edited: fall back to the diff when checksums differ */
             // Compare checksums before showing the dialog — skip it if already in sync
             let alreadyInSync = false;
             try {
@@ -13086,6 +13929,20 @@ function setupEventListeners() {
               const localChecksum = await calculateChecksum(localData);
               const remoteChecksum = remoteData.checksum || await calculateChecksum(remoteData);
               alreadyInSync = localChecksum === remoteChecksum;
+
+              if (!alreadyInSync) {
+                // The checksum is byte-exact over the whole tree, titles included,
+                // and Firefox writes its toolbar root as "Bookmarks Toolbar" while
+                // Chrome writes "Bookmarks bar". It therefore can never match across
+                // browsers, which made this shortcut same-browser only. The diff is
+                // the authoritative comparison: it normalizes those root naming
+                // differences and the browser's internal-URL rewrites, so an empty
+                // diff means genuinely in sync even when the hashes disagree.
+                const remoteTreeAsFirefoxFormat = snippetFormatToFirefoxBookmarks(remoteData);
+                const diff = calculateBookmarkDiff(localTree[0], remoteTreeAsFirefoxFormat[0]);
+                alreadyInSync = (diff.added.length + diff.removed.length +
+                                 diff.moved.length + diff.modified.length) === 0;
+              }
             } catch (e) {
               // Comparison failed — fall through to show dialog as normal
             }
@@ -13095,6 +13952,12 @@ function setupEventListeners() {
               await safeStorage.set({ bmz_snippet_id: snippetId });
               updateGitLabButtonIcon();
               startSnippetAutoSync();
+              /* [ZeroLabs] 2026-08-17 4:15 PM - added: pull pins on silent connect */
+              // Nothing else syncs on this path, so without this the snippet's
+              // pins would not appear until the first auto-sync fired.
+              loadQuickAccessForSnippet(snippetId).catch(err => {
+                console.error('[QuickAccess] Pin load after connect failed:', err);
+              });
               showToast('Snippet connected — bookmarks are already in sync.');
               return;
             }
@@ -13199,6 +14062,12 @@ function setupEventListeners() {
       // Start auto-sync if we have both token and snippet ID
       if (snippetToken && snippetId) {
         startSnippetAutoSync();
+        /* [ZeroLabs] 2026-08-17 4:15 PM - added: pull pins on startup */
+        // Not awaited: pins render from the local cache immediately and refresh
+        // when this lands, so a slow GitLab never delays the sidebar.
+        loadQuickAccessForSnippet(snippetId).catch(err => {
+          console.error('[QuickAccess] Startup pin load failed:', err);
+        });
       }
     } catch (error) {
       console.error('Failed to initialize GitLab Snippets:', error);

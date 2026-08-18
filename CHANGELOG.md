@@ -1,14 +1,31 @@
 ## Changelog
 
-<!-- [ZeroLabs] 2026-06-20 7:18 PM - added: v4.9 changelog entry -->
-### v4.9 (Current) - Header Layout Fix
+### v5.1 (Current) - Quick Access & Recently Opened
+
+**New Features:**
+- **Quick Access** - Pin the bookmarks you use most to a section at the top of the sidebar. Right-click any bookmark and choose "Add to Quick Access", or drag one onto the section. Pinned entries are mirrors, not copies: the same bookmark, shown in a second place. Delete the bookmark from its real folder and the pin disappears with it, including when you delete it in Firefox's own bookmark manager. Removing a pin only unpins it and never touches the underlying bookmark, so there is no way to destroy a bookmark from the Quick Access section.
+- **Drag to reorder Quick Access** - Arrange your pins in whatever order you like by dragging them within the section. Pins cannot be dragged out into your real folders, so reordering can never move or rearrange the actual bookmarks.
+- **Recently Opened** - The last 5 bookmarks you opened from BMZ, so getting back to something takes one click. Opening the same bookmark twice in a row moves it to the top instead of adding a second row. This list stays on this device and is never synced.
+- **Shared collapsible row** - Quick Access and Recently Opened share a single row split in two and behave as an accordion, so opening one closes the other and neither eats space when you are not using it. Your choice is remembered between sessions.
+- **Display toggles** - Both sections can be shown or hidden independently from the Display Options button in the toolbar. Unlike the existing display toggles, these two persist across sidebar reopens. Hiding one gives the other the full width.
+- **Quick Access syncs across devices** - Your pins travel with your GitLab snippet and arrive on every device using it. They are stored in a separate file inside the snippet, so versions of BMZ that do not yet support Quick Access cannot erase them, and pins made on two devices merge rather than overwrite. Unpinning on one device propagates instead of being resurrected by the other.
+
+**Bug Fixes:**
+- **Welcome and Cross-Device Sync cards no longer reappear in every private window** - Dismissing either card in a private window had no lasting effect, so both returned on every new private session. BMZ's private-mode storage wrapper keeps all data in memory only, which means the "don't show this again" flag could never survive the window closing. Both cards are now suppressed entirely in private windows rather than shown with a dismiss button that cannot persist.
+- **HaGeZi TIF blocklist restored** - This source had stopped loading entirely, reporting HTTP 403. Two unrelated breakages happened at once: the jsDelivr CDN began refusing every file in the list's repository once the repository outgrew its 150 MB limit, and the project separately reorganised its folders so the old path no longer existed. Now loaded from GitHub directly using the current path. All ten blocklist sources were checked and the rest were unaffected.
+- **Browser-internal bookmarks no longer show as phantom sync changes** - A bookmark such as `about:debugging` was reported as changed on every single pull, forever, even when nothing had changed. Chrome rewrites browser-internal addresses when it saves them, so the same bookmark ends up written slightly differently in each browser. BMZ was correctly noticing the difference and wrongly presenting the browser's own edit as yours. Sync now recognises these as the same bookmark. Each browser keeps the address its own engine requires, and nothing is rewritten or overwritten.
+- **Merge dialog no longer appears when bookmarks already match** - Connecting to a snippet that was last written by a different browser always prompted you to choose a merge strategy, even with identical bookmarks. The check compared an exact fingerprint of the whole collection, and because Firefox names its toolbar folder "Bookmarks Toolbar" where Chrome names it "Bookmarks bar", that fingerprint could never match across browsers. BMZ now falls back to a real comparison and connects quietly when there is genuinely nothing to reconcile.
+- **Scan results now update every copy of a bookmark** - With a bookmark visible in both the tree and Quick Access, only the first copy on the page received link and safety results. The other stayed on a stale icon until the next redraw.
+
+---
+
+### v4.9 - Header Layout Fix
 
 **Bug Fixes:**
 - **Header buttons no longer overlap the title/subtitle** - The GitLab, sync, logout, and settings buttons now sit in their own reserved space in the header instead of floating over it, and the title and subtitle automatically scale down to fit the remaining width on a single line. Fixes the buttons covering the title or subtitle at narrow sidebar widths and after signing in to GitLab (which adds buttons to the row).
 
 ---
 
-<!-- [ZeroLabs] 2026-06-20 11:01 AM - added: v4.8 changelog entry -->
 ### v4.8 - Sync Reliability
 
 **New Features:**
