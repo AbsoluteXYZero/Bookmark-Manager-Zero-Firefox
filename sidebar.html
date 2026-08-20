@@ -546,7 +546,7 @@
 
     .search-input {
       width: 100%;
-      padding: 6px 10px 6px 28px;
+      padding: 6px 28px 6px 28px;
       border: none;
       border-radius: 12px;
       background: var(--md-sys-color-surface-container);
@@ -560,6 +560,47 @@
     .search-input:focus {
       background: var(--md-sys-color-surface-container-high);
       box-shadow: var(--md-elevation-2);
+    }
+
+    /* [ZeroLabs] 2026-08-19 7:12 PM - added: clear search button */
+    .search-clear {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      border: none;
+      background: none;
+      color: var(--md-sys-color-on-surface-variant);
+      cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.2s ease, color 0.2s ease;
+    }
+
+    .search-clear svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .search-clear:hover {
+      opacity: 1;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .search-clear:focus-visible {
+      outline: 2px solid var(--md-sys-color-primary);
+      outline-offset: 1px;
+      border-radius: 50%;
+      opacity: 1;
+    }
+
+    .search-clear.hidden {
+      display: none;
     }
 
     .search-icon {
@@ -2956,6 +2997,10 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
       </svg>
       <input type="text" class="search-input" id="searchInput" placeholder="Search bookmarks..." aria-label="Search bookmarks">
+      <!-- [ZeroLabs] 2026-08-19 7:12 PM - added: clear search button -->
+      <button type="button" class="search-clear hidden" id="searchClear" aria-label="Clear search" title="Clear search">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12,2A10,10 0 1,0 22,12A10,10 0 0,0 12,2M15.6,17L12,13.4L8.4,17L7,15.6L10.6,12L7,8.4L8.4,7L12,10.6L15.6,7L17,8.4L13.4,12L17,15.6L15.6,17Z"/></svg>
+      </button>
     </div>
 
     <div class="toolbar">

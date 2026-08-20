@@ -1,6 +1,25 @@
 ## Changelog
 
-### v5.1 (Current) - Quick Access & Recently Opened
+### v5.2 (Current) - Sync Clarity & Reliability
+
+**New Features:**
+- **Snippet Options are tucked away** - The GitLab Sync Settings dialog now opens to just the two sync buttons. The snippet ID, token storage, and the create, select, and disconnect actions live behind a "Snippet Options" section you expand when you need it, which are things you set once and rarely revisit. When no snippet is connected the section starts open, since setting one up is the only thing to do at that point.
+- **Clear button in the search box** - A small X appears at the end of the search box once you have typed something, so clearing a long search takes one click instead of holding backspace. Clicking it also returns the cursor to the box so you can start typing again straight away.
+
+**Improvements:**
+- **Clearer sync button wording** - The two sync buttons now read "Sync from Cloud to Device" and "Sync from Device to Cloud", which say plainly which way your bookmarks are about to move. They previously referred to a "Snippet" and a "Browser", and neither made the direction obvious at a glance.
+- **Identical sync wording everywhere** - The Firefox, Chrome, and web versions had drifted apart, naming the same things differently in each. Every label in the GitLab sync dialogs and the first-time setup screens is now the same across all three.
+- **Token storage options explain themselves** - Local and Supabase each carry an information icon with a full explanation of what that choice means for your token when it renews.
+- **Quick Access menu item no longer moves** - Add and Remove now occupy the same position in the right-click menu, just above Delete, so the item stays where you expect once a bookmark is pinned. Remove is shown in red and asks for confirmation first, with a reminder that it only unpins and never deletes the bookmark.
+- **Clearer first-time setup** - When setup finds a snippet you already have, it now says so with a heading rather than showing an unexplained card, and the button beside it reads "Create New Snippet" instead of just "Create New".
+
+**Bug Fixes:**
+- **Sync no longer hangs indefinitely** - Requests to GitLab had no time limit, so a stalled connection could leave a sync waiting forever with nothing reported and no way to tell it had stopped. Requests now give up after 15 seconds and report the failure so it can be retried. Retrying is safe: bookmarks are written as a complete file, so a repeated attempt produces the same result whether or not the first one arrived.
+- **Snippet names are no longer treated as formatting** - A snippet whose title contained characters that look like markup could render incorrectly in the setup and selection lists. Titles are now always shown as plain text.
+
+---
+
+### v5.1 - Quick Access & Recently Opened
 
 **New Features:**
 - **Quick Access** - Pin the bookmarks you use most to a section at the top of the sidebar. Right-click any bookmark and choose "Add to Quick Access", or drag one onto the section. Pinned entries are mirrors, not copies: the same bookmark, shown in a second place. Delete the bookmark from its real folder and the pin disappears with it, including when you delete it in Firefox's own bookmark manager. Removing a pin only unpins it and never touches the underlying bookmark, so there is no way to destroy a bookmark from the Quick Access section.

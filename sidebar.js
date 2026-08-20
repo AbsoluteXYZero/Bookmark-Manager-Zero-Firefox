@@ -6,6 +6,37 @@
 // ============================================================================
 const APP_VERSION = browser.runtime.getManifest().version;
 
+/* [ZeroLabs] 2026-08-19 7:12 PM - added: timeout for GitLab requests (see also: Bookmark-Manager-Zero-Website/js/storage/snippet-adapter.js) */
+// ============================================================================
+// NETWORK TIMEOUT
+// ============================================================================
+// GitLab calls had no time limit, so a stalled connection left the promise
+// pending forever: no error, no catch, no completion. Used only for GitLab
+// requests; the scanning code in background.js has its own timeouts already.
+//
+// 15s rather than 30s because several of these sit inside retryWithBackoff,
+// and three 30s attempts would take a minute and a half to surface anything.
+//
+// Safe to retry after an abort: the snippet write is a whole-file PUT, so
+// repeating it lands the same result whether or not the first attempt arrived.
+const GITLAB_TIMEOUT_MS = 15000;
+
+async function fetchGitLab(url, options = {}, timeoutMs = GITLAB_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error(`GitLab did not respond within ${Math.round(timeoutMs / 1000)} seconds.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ============================================================================
 // AUTHENTICATION MANAGER - Adapted from website version
 // ============================================================================
@@ -157,7 +188,7 @@ class AuthManager {
     if (!token) throw new Error('No authentication token');
 
     try {
-      const response = await fetch('https://gitlab.com/api/v4/user', {
+      const response = await fetchGitLab('https://gitlab.com/api/v4/user', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -342,7 +373,7 @@ class OAuthPAT {
    */
   async authenticateGitLab(token, retryCallback = null) {
     // Test token by fetching user info
-    const response = await fetch('https://gitlab.com/api/v4/user', {
+    const response = await fetchGitLab('https://gitlab.com/api/v4/user', {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -377,7 +408,7 @@ class OAuthPAT {
     const user = await response.json();
 
     // Verify token has api scope by trying to list snippets
-    const snippetResponse = await fetch('https://gitlab.com/api/v4/snippets', {
+    const snippetResponse = await fetchGitLab('https://gitlab.com/api/v4/snippets', {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -2342,10 +2373,14 @@ async function showSnippetSetup() {
       const fileCount = snippet.files?.length || 1;
       const lastUpdated = new Date(snippet.updated_at).toLocaleDateString();
 
+      /* [ZeroLabs] 2026-08-19 7:12 PM - edited: heading and clearer alternative label */
+      // The card previously appeared with no explanation of why. "Create New"
+      // also failed to say new what, sitting beside "Use This Snippet".
       content.innerHTML = `
         <div style="padding: 20px 0;">
+          <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: var(--md-sys-color-on-surface);">Found Existing Bookmark Snippet</h3>
           <div style="background: var(--md-sys-color-surface-variant); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-            <div style="font-weight: 500; margin-bottom: 4px;">${snippet.title || 'Untitled Snippet'}</div>
+            <div style="font-weight: 500; margin-bottom: 4px;">${escapeHtml(snippet.title || 'Untitled Snippet')}</div>
             <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);">${fileCount} files • Updated ${lastUpdated}</div>
           </div>
           <div style="display: flex; gap: 12px;">
@@ -2370,7 +2405,7 @@ async function showSnippetSetup() {
               font-size: 14px;
               cursor: pointer;
               transition: background 0.2s;
-            ">Create New</button>
+            ">Create New Snippet</button>
           </div>
         </div>
       `;
@@ -2412,7 +2447,8 @@ async function showSnippetSetup() {
 
         html += `
           <div style="background: var(--md-sys-color-surface-variant); padding: 12px; border-radius: 8px; margin-bottom: 8px; cursor: pointer; border: 2px solid transparent; transition: border-color 0.2s;" data-snippet-id="${snippet.id}">
-            <div style="font-weight: 500; margin-bottom: 4px;">${snippet.title || 'Untitled Snippet'}</div>
+            <!-- [ZeroLabs] 2026-08-19 7:12 PM - edited: escape the snippet title -->
+            <div style="font-weight: 500; margin-bottom: 4px;">${escapeHtml(snippet.title || 'Untitled Snippet')}</div>
             <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);">${fileCount} files • Updated ${lastUpdated}</div>
           </div>
         `;
@@ -3956,6 +3992,11 @@ async function restoreSessionState() {
         searchTerm = state.searchTerm;
         if (searchInput) {
           searchInput.value = state.searchTerm;
+          /* [ZeroLabs] 2026-08-19 7:12 PM - added: reveal clear button on a restored search */
+          // This runs after the listeners are wired, so the button's initial
+          // state was decided against an empty box.
+          const restoredClear = document.getElementById('searchClear');
+          if (restoredClear) restoredClear.classList.remove('hidden');
         }
       }
 
@@ -6763,15 +6804,13 @@ function openContextMenuModal(item, isFolder) {
       </button>
     `;
 
-    /* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access pin/unpin action */
+    /* [ZeroLabs] 2026-08-19 5:23 PM - edited: pin and unpin share one slot above Delete */
+    // Both states occupy the SAME position, directly above Delete, so the item
+    // never moves when you pin or unpin: only its label and colour change.
+    // Only the removal state is red, since adding loses nothing. In the Quick
+    // Access menu Delete has been stripped, so it simply lands last there.
     const pinIcon = '<svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z"/></svg>';
     const pinned = isPinned(item.url);
-    const pinButton = `
-      <button class="action-btn" data-action="${pinned ? 'unpin-quick-access' : 'pin-quick-access'}">
-        <span class="icon">${pinIcon}</span>
-        <span>${pinned ? 'Remove from Quick Access' : 'Add to Quick Access'}</span>
-      </button>
-    `;
 
     if (contextMenuOrigin === 'quick-access') {
       // Opened from the Quick Access section. Delete and Move to belong to the
@@ -6782,12 +6821,18 @@ function openContextMenuModal(item, isFolder) {
         .replace(/\s*<button class="action-btn" data-action="move-to">[\s\S]*?<\/button>/, '');
     }
 
-    // Sits directly under Open with Textise rather than at the bottom of the
-    // menu. Function replacer, not a $1 string, so the SVG path can never be
-    // read as a substitution pattern.
-    const readerViewButton = /<button class="action-btn" data-action="reader-view">[\s\S]*?<\/button>/;
-    if (readerViewButton.test(buttonsHtml)) {
-      buttonsHtml = buttonsHtml.replace(readerViewButton, (match) => match + pinButton);
+    const pinButton = `
+      <button class="action-btn${pinned ? ' danger' : ''}" data-action="${pinned ? 'unpin-quick-access' : 'pin-quick-access'}">
+        <span class="icon">${pinIcon}</span>
+        <span>${pinned ? 'Remove from Quick Access' : 'Add to Quick Access'}</span>
+      </button>
+    `;
+
+    // Function replacer, not a $1 string, so the SVG path can never be read as
+    // a substitution pattern.
+    const deleteButton = /<button class="action-btn danger" data-action="delete">[\s\S]*?<\/button>/;
+    if (deleteButton.test(buttonsHtml)) {
+      buttonsHtml = buttonsHtml.replace(deleteButton, (match) => pinButton + match);
     } else {
       buttonsHtml += pinButton;
     }
@@ -7696,10 +7741,17 @@ async function handleBookmarkAction(action, bookmark) {
       await pinBookmark(bookmark);
       break;
 
-    case 'unpin-quick-access':
-      // Unpin only. The bookmark itself is never touched from here.
+    /* [ZeroLabs] 2026-08-19 5:23 PM - edited: confirm before unpinning */
+    case 'unpin-quick-access': {
+      // Unpin only. The bookmark itself is never touched from here, and the
+      // message says so, because the red styling would otherwise imply deletion.
+      const pinLabel = bookmark.title || bookmark.url;
+      if (!confirm(`Remove "${pinLabel}" from Quick Access?\n\nThis only unpins it. The bookmark itself will not be deleted.`)) {
+        break;
+      }
       await unpinUrl(bookmark.url);
       break;
+    }
 
     case 'open':
       // Open in active tab
@@ -9874,11 +9926,34 @@ let markQuickAccessChanged = () => {};
 // Setup event listeners
 function setupEventListeners() {
   // Search
+  /* [ZeroLabs] 2026-08-19 7:12 PM - added: clear search button */
+  // Shown only while there is something to clear, so it never sits in an empty
+  // box. Restores focus so typing can continue straight after clearing.
+  const searchClear = document.getElementById('searchClear');
+  const updateSearchClear = () => {
+    if (searchClear) searchClear.classList.toggle('hidden', !searchInput.value);
+  };
+
   searchInput.addEventListener('input', (e) => {
     searchTerm = e.target.value;
+    updateSearchClear();
     renderBookmarks();
     saveSessionStateDebounced();
   });
+
+  if (searchClear) {
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      searchTerm = '';
+      updateSearchClear();
+      renderBookmarks();
+      saveSessionStateDebounced();
+      searchInput.focus();
+    });
+  }
+
+  // A restored session can arrive with a search term already in the box
+  updateSearchClear();
 
   // Filter toggle
   filterToggle.addEventListener('click', () => {
@@ -11243,7 +11318,7 @@ function setupEventListeners() {
           if (cachedDaysLeft > 30) return currentToken;
         }
 
-        const res = await fetch('https://gitlab.com/api/v4/personal_access_tokens/self', {
+        const res = await fetchGitLab('https://gitlab.com/api/v4/personal_access_tokens/self', {
           headers: { 'Authorization': `Bearer ${currentToken}` }
         });
         if (res.status === 401) {
@@ -11283,7 +11358,7 @@ function setupEventListeners() {
         newExpiry.setDate(newExpiry.getDate() + 350);
         const newExpiryStr = newExpiry.toISOString().split('T')[0];
 
-        const rotateRes = await fetch('https://gitlab.com/api/v4/personal_access_tokens/self/rotate', {
+        const rotateRes = await fetchGitLab('https://gitlab.com/api/v4/personal_access_tokens/self/rotate', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${currentToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ expires_at: newExpiryStr })
@@ -11784,7 +11859,7 @@ function setupEventListeners() {
   // Validate GitLab token
   async function validateSnippetToken(retryCallback = null) {
     try {
-      const response = await fetch('https://gitlab.com/api/v4/user', {
+      const response = await fetchGitLab('https://gitlab.com/api/v4/user', {
         headers: getSnippetHeaders()
       });
     if (!response.ok) {
@@ -11819,7 +11894,7 @@ function setupEventListeners() {
   // Get all user's snippets
   async function getAllSnippets(retryCallback = null) {
     try {
-      const response = await fetch('https://gitlab.com/api/v4/snippets', {
+      const response = await fetchGitLab('https://gitlab.com/api/v4/snippets', {
         headers: getSnippetHeaders()
       });
       if (!response.ok) {
@@ -11878,7 +11953,7 @@ function setupEventListeners() {
         tree = await firefoxBookmarksToSnippetFormat(bookmarkRoot);
       }
 
-      const response = await fetch('https://gitlab.com/api/v4/snippets', {
+      const response = await fetchGitLab('https://gitlab.com/api/v4/snippets', {
         method: 'POST',
         headers: getSnippetHeaders(),
         body: JSON.stringify({
@@ -11917,7 +11992,7 @@ function setupEventListeners() {
     }
 
     try {
-      const response = await fetch(`https://gitlab.com/api/v4/snippets/${useId}`, {
+      const response = await fetchGitLab(`https://gitlab.com/api/v4/snippets/${useId}`, {
         headers: getSnippetHeaders()
       });
 
@@ -11988,7 +12063,7 @@ function setupEventListeners() {
     if (!useId) return null;
 
     try {
-      const response = await fetch(`https://gitlab.com/api/v4/snippets/${useId}`, {
+      const response = await fetchGitLab(`https://gitlab.com/api/v4/snippets/${useId}`, {
         headers: getSnippetHeaders()
       });
       if (!response.ok) return null;
@@ -12103,7 +12178,7 @@ function setupEventListeners() {
         });
       }
 
-      const response = await fetch(`https://gitlab.com/api/v4/snippets/${snippetId}`, {
+      const response = await fetchGitLab(`https://gitlab.com/api/v4/snippets/${snippetId}`, {
         method: 'PUT',
         headers: getSnippetHeaders(),
         body: JSON.stringify({ files })
@@ -12980,44 +13055,68 @@ function setupEventListeners() {
       const modeLabel = currentMode === 'supabase' ? '☁️ Supabase' : '💻 Local';
       const switchLabel = currentMode === 'supabase' ? 'Switch to Local' : 'Enable Supabase';
       dialog.innerHTML = `
-        <h2 style="margin: 0 0 16px 0; font-size: 20px;">GitLab Snippet Sync</h2>
-        <p style="margin: 0 0 20px 0; color: var(--md-sys-color-on-surface-variant, #aaa);">
-          ${snippetId ? 'Connected to Snippet: <code style="font-size: 11px;">' + snippetId + '</code>' : 'Not connected to any Snippet'}
-        </p>
+        <h2 style="margin: 0 0 16px 0; font-size: 20px;">GitLab Sync Settings</h2>
         <div style="display: flex; flex-direction: column; gap: 12px;">
           ${snippetId ? `
             <button id="syncFromSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #818cf8); color: var(--md-sys-color-on-primary, #fff); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zm-8 2V5h2v6h1.17L12 13.17 9.83 11H11zm-6 8v2h14v-2H5z"/></svg>
-              Sync from Snippet to Browser
+              Sync from Cloud to Device
             </button>
             <button id="syncToSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-tertiary-container, #2a2a2a); color: var(--md-sys-color-on-tertiary-container, #d0bcff); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
-              Sync from Browser to Snippet
+              Sync from Device to Cloud
             </button>
             <hr style="border: none; border-top: 1px solid var(--md-sys-color-outline, #444); margin: 4px 0;">
           ` : ''}
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--md-sys-color-surface-variant,#2a2a2a);border-radius:8px;">
-            <span style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);">Token Storage: <strong style="color:var(--md-sys-color-on-surface,#e0e0e0);">${modeLabel}</strong></span>
-            <button id="switchTokenMode" style="padding:6px 12px;border-radius:6px;border:none;background:var(--md-sys-color-secondary-container,#3a3a5c);color:var(--md-sys-color-on-secondary-container,#d0bcff);font-size:12px;cursor:pointer;">${switchLabel}</button>
+          <button id="snippetOptionsToggle" aria-expanded="${snippetId ? 'false' : 'true'}" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span>Snippet Options</span>
+            <svg id="snippetOptionsChevron" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;transition:transform 0.2s ease;transform:rotate(${snippetId ? '-90' : '0'}deg);"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
+          </button>
+          <div id="snippetOptionsPanel" style="display: ${snippetId ? 'none' : 'flex'}; flex-direction: column; gap: 12px;">
+            <p style="margin: 0; color: var(--md-sys-color-on-surface-variant, #aaa); font-size: 13px;">
+              ${snippetId ? 'Connected to Snippet: <code style="font-size: 11px;">' + snippetId + '</code>' : 'Not connected to any Snippet'}
+            </p>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--md-sys-color-surface-variant,#2a2a2a);border-radius:8px;">
+              <span style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);">Token Storage: <strong style="color:var(--md-sys-color-on-surface,#e0e0e0);">${modeLabel}</strong></span>
+              <button id="switchTokenMode" style="padding:6px 12px;border-radius:6px;border:none;background:var(--md-sys-color-secondary-container,#3a3a5c);color:var(--md-sys-color-on-secondary-container,#d0bcff);font-size:12px;cursor:pointer;">${switchLabel}</button>
+            </div>
+            <button id="createNewSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+              Create New Snippet with Current Bookmarks
+            </button>
+            <button id="selectExistingSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+              Select Existing Snippet
+            </button>
+            <button id="disconnectSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error-container, #3b1a1a); color: var(--md-sys-color-on-error-container, #f9dedc); cursor: pointer; font-size: 14px;">
+              Disconnect & Remove Token
+            </button>
           </div>
-          <hr style="border: none; border-top: 1px solid var(--md-sys-color-outline, #444); margin: 4px 0;">
-          <button id="createNewSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
-            Create New Snippet with Current Bookmarks
-          </button>
-          <button id="selectExistingSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
-            Select Existing Snippet
-          </button>
-          <button id="disconnectSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error-container, #3b1a1a); color: var(--md-sys-color-on-error-container, #f9dedc); cursor: pointer; font-size: 14px;">
-            Disconnect & Remove Token
-          </button>
           <button id="cancelSnippetDialog" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">
             Cancel
           </button>
         </div>
       `;
+
+      /* [ZeroLabs] 2026-08-19 6:01 PM - added: collapsible snippet options section */
+      // Collapsed when a snippet is connected, since the two sync buttons are
+      // all most visits need. Expanded when nothing is connected, because then
+      // Create and Select are the only useful actions and a collapsed panel
+      // would leave the dialog with nothing but Cancel.
+      const snippetOptionsToggle = dialog.querySelector('#snippetOptionsToggle');
+      const snippetOptionsPanel = dialog.querySelector('#snippetOptionsPanel');
+      const snippetOptionsChevron = dialog.querySelector('#snippetOptionsChevron');
+      if (snippetOptionsToggle && snippetOptionsPanel) {
+        snippetOptionsToggle.addEventListener('click', () => {
+          const isOpen = snippetOptionsPanel.style.display !== 'none';
+          snippetOptionsPanel.style.display = isOpen ? 'none' : 'flex';
+          snippetOptionsToggle.setAttribute('aria-expanded', String(!isOpen));
+          if (snippetOptionsChevron) {
+            snippetOptionsChevron.style.transform = isOpen ? 'rotate(-90deg)' : 'rotate(0deg)';
+          }
+        });
+      }
     } else {
       dialog.innerHTML = `
-        <h2 style="margin: 0 0 16px 0; font-size: 20px; text-align: center;">GitLab Snippet<br>Sync Setup</h2>
+        <h2 style="margin: 0 0 16px 0; font-size: 20px; text-align: center;">GitLab Sync Setup</h2>
 
         <div style="margin-bottom: 16px; padding: 12px; border: 1px solid var(--md-sys-color-outline, #444); border-radius: 8px;">
           <p style="margin: 0 0 10px 0; font-size: 13px; font-weight: 500; color: var(--md-sys-color-on-surface, #e0e0e0);">Token Storage</p>
@@ -13027,7 +13126,7 @@ function setupEventListeners() {
           </label>
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;">
             <input type="radio" name="tokenMode" value="supabase" ${currentMode === 'supabase' ? 'checked' : ''} style="margin-top:2px;flex-shrink:0;">
-            <span><span style="display:inline-flex;align-items:center;gap:5px;"><strong>Supabase</strong><span class="bmz-tooltip-wrap" style="position:relative;display:inline-flex;align-items:center;"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--md-sys-color-on-surface-variant,#aaa);color:var(--md-sys-color-surface,#1e1e1e);font-size:10px;font-weight:700;cursor:help;flex-shrink:0;line-height:1;">i</span><span class="bmz-tooltip" style="display:none;position:fixed;background:var(--md-sys-color-inverse-surface,#e0e0e0);color:var(--md-sys-color-inverse-on-surface,#1a1a1a);padding:8px 10px;border-radius:6px;font-size:12px;width:220px;z-index:10010;line-height:1.4;pointer-events:none;white-space:normal;">Your token is encrypted and stored in Supabase. When it renews, all your BMZ clients update silently — no manual steps. Only your encrypted token is stored; it can only access your GitLab bookmark snippet.</span></span></span><br><span style="color:var(--md-sys-color-on-surface-variant,#aaa);font-size:12px;">(auto-sync across devices)</span></span>
+            <span><span style="display:inline-flex;align-items:center;gap:5px;"><strong>Supabase</strong><span class="bmz-tooltip-wrap" style="position:relative;display:inline-flex;align-items:center;"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--md-sys-color-on-surface-variant,#aaa);color:var(--md-sys-color-surface,#1e1e1e);font-size:10px;font-weight:700;cursor:help;flex-shrink:0;line-height:1;">i</span><span class="bmz-tooltip" style="display:none;position:fixed;background:var(--md-sys-color-inverse-surface,#e0e0e0);color:var(--md-sys-color-inverse-on-surface,#1a1a1a);padding:8px 10px;border-radius:6px;font-size:12px;width:220px;z-index:10010;line-height:1.4;pointer-events:none;white-space:normal;">Your token is encrypted and stored in Supabase. When it renews, all your BMZ clients update silently, with no manual steps. Only your encrypted token is stored; it can only access your GitLab bookmark snippet.</span></span></span><br><span style="color:var(--md-sys-color-on-surface-variant,#aaa);font-size:12px;">(auto-sync across devices)</span></span>
           </label>
           <div id="supabaseQuickLoad" style="display:none;margin-top:12px;padding:10px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;font-size:12px;color:var(--md-sys-color-on-surface-variant,#aaa);">
             ☁️ Already set up Supabase on another device? <button id="loadFromSupabaseBtn" style="background:none;border:none;color:var(--md-sys-color-primary,#818cf8);cursor:pointer;font-size:12px;text-decoration:underline;padding:0;">Sign in to load your token automatically →</button>
@@ -13186,7 +13285,7 @@ function setupEventListeners() {
             // Fetch current token expiry
             let expiresAt = null;
             try {
-              const r = await fetch('https://gitlab.com/api/v4/personal_access_tokens/self', {
+              const r = await fetchGitLab('https://gitlab.com/api/v4/personal_access_tokens/self', {
                 headers: { 'Authorization': `Bearer ${snippetToken}` }
               });
               if (r.ok) { const info = await r.json(); expiresAt = info.expires_at; }
@@ -13258,7 +13357,7 @@ function setupEventListeners() {
           // Fetch expiry date from GitLab
           let expiresAt = null;
           try {
-            const infoRes = await fetch('https://gitlab.com/api/v4/personal_access_tokens/self', {
+            const infoRes = await fetchGitLab('https://gitlab.com/api/v4/personal_access_tokens/self', {
               headers: { 'Authorization': `Bearer ${token}` }
             });
             if (infoRes.ok) { const info = await infoRes.json(); expiresAt = info.expires_at; }
