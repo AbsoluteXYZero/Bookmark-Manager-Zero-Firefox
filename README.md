@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
     <!-- [ZeroLabs] 2026-08-19 7:12 PM - edited: version badge to 5.2 -->
-    <img src="https://img.shields.io/badge/version-5.2-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-5.3-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -297,7 +297,7 @@ The extension can optionally use external services for enhanced features. **All 
 - **WordPress mshots** - Website screenshot previews
 - **10 Blocklist Sources** - Dual URLhaus coverage (Active + Historical), BlockList Project (Malware/Phishing/Scam), HaGeZi TIF, Phishing-Filter, OISD Big, FMHY Filterlist, Dandelion Sprout Anti-Malware
 
-- **URLVoid** - Multi-source reputation analysis from 30+ security engines
+- **URLVoid** - Multi-source reputation analysis from 30+ security engines. A domain URLVoid has never examined returns *no verdict* rather than being treated as clean.
 - **Google Favicons** - Website icons
 
 ### User-Configured Services (require API keys)
@@ -450,7 +450,7 @@ URLs are checked against ten community-maintained blocklists with dual URLhaus c
 | **[FMHY Filterlist](https://github.com/fmhy/FMHYFilterlist)** | Unsafe Sites | Fake activators, malware distributors, unsafe download sites | ~282 |
 | **[Dandelion Sprout Anti-Malware](https://github.com/DandelionSprout/adfilt)** | Anti-Malware | Curated malware, scam, and phishing domains | ~5K |
 
-**Total Coverage**: **~1.36M unique malicious domains** after deduplication
+**Total Coverage**: **~3.1M unique malicious domains** after deduplication
 
 **Implementation Details:**
 

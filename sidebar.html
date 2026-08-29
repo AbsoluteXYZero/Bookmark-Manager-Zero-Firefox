@@ -107,13 +107,6 @@
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
 
-    .enhanced-blue .announcement-card {
-      border-radius: 14px;
-      background: var(--md-sys-color-surface-variant);
-      border: 0.5px solid rgba(255, 165, 0, 0.35);
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    }
-
     .enhanced-blue .scan-status-bar {
       border-radius: 14px;
       background: var(--md-sys-color-surface-variant);
@@ -851,84 +844,6 @@
     }
 
     /* Announcement Card */
-    .announcement-card {
-      background: var(--md-sys-color-primary-container);
-      border: 2px solid #e8a020;
-      border-left: 5px solid #e8a020;
-      border-radius: 16px;
-      padding: 20px 20px 16px;
-      margin-bottom: 24px;
-      box-shadow: var(--md-elevation-2);
-    }
-
-    .announcement-card-badge {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      color: #e8a020;
-      background: rgba(232, 160, 32, 0.12);
-      border: 1px solid rgba(232, 160, 32, 0.35);
-      border-radius: 20px;
-      padding: 3px 10px;
-      margin-bottom: 10px;
-    }
-
-    .announcement-card-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--md-sys-color-on-primary-container);
-      margin-bottom: 10px;
-    }
-
-    .announcement-card-body {
-      font-size: 13px;
-      line-height: 1.65;
-      color: var(--md-sys-color-on-primary-container);
-      margin-bottom: 16px;
-    }
-
-    .announcement-card-actions {
-      display: flex;
-      gap: 10px;
-    }
-
-    .announcement-card-setup-btn {
-      flex: 1;
-      padding: 10px 16px;
-      background: #e8a020;
-      color: #fff;
-      border: none;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .announcement-card-setup-btn:hover {
-      background: #cf8c18;
-      transform: translateY(-1px);
-      box-shadow: var(--md-elevation-2);
-    }
-
-    .announcement-card-dismiss-btn {
-      flex: 1;
-      padding: 10px 16px;
-      background: transparent;
-      color: var(--md-sys-color-on-primary-container);
-      border: 1px solid var(--md-sys-color-outline);
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .announcement-card-dismiss-btn:hover {
-      background: rgba(0, 0, 0, 0.05);
-    }
 
     /* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access and recent sections */
     .bmz-sections {
@@ -2707,6 +2622,235 @@
     #manualSyncBtn.sync-success:not(.syncing) #syncArrows path {
       fill: #4caf50;
     }
+    /* [ZeroLabs] 2026-08-26 11:38 PM - added: attention state for a skipped push */
+    #manualSyncBtn.sync-attention #syncArrows path {
+      fill: #f59e0b;
+      transition: fill 0.3s ease;
+    }
+
+    /* [ZeroLabs] 2026-08-27 - edited: neutral surface, primary accent */
+    /* Was an orange frame (#e8a020) around primary-container, which is PURPLE in
+       every dark theme - it only ever looked deliberate in a light one. It also
+       wore amber, and amber now means "needs your decision" in BMZ: the sync
+       arrows, the notice card, the Approve button. An informational card must not
+       borrow that. Neutral surface with the primary accent instead, matching the
+       shape of .sync-notice-card and using the same elevation and lit-edge
+       variables so it follows the theme. */
+    .announcement-card {
+      background: var(--md-sys-color-surface-variant, #1e293b);
+      border: 0.5px solid var(--bmz-panel-hairline, transparent);
+      border-left: 4px solid var(--md-sys-color-primary, #818cf8);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: var(--md-elevation-1), var(--bmz-lit-top, 0 0 0 0 transparent);
+    }
+    .announcement-card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 10px;
+    }
+    .announcement-card-body {
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 16px;
+    }
+    .announcement-card-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .announcement-card-dismiss-btn {
+      flex: 1;
+      padding: 10px 16px;
+      background: var(--md-sys-color-surface-container, #2a2a2a);
+      color: var(--md-sys-color-on-surface);
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      box-shadow: var(--md-elevation-1), var(--bmz-lit-top-strong, 0 0 0 0 transparent), var(--bmz-sunk-bottom, 0 0 0 0 transparent);
+      transition: box-shadow 0.2s ease, background 0.2s ease;
+    }
+    .announcement-card-dismiss-btn:hover {
+      box-shadow: var(--md-elevation-2), var(--bmz-lit-top-strong, 0 0 0 0 transparent), var(--bmz-sunk-bottom, 0 0 0 0 transparent);
+    }
+
+    /* [ZeroLabs] 2026-08-27 - added: deferred sync notice card (see also: Bookmark-Manager-Zero-Website/index.html) */
+    /* Self-contained rather than built on .announcement-card, because Chrome has
+       no announcement-card styles at all and the two extensions must not drift.
+       Amber matches the sync button's attention state above, so the card and the
+       button read as one signal rather than two separate warnings. */
+    /* [ZeroLabs] 2026-08-27 - added: give the hand-rolled dialogs BMZ's elevation */
+    /* The sync dialogs are built in JS with inline styles and never picked up the
+       shadows .modal-content and .btn get from this stylesheet, so they sat flat
+       against the page while every other panel in BMZ lifted off it. Applied by
+       class so dialogs added later inherit it instead of having to remember. */
+
+    /* The lit top edge and hairline border belong to the enhanced and tinted
+       themes ONLY. blue-dark and dark - blue-dark is the default - carry no such
+       rule anywhere in BMZ; their look is deliberately flat, and a dialog that
+       invented a lit edge there would be the odd one out rather than consistent.
+       Driven by variables so each theme states its answer once, and a theme added
+       later stays flat until it says otherwise. */
+    :root {
+      --bmz-panel-hairline: transparent;
+      --bmz-lit-top: 0 0 0 0 transparent;
+      --bmz-lit-top-strong: 0 0 0 0 transparent;
+      --bmz-sunk-bottom: 0 0 0 0 transparent;
+      --bmz-pressed: 0 0 0 0 transparent;
+    }
+    .enhanced-blue,
+    .enhanced-dark,
+    .enhanced-gray {
+      --bmz-panel-hairline: rgba(255, 255, 255, 0.12);
+      --bmz-lit-top: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      --bmz-lit-top-strong: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      --bmz-sunk-bottom: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+      --bmz-pressed: inset 0 2px 4px rgba(0, 0, 0, 0.22);
+    }
+    /* The light themes need a far stronger highlight - a faint white line does
+       not read at all against a light surface. Same values .settings-menu uses. */
+    .enhanced-light,
+    .tinted {
+      --bmz-panel-hairline: rgba(0, 0, 0, 0.12);
+      --bmz-lit-top: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      --bmz-lit-top-strong: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      --bmz-sunk-bottom: inset 0 -2px 0 rgba(0, 0, 0, 0.1);
+      --bmz-pressed: inset 0 2px 4px rgba(0, 0, 0, 0.18);
+    }
+
+    .bmz-dialog {
+      border: 0.5px solid var(--bmz-panel-hairline);
+      box-shadow: var(--md-elevation-3), var(--bmz-lit-top);
+    }
+
+    /* The card re-declares its amber edge, because the border shorthand above
+       would otherwise wipe the border-left that identifies it. */
+    .sync-notice-card {
+      border: 0.5px solid var(--bmz-panel-hairline);
+      border-left: 4px solid #f59e0b;
+      box-shadow: var(--md-elevation-1), var(--bmz-lit-top);
+    }
+
+    /* Buttons get the lit top edge and shaded bottom that .toolbar button uses,
+       which is what makes them read as raised rather than painted on. Both
+       collapse to nothing on the flat themes. */
+    .bmz-dialog button,
+    .sync-notice-card button {
+      box-shadow: var(--md-elevation-1), var(--bmz-lit-top-strong), var(--bmz-sunk-bottom);
+      transition: box-shadow 0.2s ease, background 0.2s ease;
+    }
+    .bmz-dialog button:hover,
+    .sync-notice-card button:hover {
+      box-shadow: var(--md-elevation-2), var(--bmz-lit-top-strong), var(--bmz-sunk-bottom);
+    }
+    .bmz-dialog button:active,
+    .sync-notice-card button:active {
+      box-shadow: var(--md-elevation-1), var(--bmz-pressed);
+    }
+    .sync-notice-card {
+      background: var(--md-sys-color-surface-variant, #2a2a2a);
+      border-left: 4px solid #f59e0b;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: var(--md-elevation-1, 0 1px 2px 0 rgb(0 0 0 / 0.3));
+    }
+    .sync-notice-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    /* The toolbar sync button's waiting state, in its circle */
+    .sync-notice-icon {
+      flex: 0 0 auto;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--md-sys-color-surface-container, #1e1e1e);
+      box-shadow: var(--md-elevation-1, 0 1px 2px 0 rgb(0 0 0 / 0.3));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sync-notice-icon svg {
+      width: 34px;
+      height: 34px;
+      display: block;
+    }
+    .sync-notice-arrows path {
+      fill: #f59e0b;
+    }
+    /* min-width:0 so long text wraps instead of stretching the row */
+    .sync-notice-text {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    /* The side panel is narrow, so this headline always wraps. Balance evens the
+       lines instead of leaving one word alone on the second. */
+    .sync-notice-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--md-sys-color-on-surface, #e0e0e0);
+      text-wrap: balance;
+    }
+    .sync-notice-body {
+      font-size: 13px;
+      line-height: 1.55;
+      /* [ZeroLabs] 2026-08-27 - edited: full contrast, not the muted variant */
+      /* on-surface-variant next to an on-surface heading read as washed-out grey
+         and was hard to read. This card asks for a decision - it is the one place
+         the body text must not be quieter than the heading. */
+      color: var(--md-sys-color-on-surface, #e0e0e0);
+    }
+    .sync-notice-summary {
+      font-size: 12px;
+      font-weight: 600;
+      color: #f59e0b;
+    }
+    .sync-notice-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .sync-notice-review-btn {
+      flex: 1;
+      padding: 10px 16px;
+      background: #f59e0b;
+      color: #1a1a1a;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .sync-notice-review-btn:hover {
+      background: #d98a09;
+    }
+    .sync-notice-dismiss-btn {
+      flex: 1;
+      padding: 10px 16px;
+      background: transparent;
+      color: var(--md-sys-color-on-surface-variant, #aaa);
+      border: 1px solid var(--md-sys-color-outline, #475569);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .sync-notice-dismiss-btn:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
   </style>
 </head>
 <body class="blue-dark">
@@ -2714,7 +2858,8 @@
     <!-- [ZeroLabs] 2026-06-20 7:18 PM - added: header-top flex wrapper (logo + actions) -->
     <div class="header-top">
     <div class="header-settings">
-      <button id="manualSyncBtn" class="btn btn-icon" title="Sync bookmarks with GitLab snippets (Shift+Click to force push)">
+      <!-- [ZeroLabs] 2026-08-27 12:20 PM - edited: drop the stale Shift+Click claim -->
+      <button id="manualSyncBtn" class="btn btn-icon" title="Sync bookmarks with your GitLab snippet">
         <svg width="100%" height="100%" viewBox="0 0 24 24" style="display: block;">
           <!-- GitLab icon as main/background (full size) -->
           <path fill="#000000" d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
