@@ -1,6 +1,13 @@
 ## Changelog
 
-### v5.3 (Current) - Sync That Runs On Its Own
+### v5.4 (Current)
+
+**Bug Fixes:**
+- **The scan counter no longer jumps around** - Expanding a second folder while a scan was already running started a separate count with its own total, and the two took turns writing to the same display, so the figure flipped between them - "40/125" then "12/137" then "41/125". Expanding now adds to the running total instead of starting a rival count, so the number only ever climbs and the total stays put.
+
+---
+
+### v5.3 - Sync That Runs On Its Own
 
 **New Features:**
 - **Bookmarks now sync without opening BMZ** - Saving a bookmark with the star button, Ctrl+D, or the Library window used to go unnoticed until the next time you opened the sidebar, because the only thing watching for changes lived in the sidebar itself. That watcher now runs in the extension's background, so a bookmark you save while browsing reaches your snippet shortly after with BMZ never opened. Bookmarks added on your other devices arrive here the same way, checked for every five minutes.
