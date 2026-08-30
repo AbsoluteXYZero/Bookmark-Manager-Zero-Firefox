@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
     <!-- [ZeroLabs] 2026-08-19 7:12 PM - edited: version badge to 5.2 -->
-    <img src="https://img.shields.io/badge/version-5.4-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-5.5-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -256,11 +256,11 @@ Already using the extension? Add GitLab sync anytime:
    - **Replace with Snippet** - Use only the snippet's bookmarks
      - Safety feature: Option to download backup before replacing
      - Choose "Download Backup & Replace" (recommended) or "Skip Backup & Replace"
-5. After connecting, manual sync button options:
+5. After connecting, the sync dialog offers:
 
-   - **Pull** - Download and merge remote bookmarks with local
-   - **Push** (auto) - Upload local changes to remote
-   - **Force Push** - Overwrite remote completely (Shift+Click sync button)
+   - **Sync** - The large circular button. Press it to compare both sides. Additions are applied silently in both directions; anything that would remove, rename or move a bookmark stops and asks first. Opening the dialog does not sync on its own, so you can reach the options below without triggering anything.
+   - **Background auto-sync** - A toggle under Snippet Sync Options, on by default. With it off, nothing syncs on its own and the button above still works.
+   - **Overwrite Snippet with Local** / **Overwrite Local with Snippet** - Under Snippet Sync Options. Each names how many bookmarks would be lost before doing anything, and the second saves a restore point to the changelog first.
 
 **Token Tips**
 

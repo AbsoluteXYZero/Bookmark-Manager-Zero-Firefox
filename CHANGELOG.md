@@ -1,6 +1,16 @@
 ## Changelog
 
-### v5.4 (Current)
+### v5.5 (Current)
+
+**Bug Fixes:**
+- **Bookmarks with a slash in their title no longer create phantom folders** - Setting up BMZ on a new device and pulling your bookmarks down could produce far more than you actually have. Folder locations were stored as text with "/" between each level, and a bookmark whose own title contained a slash - which is most GitHub links, "owner/repo: description" - was read as though the first half of its title were a folder. Each one invented a folder to sit in. A library of 2,911 bookmarks arrived as 4,476. Folder locations are now kept as a proper list rather than as text to be taken apart, so a title is treated as a title whatever characters are in it.
+
+**Changes:**
+- **Opening the sync dialog no longer starts a sync** - It used to begin the moment the dialog appeared, on the assumption that opening it meant you wanted to sync. That made the dialog impossible to reach for anything else: turning background auto-sync off, or changing which snippet you use, meant triggering the very sync you were trying to avoid. Syncing now happens when you press the sync button and not before.
+
+---
+
+### v5.4
 
 **Bug Fixes:**
 - **The scan counter no longer jumps around** - Expanding a second folder while a scan was already running started a separate count with its own total, and the two took turns writing to the same display, so the figure flipped between them - "40/125" then "12/137" then "41/125". Expanding now adds to the running total instead of starting a rival count, so the number only ever climbs and the total stays put.
