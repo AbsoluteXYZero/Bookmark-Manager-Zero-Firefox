@@ -1,6 +1,13 @@
 ## Changelog
 
-### v5.5 (Current)
+### v5.6 (Current)
+
+**Bug Fixes:**
+- **Bookmarking the same link twice no longer loses a copy** - Sync treated a web address as the name of a single bookmark, so two bookmarks pointing at the same place counted as one. A device setting itself up from your snippet built only one of the pair, and never saw the other as missing, so no later sync put it back - that machine simply held one fewer bookmark than the rest, with nothing to say which one. Deleting one of two copies was invisible for the same reason: the address was still there, so sync decided nothing had changed and the deletion never travelled anywhere. Each copy is now counted and followed separately, so duplicates arrive intact on a new device and removing one of them asks for approval and syncs like any other deletion.
+
+---
+
+### v5.5
 
 **Bug Fixes:**
 - **Bookmarks with a slash in their title no longer create phantom folders** - Setting up BMZ on a new device and pulling your bookmarks down could produce far more than you actually have. Folder locations were stored as text with "/" between each level, and a bookmark whose own title contained a slash - which is most GitHub links, "owner/repo: description" - was read as though the first half of its title were a folder. Each one invented a folder to sit in. A library of 2,911 bookmarks arrived as 4,476. Folder locations are now kept as a proper list rather than as text to be taken apart, so a title is treated as a title whatever characters are in it.

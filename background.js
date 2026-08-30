@@ -2207,18 +2207,71 @@ async function readRemoteSnippetBookmarks(config) {
   return JSON.parse(content);
 }
 
+/* [ZeroLabs] 2026-08-29 - added: a URL is an address, not an identity */
+// These maps were keyed on the URL alone, so two bookmarks pointing at the same
+// place overwrote each other and the second copy stopped existing as far as sync
+// was concerned. A library holding 2911 bookmarks with one duplicate reported
+// 2910, and a device rebuilding from the snippet created only one of the pair.
+// Nothing ever healed it either: the copy was never seen as missing, so every
+// later sync agreed the two sides matched. Deleting one of two copies was
+// invisible for the same reason - the URL was still there.
+//
+// The Nth copy of a URL is now keyed "<url>\u0000#N". The FIRST copy keeps the bare
+// URL, so every bookmark that appears once has exactly the key it always had -
+// which is what keeps this from re-syncing an entire library on upgrade.
+//
+// Copies are numbered by sorted location rather than by tree order, so two
+// browsers walking their trees in different orders still agree on which copy is
+// which, and neither reads the other's copy 1 as a move of its own copy 2.
+//
+// A NUL cannot appear in a URL, so no real bookmark can collide with a copy key.
+// These keys never leave memory: what is stored or pushed is always entry.url.
+const SNIPPET_COPY_SEP = '\u0000#';
+
+function snippetKeyUrl(key) {
+  const at = key.indexOf(SNIPPET_COPY_SEP);
+  return at === -1 ? key : key.slice(0, at);
+}
+
+function snippetCopyLocation(entry) {
+  return [entry.rootKey].concat(entry.segments || []).join('/') + '/' + (entry.title || '');
+}
+
+function keyByUrlCopy(list) {
+  const byUrl = new Map();
+  list.forEach(entry => {
+    if (!byUrl.has(entry.url)) byUrl.set(entry.url, []);
+    byUrl.get(entry.url).push(entry);
+  });
+
+  const keyed = new Map();
+  byUrl.forEach((group, url) => {
+    if (group.length === 1) {
+      keyed.set(url, group[0]);
+      return;
+    }
+    group.sort((a, b) => snippetCopyLocation(a).localeCompare(snippetCopyLocation(b)));
+    group.forEach((entry, i) => {
+      keyed.set(i === 0 ? url : `${url}${SNIPPET_COPY_SEP}${i + 1}`, entry);
+    });
+  });
+  return keyed;
+}
+
 /* [ZeroLabs] 2026-08-27 2:26 AM - added: what a push would take out of the snippet */
 // Additions are safe to send unattended; removals are not. Comparing by URL
 // rather than by path means a moved or renamed bookmark still counts as present,
 // so only a genuine disappearance holds the push.
+/* [ZeroLabs] 2026-08-29 - edited: built from collectSnippetEntries */
+// It used to do its own walk, which meant two walks that had to agree about
+// which bookmarks exist. Now that a key encodes which copy it is, any drift
+// between the two would compare copy 1 here against copy 2 there. Deriving one
+// from the other makes disagreement impossible rather than unlikely.
 function collectSnippetItems(snippetData) {
   const items = new Map();
-  const walk = (node) => {
-    if (!node) return;
-    if (node.url) items.set(node.url, node.title || node.url);
-    if (Array.isArray(node.children)) node.children.forEach(walk);
-  };
-  if (snippetData && snippetData.roots) Object.values(snippetData.roots).forEach(walk);
+  collectSnippetEntries(snippetData).forEach((entry, key) => {
+    items.set(key, entry.title);
+  });
   return items;
 }
 
@@ -2229,13 +2282,18 @@ function collectSnippetItems(snippetData) {
 // the snippet names its toolbar root differently depending on which browser
 // last wrote it, and the key is the one thing that survives that.
 function collectSnippetEntries(snippetData) {
-  const entries = new Map();
-  if (!snippetData || !snippetData.roots) return entries;
+  /* [ZeroLabs] 2026-08-29 - edited: collect first, key afterwards */
+  // Keying during the walk is exactly what lost duplicates - the second set()
+  // on a URL replaced the first. Collecting into a list keeps every copy, and
+  // keying the finished list is what allows copies to be numbered by location
+  // instead of by the order the walk happened to reach them.
+  const list = [];
+  if (!snippetData || !snippetData.roots) return new Map();
 
   const walk = (node, rootKey, segments) => {
     if (!node) return;
     if (node.url) {
-      entries.set(node.url, { url: node.url, title: node.title || node.url, rootKey, segments });
+      list.push({ url: node.url, title: node.title || node.url, rootKey, segments });
       return;
     }
     if (Array.isArray(node.children)) {
@@ -2259,7 +2317,7 @@ function collectSnippetEntries(snippetData) {
     }
   });
 
-  return entries;
+  return keyByUrlCopy(list);
 }
 
 /* [ZeroLabs] 2026-08-27 11:36 AM - added: let the background place bookmarks itself */
@@ -2468,10 +2526,15 @@ async function runSnippetPush() {
 
     const toAddLocally = [];   // in the snippet, not here, and not deleted here
     const removesFromSnippet = []; // in the snippet, not here, because you deleted it here
-    remoteEntries.forEach((entry, url) => {
-      if (localItems.has(url)) return;
-      if (deletedHere.has(url)) {
-        removesFromSnippet.push({ url, title: entry.title });
+    /* [ZeroLabs] 2026-08-29 - edited: the map key is a copy, the URL is not */
+    // Attribution stays keyed by URL, because a URL is what survives the round
+    // trip through the snippet. That is still the right question to ask of it:
+    // "did you delete this link here". Which copy went is answered by the counts
+    // on either side, not by the event lists.
+    remoteEntries.forEach((entry, key) => {
+      if (localItems.has(key)) return;
+      if (deletedHere.has(entry.url)) {
+        removesFromSnippet.push({ url: entry.url, title: entry.title });
       } else {
         toAddLocally.push(entry);
       }
@@ -2479,8 +2542,9 @@ async function runSnippetPush() {
 
     const removesFromDevice = []; // here, not in the snippet, and not added here
     let hasLocalAdditions = false;
-    localItems.forEach((title, url) => {
-      if (remoteEntries.has(url)) return;
+    localItems.forEach((title, key) => {
+      if (remoteEntries.has(key)) return;
+      const url = snippetKeyUrl(key);
       if (createdHere.has(url)) {
         hasLocalAdditions = true;
       } else {
@@ -2513,8 +2577,8 @@ async function runSnippetPush() {
     let hasLocalEdits = false;
     const overwritesOnDevice = [];
 
-    localEntries.forEach((localEntry, url) => {
-      const remoteEntry = remoteEntries.get(url);
+    localEntries.forEach((localEntry, key) => {
+      const remoteEntry = remoteEntries.get(key);
       if (!remoteEntry) return; // Additions are handled by the loops above
 
       const movedOrRenamed =
@@ -2523,14 +2587,14 @@ async function runSnippetPush() {
         localEntry.segments.join('/') !== remoteEntry.segments.join('/');
       if (!movedOrRenamed) return;
 
-      if (editedHere.has(url)) {
+      if (editedHere.has(localEntry.url)) {
         // You made this change here, so the intent is known and it propagates.
         hasLocalEdits = true;
       } else {
         // rootKey and segments travel with it so the sidebar can place the
         // bookmark if you approve, without re-deriving the path from a title.
         overwritesOnDevice.push({
-          url,
+          url: localEntry.url,
           title: localEntry.title,
           remoteTitle: remoteEntry.title,
           localPath: [localEntry.rootKey].concat(localEntry.segments).join('/'),
@@ -2566,9 +2630,9 @@ async function runSnippetPush() {
       url: e.url, title: e.title, path: entryPath(e)
     }));
     const pendingPushItems = [];
-    localEntries.forEach((entry, url) => {
-      if (!remoteEntries.has(url) && createdHere.has(url)) {
-        pendingPushItems.push({ url, title: entry.title, path: entryPath(entry) });
+    localEntries.forEach((entry, key) => {
+      if (!remoteEntries.has(key) && createdHere.has(entry.url)) {
+        pendingPushItems.push({ url: entry.url, title: entry.title, path: entryPath(entry) });
       }
     });
 

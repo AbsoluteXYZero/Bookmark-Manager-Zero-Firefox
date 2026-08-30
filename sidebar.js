@@ -12867,14 +12867,50 @@ function setupEventListeners() {
   // The diff keys on url plus path, so a rename or move looks like a delete and
   // an add of two different things. Comparing entries instead makes "same
   // bookmark, different name or place" visible as what it is.
+  /* [ZeroLabs] 2026-08-29 - added: a URL is an address, not an identity (mirrors background.js) */
+  // Keyed on the URL alone, two bookmarks pointing at the same place overwrote
+  // each other, so a library holding the same link twice reported one fewer item
+  // than it had and a device rebuilding from the snippet created only one of the
+  // pair. It never healed, either: the missing copy was never seen as missing.
+  //
+  // The Nth copy of a URL is keyed "<url>\u0000#N". The FIRST copy keeps the bare
+  // URL, so anything appearing once has exactly the key it always had.
+  //
+  // Copies are numbered by sorted location, not by tree order, so two browsers
+  // walking their trees differently still agree on which copy is which. Declared
+  // in this scope rather than the file's, so collectSnippetEntries can reach it.
+  const SNIPPET_COPY_SEP = '\u0000#';
+
+  function keyByUrlCopy(list) {
+    const location = (e) => [e.rootKey].concat(e.segments || []).join('/') + '/' + (e.title || '');
+    const byUrl = new Map();
+    list.forEach(entry => {
+      if (!byUrl.has(entry.url)) byUrl.set(entry.url, []);
+      byUrl.get(entry.url).push(entry);
+    });
+
+    const keyed = new Map();
+    byUrl.forEach((group, url) => {
+      if (group.length === 1) {
+        keyed.set(url, group[0]);
+        return;
+      }
+      group.sort((a, b) => location(a).localeCompare(location(b)));
+      group.forEach((entry, i) => {
+        keyed.set(i === 0 ? url : `${url}${SNIPPET_COPY_SEP}${i + 1}`, entry);
+      });
+    });
+    return keyed;
+  }
+
   function collectSnippetEntries(snippetData) {
-    const entries = new Map();
-    if (!snippetData || !snippetData.roots) return entries;
+    const list = [];
+    if (!snippetData || !snippetData.roots) return new Map();
 
     const walk = (node, rootKey, segments) => {
       if (!node) return;
       if (node.url) {
-        entries.set(node.url, { url: node.url, title: node.title || node.url, rootKey, segments });
+        list.push({ url: node.url, title: node.title || node.url, rootKey, segments });
         return;
       }
       if (Array.isArray(node.children)) {
@@ -12898,7 +12934,7 @@ function setupEventListeners() {
       }
     });
 
-    return entries;
+    return keyByUrlCopy(list);
   }
 
   /* [ZeroLabs] 2026-08-27 2:02 PM - added: place a bookmark by snippet root key (moved from: background.js) */
@@ -13336,8 +13372,8 @@ function setupEventListeners() {
     const remoteEntries = collectSnippetEntries(remoteData);
     const overwritesOnDevice = [];
 
-    localEntries.forEach((localEntry, url) => {
-      const remoteEntry = remoteEntries.get(url);
+    localEntries.forEach((localEntry, key) => {
+      const remoteEntry = remoteEntries.get(key);
       if (!remoteEntry) return;
 
       const movedOrRenamed =
@@ -13348,9 +13384,9 @@ function setupEventListeners() {
 
       // Edited here means you meant it, so the push below carries it. Edited
       // elsewhere would overwrite a name on this device, which waits for consent.
-      if (!editedHere.has(url)) {
+      if (!editedHere.has(localEntry.url)) {
         overwritesOnDevice.push({
-          url,
+          url: localEntry.url,
           title: localEntry.title,
           remoteTitle: remoteEntry.title,
           localPath: [localEntry.rootKey].concat(localEntry.segments).join('/'),
@@ -13663,9 +13699,22 @@ function setupEventListeners() {
       if (!rootFolderIds.includes(node.id)) {
         // Use content-based key instead of ID (since Chrome and Firefox use different ID systems)
         const isBookmark = node.url || node.type === 'bookmark';
-        const key = isBookmark
+        const baseKey = isBookmark
           ? `bookmark:${normalizeUrlForDiff(node.url)}:${path}`
           : `folder:${path}`;
+
+        /* [ZeroLabs] 2026-08-29 - added: a second identical item is a second item */
+        // map.set on a key already present replaced the first one, so two copies
+        // of the same bookmark in the same folder counted as one, and a device
+        // rebuilding from the snippet created only one of them - permanently,
+        // since the missing copy was never seen as missing on any later sync.
+        //
+        // A collision here means the two are identical in url, folder AND title,
+        // so which of them takes the suffix cannot matter. Only that both survive
+        // to be compared against the other side.
+        let key = baseKey;
+        let copy = 1;
+        while (map.has(key)) key = `${baseKey}#${++copy}`;
 
         map.set(key, { node, path, segments, parentId: node.parentId || null, originalId: node.id });
       }
