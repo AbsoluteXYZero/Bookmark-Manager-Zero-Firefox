@@ -2762,6 +2762,25 @@
       gap: 10px;
       box-shadow: var(--md-elevation-1, 0 1px 2px 0 rgb(0 0 0 / 0.3));
     }
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: the migration card wears its own stripe */
+    /* Same card, different stripe. Amber already means "waiting on your
+       decision" on the card directly above this one, and red is held back for a
+       sync that has actually stopped. Violet is distinct from both and from the
+       indigo announcement stripe, and carries no alarm, which is right for a
+       limit that has not been reached yet. Placed after both rules that set the
+       shorthand so the colour wins without repeating the whole border. */
+    .sync-notice-card.migration-notice-card {
+      border-left-color: #8b5cf6;
+    }
+
+    /* [ZeroLabs] 2026-09-07 10:05 PM - added: the red the other cards were saving */
+    /* Amber means "waiting on your decision" and violet means "a limit you have
+       not reached yet". This card is for a sync that has actually broken, which
+       is the case the red was being held back for. */
+    .sync-notice-card.sync-failed-card {
+      border-left-color: #ef4444;
+    }
     .sync-notice-row {
       display: flex;
       align-items: flex-start;
@@ -2836,6 +2855,26 @@
     .sync-notice-review-btn:hover {
       background: #d98a09;
     }
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: the migration button matches its stripe */
+    /* White text rather than the amber button's near-black. Violet is dark
+       enough that dark text on it stops being readable. */
+    .migration-notice-card .sync-notice-review-btn {
+      background: #8b5cf6;
+      color: #ffffff;
+    }
+    .migration-notice-card .sync-notice-review-btn:hover {
+      background: #7c3aed;
+    }
+
+    /* [ZeroLabs] 2026-09-07 10:05 PM - added: the failure button matches its stripe */
+    .sync-failed-card .sync-notice-review-btn {
+      background: #ef4444;
+      color: #ffffff;
+    }
+    .sync-failed-card .sync-notice-review-btn:hover {
+      background: #dc2626;
+    }
     .sync-notice-dismiss-btn {
       flex: 1;
       padding: 10px 16px;
@@ -2859,7 +2898,7 @@
     <div class="header-top">
     <div class="header-settings">
       <!-- [ZeroLabs] 2026-08-27 12:20 PM - edited: drop the stale Shift+Click claim -->
-      <button id="manualSyncBtn" class="btn btn-icon" title="Sync bookmarks with your GitLab snippet">
+      <button id="manualSyncBtn" class="btn btn-icon" title="Sync bookmarks with GitLab">
         <svg width="100%" height="100%" viewBox="0 0 24 24" style="display: block;">
           <!-- GitLab icon as main/background (full size) -->
           <path fill="#000000" d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
@@ -3795,6 +3834,9 @@
   </div>
 
   <script src="qrcode-lib.js"></script>
+  <!-- [ZeroLabs] 2026-09-07 9:20 PM - added: shared GitLab storage seam (see also: gitlab-store.js, background.js) -->
+  <!-- Must load before sidebar.js, which reads BMZGitLabStore at call time. -->
+  <script src="gitlab-store.js?v=20260907212000"></script>
   <script src="sidebar.js?v=20260104130149"></script>
 </body>
 </html>

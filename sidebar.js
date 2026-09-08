@@ -3998,6 +3998,15 @@ async function initMainUI() {
   await expandToStartFolder();
   setupEventListeners();
   setupBlocklistProgressListener();
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: know the store before the first render */
+  // The card is skipped when this has not resolved yet, and the first render is
+  // the one most people see, so it is awaited here rather than left to the
+  // fire-and-forget call beside its own definition.
+  await loadMigrationOfferState();
+  /* [ZeroLabs] 2026-09-07 10:05 PM - added: a failure raised while the sidebar was shut */
+  // The background page records it and stops. Without this the card only ever
+  // appeared if the failure happened while you were looking at the sidebar.
+  await loadSyncFailureState();
   renderBookmarks();
 
   // Check if background scan is in progress and sync UI
@@ -5383,6 +5392,14 @@ function renderBookmarks() {
   // alert rather than a mirrored list, so it should not vanish when you search.
   renderSyncNoticeCard(bookmarkList);
 
+  /* [ZeroLabs] 2026-09-07 10:05 PM - added: a broken sync, above the migration offer */
+  // Ahead of the migration card deliberately. When the store is full both would
+  // show, and the one saying syncing has already stopped is the more urgent.
+  renderSyncFailedCard(bookmarkList);
+
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: the migration offer, same standing-alert slot */
+  renderMigrationCard(bookmarkList);
+
   const isNarrowing = searchTerm.length > 0 || activeFilters.length > 0;
   if (!isNarrowing) {
     renderSections(bookmarkList);
@@ -5620,12 +5637,211 @@ let syncNoticeCounts = { fromSnippet: 0, fromDevice: 0, overwrites: 0 };
 // the sidebar ever heard about it - so with BMZ unpinned, a deferral raised
 // while you were looking at it showed you nothing at all.
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'local' || !changes.snippet_needs_reconcile) return;
+  if (area !== 'local') return;
+
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: follow the store this device uses */
+  // The migration card lives out here with the other cards, while the store
+  // state lives inside setupEventListeners. Reading the same storage keys is
+  // how the two stay in step without either scope reaching into the other.
+  if (changes.bmz_snippet_id || changes.bmz_store_kind || changes.bmz_migration_snoozed_until) {
+    loadMigrationOfferState().then(renderBookmarks);
+  }
+
+  /* [ZeroLabs] 2026-09-07 10:05 PM - added: follow a failure the background recorded */
+  // The background page is where syncing actually fails, and the sidebar had no
+  // way to hear about it. Same route the deferral flag already takes.
+  if (changes.snippet_sync_failed) {
+    loadSyncFailureState().then(renderBookmarks);
+  }
+
+  if (!changes.snippet_needs_reconcile) return;
   const needs = !!changes.snippet_needs_reconcile.newValue;
   const manualSyncBtn = document.getElementById('manualSyncBtn');
   if (manualSyncBtn) manualSyncBtn.classList.toggle('sync-attention', needs);
   setSyncNoticeVisible(needs);
 });
+
+/* [ZeroLabs] 2026-09-07 9:20 PM - added: what the migration card needs to know */
+// Three facts, read from storage rather than passed in: whether this device
+// syncs at all, whether it is already on a repository, and when the user last
+// asked to be left alone about it.
+let migrationOffer = { connected: false, onProject: false, snoozedUntil: 0 };
+const MIGRATION_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function loadMigrationOfferState() {
+  try {
+    const stored = await browser.storage.local.get([
+      'bmz_snippet_id',
+      'bmz_store_kind',
+      'bmz_migration_snoozed_until'
+    ]);
+    migrationOffer = {
+      connected: !!stored.bmz_snippet_id,
+      onProject: stored.bmz_store_kind === 'project',
+      snoozedUntil: Number(stored.bmz_migration_snoozed_until) || 0
+    };
+  } catch (error) {
+    // Without this the card simply does not appear, which is the safe direction
+    console.error('[Migration] Could not read the store state:', error);
+    migrationOffer = { connected: false, onProject: false, snoozedUntil: 0 };
+  }
+}
+
+loadMigrationOfferState();
+
+/* [ZeroLabs] 2026-09-07 10:05 PM - added: a sync that FAILED gets its own card */
+// The deferral card above is for a sync that stopped and is waiting on a
+// decision. This one is for a sync that broke. They were the same card, driven by
+// the same flag, so a failed background push drew "Sync was paused to protect
+// your data" and offered a Review changes button with nothing behind it.
+//
+// Red, which the stylesheet has been holding back for exactly this: amber already
+// means "waiting on you" and violet means "a limit you have not hit yet".
+let syncFailure = { failed: false, reason: '', detail: '' };
+let syncFailureDismissed = false;
+
+async function loadSyncFailureState() {
+  try {
+    const stored = await browser.storage.local.get([
+      'snippet_sync_failed',
+      'snippet_sync_failed_reason',
+      'snippet_sync_failed_detail'
+    ]);
+    const wasFailed = syncFailure.failed;
+    syncFailure = {
+      failed: !!stored.snippet_sync_failed,
+      reason: stored.snippet_sync_failed_reason || 'error',
+      detail: stored.snippet_sync_failed_detail || ''
+    };
+    // A new failure is worth showing again even if the last one was dismissed
+    if (syncFailure.failed && !wasFailed) syncFailureDismissed = false;
+  } catch (error) {
+    console.error('[CloudSync] Could not read the failure state:', error);
+    syncFailure = { failed: false, reason: '', detail: '' };
+  }
+}
+
+function renderSyncFailedCard(container) {
+  if (!syncFailure.failed || syncFailureDismissed) return;
+
+  const isFull = syncFailure.reason === 'store-full';
+
+  // Two failures, two honest descriptions. A full store never recovers, so
+  // offering Try again there would waste the user's time on our behalf.
+  const title = isFull ? 'Syncing has stopped' : 'Sync failed';
+  const body = isFull
+    ? `GitLab is refusing to save to this snippet. Its storage limit counts every past
+       version of your bookmarks, and this one has reached that limit. Your bookmarks are
+       safe and nothing has been lost. Moving them to a repository takes about a minute
+       and does not have the same limit.`
+    : `BMZ could not reach your cloud bookmarks on the last few attempts. Nothing has been
+       changed on either side. It will try again when you next add or change a bookmark,
+       or you can try now.`;
+
+  const actionLabel = isFull ? 'Move my bookmarks' : 'Try again';
+
+  const card = document.createElement('div');
+  card.className = 'sync-notice-card sync-failed-card';
+  card.innerHTML = `
+    <div class="sync-notice-row">
+      <div class="sync-notice-text">
+        <div class="sync-notice-title">${title}</div>
+        <div class="sync-notice-body">${body}</div>
+        ${syncFailure.detail && !isFull
+          ? `<div class="sync-notice-summary">${escapeHtml(syncFailure.detail)}</div>`
+          : ''}
+      </div>
+    </div>
+    <div class="sync-notice-actions">
+      <button class="sync-notice-review-btn" id="syncFailedAction">${actionLabel}</button>
+      <button class="sync-notice-dismiss-btn" id="syncFailedDismiss">Not now</button>
+    </div>
+  `;
+  container.appendChild(card);
+
+  // Deferred like the cards around it: the element is in the DOM but the rest of
+  // the render is still running.
+  setTimeout(() => {
+    document.getElementById('syncFailedAction')?.addEventListener('click', async () => {
+      if (isFull) {
+        window.showSnippetSetup?.('stopped');
+        return;
+      }
+      // Retry through the normal reconcile. Success clears the flag and the card
+      // disappears on the next render.
+      try {
+        await window.reconcileWithSnippet?.();
+        await loadSyncFailureState();
+        renderBookmarks();
+      } catch (error) {
+        console.error('[CloudSync] Retry failed:', error);
+        showToast(`Still failing: ${error.message}`, 'error');
+      }
+    });
+
+    // Dismissal lasts until the next new failure. The flag itself is untouched,
+    // so the toolbar badge and the sync button keep saying something is wrong.
+    document.getElementById('syncFailedDismiss')?.addEventListener('click', () => {
+      syncFailureDismissed = true;
+      renderBookmarks();
+    });
+  }, 0);
+}
+
+/* [ZeroLabs] 2026-09-07 9:20 PM - added: offer the move before the snippet dies */
+// A card rather than a dialog, matching the deferred-sync notice above. A modal
+// that opens itself on every launch is what that card was built to replace, and
+// this is not urgent yet: it is a warning about a limit that has not been hit.
+//
+// The modal is still used for the store that has ALREADY stopped accepting
+// writes, because that one is blocking and interrupting is honest there.
+function shouldOfferMigration() {
+  if (!migrationOffer.connected) return false;
+  if (migrationOffer.onProject) return false;
+  return Date.now() >= migrationOffer.snoozedUntil;
+}
+
+function renderMigrationCard(container) {
+  if (!shouldOfferMigration()) return;
+
+  const card = document.createElement('div');
+  card.className = 'sync-notice-card migration-notice-card';
+  card.innerHTML = `
+    <div class="sync-notice-row">
+      <div class="sync-notice-text">
+        <div class="sync-notice-title">Cloud Sync Migration</div>
+        <div class="sync-notice-body">
+          Your bookmarks are currently synced to a GitLab snippet, which has a storage limit
+          that counts every past version of your bookmarks rather than just the current one.
+          A large collection reaches that limit eventually, and syncing then stops. To prevent
+          this from happening, BMZ will migrate from Snippets to a GitLab repository. This
+          takes about a minute and nothing is lost.
+        </div>
+      </div>
+    </div>
+    <div class="sync-notice-actions">
+      <button class="sync-notice-review-btn" id="migrationCardStart">Migrate now</button>
+      <button class="sync-notice-dismiss-btn" id="migrationCardDismiss">Not now</button>
+    </div>
+  `;
+  container.appendChild(card);
+
+  // Deferred for the same reason the sync notice defers: the element is in the
+  // DOM but the rest of the render is still running.
+  setTimeout(() => {
+    document.getElementById('migrationCardStart')?.addEventListener('click', () => {
+      window.showSnippetSetup?.('migrate');
+    });
+
+    // Snoozed rather than silenced. The limit does not go away, so asking again
+    // in a week is the honest behaviour, and it is quiet enough not to nag.
+    document.getElementById('migrationCardDismiss')?.addEventListener('click', async () => {
+      migrationOffer.snoozedUntil = Date.now() + MIGRATION_SNOOZE_MS;
+      await browser.storage.local.set({ bmz_migration_snoozed_until: migrationOffer.snoozedUntil });
+      renderBookmarks();
+    });
+  }, 0);
+}
 
 /* [ZeroLabs] 2026-08-27 - added: name the numbers on the card */
 // The card used to say only "found differences", which told you nothing about
@@ -5661,7 +5877,7 @@ function renderSyncNoticeCard(container) {
       <div class="sync-notice-text">
         <div class="sync-notice-title">Sync was paused to protect your data</div>
         <div class="sync-notice-body">
-          BMZ found differences between your Snippet and your local bookmarks that need
+          BMZ found differences between your cloud bookmarks and this device that need
           your approval. Please review the changes to resume syncing.
         </div>
         <div class="sync-notice-summary">${syncNoticeSummary(syncNoticeCounts)}</div>
@@ -5678,7 +5894,8 @@ function renderSyncNoticeCard(container) {
   // the render is still running.
   setTimeout(() => {
     document.getElementById('syncNoticeReview')?.addEventListener('click', () => {
-      window.showHeldPushDialog?.();
+      /* [ZeroLabs] 2026-09-07 10:05 PM - edited: a click always gets an answer */
+      window.showHeldPushDialog?.(true);
     });
     // Dismissal lasts until the situation changes. The amber sync arrows and the
     // toolbar badge stay on whatever happens here, so it is never fully silenced.
@@ -12062,6 +12279,13 @@ function setupEventListeners() {
   let snippetLocalVersion = 0;
   /* [ZeroLabs] 2026-08-27 1:05 PM - removed: snippetPushDebounceTimer, snippetMinSyncInterval (dead with markSnippetChanges) */
 
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: which KIND of store the id names (see also: gitlab-store.js) */
+  // storeKind stays unset for existing installs, which means snippet, so nothing
+  // changes for anyone until they move to a project repository. Declared here
+  // with the rest of the sync state because currentStore reads it on every call.
+  let storeKind = null;
+  let storeBranch = null;
+
   // Encrypt and store GitLab token locally only
   async function storeSnippetToken(token, expiresAt = null) {
     const encrypted = await encryptApiKey(token);
@@ -12573,7 +12797,14 @@ function setupEventListeners() {
 
       const snippet = await response.json();
       snippetId = snippet.id;
+      /* [ZeroLabs] 2026-09-07 9:20 PM - added: creating a snippet says so */
+      // Stating the backend rather than leaving whatever was there. Creating a
+      // snippet while the stored kind still read "project" pointed the wrong
+      // backend at this id, and every call failed with nothing explaining why.
+      storeKind = null;
+      storeBranch = null;
       await safeStorage.set({ bmz_snippet_id: snippetId });
+      await safeStorage.remove(['bmz_store_kind', 'bmz_store_branch']);
       console.log('Created bookmark Snippet:', snippetId);
       return snippet.id;
     } catch (error) {
@@ -12582,53 +12813,870 @@ function setupEventListeners() {
     }
   }
 
-  // Read bookmarks from snippet
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: the store this sidebar is pointed at (see also: gitlab-store.js) */
+  // Mirrors storeForConfig in background.js. fetchGitLab and getSnippetHeaders
+  // are handed to the adapter rather than reimplemented, so the timeout handling
+  // and auth still wrap every request.
+  function currentStore() {
+    return BMZGitLabStore.create({
+      kind: storeKind || BMZGitLabStore.SNIPPET,
+      branch: storeBranch,
+      request: fetchGitLab,
+      headers: getSnippetHeaders
+    });
+  }
+
+  // A project-backed store regardless of what this device currently uses. The
+  // setup paths need one before the device has adopted anything.
+  function projectStore(branch) {
+    return BMZGitLabStore.create({
+      kind: BMZGitLabStore.PROJECT,
+      branch,
+      request: fetchGitLab,
+      headers: getSnippetHeaders
+    });
+  }
+
+  /* [ZeroLabs] 2026-09-07 10:05 PM - edited: one definition, in the store adapter */
+  // The background page needs this same test, and it is where the failing writes
+  // actually happen. A predicate that recognises one exact error string is the
+  // last thing that should exist in two places, so it moved into gitlab-store.js
+  // and this stays only as the name the call sites already use.
+  function isStoreFullError(status, body) {
+    return BMZGitLabStore.isStoreFullError(status, body);
+  }
+
+  let storeFullNoticeShown = false;
+
+  // Shown once per sidebar session. It repeats on every sync otherwise, and a
+  // dialog that reopens on its own is what the deferral card was built to replace.
+  function noteStoreIsFull() {
+    /* [ZeroLabs] 2026-09-07 10:05 PM - added: record it, not just show it */
+    // The dialog is once per session, but the condition is permanent. Writing the
+    // flag is what puts the card up on the next sidebar open and keeps the two
+    // contexts telling the same story: the background page sets this same flag.
+    browser.storage.local.set({
+      snippet_sync_failed: true,
+      snippet_sync_failed_reason: 'store-full',
+      snippet_sync_failed_at: Date.now()
+    }).catch(error => {
+      console.error('[Store] Could not record the full store:', error);
+    });
+
+    if (storeFullNoticeShown) return;
+    if (storeKind === BMZGitLabStore.PROJECT) return;
+    storeFullNoticeShown = true;
+
+    console.warn('[Store] GitLab is refusing writes to this snippet; offering the move to a repository');
+    showSnippetSetup('stopped').catch(error => {
+      console.error('[Store] Could not open the migration dialog:', error);
+    });
+  }
+
+  // This device's bookmarks in snippet format, ready to be written to a store.
+  async function buildStoreSeedFiles(existingPaths) {
+    const firefoxTree = await browser.bookmarks.getTree();
+    const tree = await firefoxBookmarksToSnippetFormat(firefoxTree);
+    const payload = {
+      ...tree,
+      version: 1,
+      checksum: await calculateChecksum(tree),
+      lastModified: Date.now()
+    };
+
+    const verbFor = (path) => existingPaths.includes(path) ? 'update' : 'create';
+
+    const files = [{
+      action: verbFor('bookmarks.json'),
+      file_path: 'bookmarks.json',
+      content: JSON.stringify(payload, null, 2)
+    }];
+
+    if (quickAccessMetaLoaded) {
+      files.push({
+        action: verbFor(META_FILE),
+        file_path: META_FILE,
+        content: buildQuickAccessMetaContent()
+      });
+    }
+
+    return files;
+  }
+
+  // Shared tail: adopt the project only once its write has actually landed, so a
+  // failure leaves this device pointed at the old store rather than at nothing.
+  // localVersion is 1 when this device seeded the repository and 0 when it is
+  // joining one that already had bookmarks, so the first reconcile treats the
+  // remote copy as the newer of the two rather than its own empty history.
+  // clearRecords is false when JOINING. Those records are what say "this device
+  // added these", and the reconcile needs them to tell an addition from something
+  // another device deleted. Clearing them on a join wiped the claim made moments
+  // earlier and brought back the very prompt it was written to prevent. After
+  // seeding they describe nothing, because both sides already hold the same tree.
+  async function adoptProjectStore(projectId, branch, hasMeta, localVersion = 1, clearRecords = true) {
+    storeKind = BMZGitLabStore.PROJECT;
+    storeBranch = branch;
+    snippetId = String(projectId);
+    metaFileExists = hasMeta;
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: a held decision belongs to the store it came from */
+    // The held decisions always go: they describe differences against the OLD
+    // store, and approving them here would remove bookmarks compared against a
+    // snippet this device no longer syncs with.
+    const stored = {
+      bmz_snippet_id: String(projectId),
+      bmz_store_kind: BMZGitLabStore.PROJECT,
+      bmz_store_branch: branch,
+      snippet_local_version: localVersion,
+      snippet_push_held: false,
+      snippet_push_held_items: [],
+      snippet_pull_held_items: [],
+      snippet_overwrite_held_items: [],
+      snippet_added_here_items: [],
+      snippet_pending_push_items: [],
+      snippet_needs_reconcile: false,
+
+      /* [ZeroLabs] 2026-09-07 11:40 PM - added: the new store inherits no old failure */
+      // Every other flag describing the OLD store was already cleared here. This
+      // one was added later and missed, so migrating away from a snippet that had
+      // stopped accepting writes left "Syncing has stopped" on screen over a
+      // repository that was working perfectly well.
+      snippet_sync_failed: false,
+      snippet_sync_failed_reason: '',
+      snippet_sync_failed_detail: ''
+    };
+
+    // The card reads the in-memory copy on the very next render, which happens
+    // before any storage event could get back to us.
+    syncFailure = { failed: false, reason: '', detail: '' };
+    syncFailureDismissed = false;
+    storeFullNoticeShown = false;
+
+    // The created and deleted records are different. After seeding they describe
+    // nothing, because both sides hold the same tree. After a join they are the
+    // only thing that says which bookmarks are this device's own.
+    if (clearRecords) {
+      stored.snippet_local_created = [];
+      stored.snippet_local_deleted = [];
+      stored.snippet_local_edited = [];
+    }
+
+    await safeStorage.set(stored);
+
+    updateGitLabButtonIcon();
+    console.log('[Store] This device now syncs to project', projectId, 'on', branch);
+    return String(projectId);
+  }
+
+  // Create a brand new private project and seed it from this device.
+  async function createProjectStore(name = 'bmz-bookmarks', branch = 'main') {
+    const store = projectStore(branch);
+    const files = await buildStoreSeedFiles([]);
+    const created = await store.create({ title: name, files });
+    return await adoptProjectStore(created.id, branch, files.length > 1);
+  }
+
+  // Point this device at a project that already exists.
+  // projectRef is the numeric project id or the full path, "user/repo".
+  async function useProjectStore(projectRef, branch = 'main') {
+    if (!projectRef) throw new Error('No project given');
+
+    const store = projectStore(branch);
+    const projectId = encodeURIComponent(String(projectRef));
+
+    // Which files are already there decides create against update, and getting
+    // that wrong makes GitLab refuse the whole commit.
+    const existing = await store.listFiles(projectId);
+    const files = await buildStoreSeedFiles(existing);
+
+    const response = await store.writeFiles(projectId, files);
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Could not write to that project: ${response.status} - ${body}`);
+    }
+
+    return await adoptProjectStore(projectId, branch, files.length > 1);
+  }
+
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: record this device's bookmarks as its own */
+  // Writes every local URL into the created-here list, which is what stops the
+  // first reconcile after a connect from offering to delete bookmarks this device
+  // holds and the cloud does not.
+  async function claimLocalBookmarksAsOurs() {
+    try {
+      const firefoxTree = await browser.bookmarks.getTree();
+      const snippetData = await firefoxBookmarksToSnippetFormat(firefoxTree);
+      const entries = collectSnippetEntries(snippetData);
+
+      const urls = [];
+      entries.forEach(entry => {
+        if (entry && entry.url) urls.push(entry.url);
+      });
+
+      if (urls.length === 0) return 0;
+
+      await safeStorage.set({
+        snippet_local_created: urls,
+        snippet_local_deleted: [],
+        snippet_local_edited: []
+      });
+
+      console.log(`[Setup] Claimed ${urls.length} local bookmark(s) as this device's own`);
+      return urls.length;
+    } catch (error) {
+      // Not fatal. Without it the reconcile is merely more cautious than it needs
+      // to be, which is exactly the behaviour that existed before this.
+      console.error('[Setup] Could not record local bookmarks as ours:', error);
+      return 0;
+    }
+  }
+
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: take everything off the old store before leaving it */
+  // Migration seeds the new repository from THIS device, so anything the snippet
+  // holds that never reached here would be left behind. This pulls those in first.
+  //
+  // Additions only, and deliberately not pushed: the old snippet is usually being
+  // left because it has stopped accepting writes, so any attempt to push would
+  // fail and take the migration down with it.
+  async function pullEverythingFromCurrentStore() {
+    if (!snippetId) return { added: 0, deferred: false };
+
+    const remoteData = await readBookmarksFromSnippet(snippetId);
+    const localTree = await browser.bookmarks.getTree();
+    const remoteAsFirefox = snippetFormatToFirefoxBookmarks(remoteData);
+    const diff = calculateBookmarkDiff(localTree[0], remoteAsFirefox[0]);
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: report whether anything is still unresolved */
+    // Anything removed or moved is something this pull will NOT settle, and the
+    // caller needs to know before it writes the local tree back over the store.
+    const deferred = (diff.removed.length + diff.moved.length + diff.modified.length) > 0;
+
+    if (diff.added.length === 0) return { added: 0, deferred };
+
+    await bringSidesTogether(diff.added, true, false);
+    await loadBookmarks();
+    return { added: diff.added.length, deferred };
+  }
+
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: join a repository that already holds bookmarks */
+  // The other three paths seed the repository from this device. This one must not:
+  // the bookmarks there belong to a device that set this up already, and writing
+  // over them is how a second device would silently destroy the first one's data.
+  // It only adopts the repository, then the caller runs the normal reconcile.
+  async function joinProjectStore(projectRef, branch = 'main') {
+    const store = projectStore(branch);
+    const projectId = encodeURIComponent(String(projectRef));
+    const existing = await store.listFiles(projectId);
+
+    if (!existing.includes('bookmarks.json')) {
+      throw new Error('That repository has no bookmarks.json in it yet. Use the empty repository option instead.');
+    }
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: check it is OUR bookmarks.json */
+    // A repository can hold an unrelated file of the same name. Adopting one would
+    // parse, find no roots, read as an empty cloud side, and ask the user to
+    // approve removing every bookmark they own. Refusing up front is the only
+    // decent answer, and it costs one read.
+    const probe = await store.readFile(projectId, 'bookmarks.json');
+    let parsed = null;
+    try {
+      parsed = JSON.parse(probe);
+    } catch (error) {
+      throw new Error('That repository has a bookmarks.json, but it is not readable as BMZ data. Pick a different repository.');
+    }
+    if (!parsed || !parsed.roots || typeof parsed.roots !== 'object') {
+      throw new Error('That repository has a bookmarks.json, but it was not written by BMZ. Pick a different repository, or use the empty repository option to start fresh.');
+    }
+
+    await adoptProjectStore(projectId, branch, existing.includes(META_FILE), 0, false);
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: on a first connect, everything here is yours */
+    // The reconcile decides "here but not in the cloud" by asking whether this
+    // device watched you add it. A device that has never synced has no such
+    // records, so its own bookmarks read as things another device deleted and it
+    // offers to remove them. On a first connect there is no shared history and no
+    // deletion can have happened, so claiming the local tree is the honest reading.
+    await claimLocalBookmarksAsOurs();
+
+    // Read, merge, then push what is only here. Adopting first is what points
+    // readBookmarksFromSnippet at the new repository rather than the old store.
+    const pulled = await pullEverythingFromCurrentStore();
+    if (pulled.added > 0) {
+      console.log(`[Setup] Brought ${pulled.added} item(s) down from the repository`);
+    }
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: a deferral stops the write back */
+    // Writing the local tree back is only safe once local holds BOTH sides. A
+    // deferral means the reconcile found something it would have to remove or
+    // overwrite and stopped rather than doing it, so local is deliberately not
+    // caught up. Pushing then would destroy exactly what the deferral protected.
+    if (pulled.deferred) {
+      console.warn('[Setup] Joined, but the merge needs your approval before anything is written back');
+      return String(projectId);
+    }
+
+    // Local now holds both sides, so writing it back adds this device's extras
+    // without removing anything that was already there.
+    const merged = await buildStoreSeedFiles(existing);
+    const response = await store.writeFiles(projectId, merged);
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Connected, but could not write back: ${response.status} - ${body}`);
+    }
+
+    return String(projectId);
+  }
+
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: read a project id out of whatever was pasted */
+  // People paste the address bar, so accepting only "user/repo" would fail on the
+  // most likely input. A bare number is already a project id and passes through.
+  function parseProjectRef(input) {
+    const trimmed = String(input || '').trim();
+    if (!trimmed) return '';
+    if (/^\d+$/.test(trimmed)) return trimmed;
+
+    // Four shapes reach this in practice: the address bar, the HTTPS clone URL,
+    // the SSH clone URL, and someone typing "user/repo" by hand. GitLab's clone
+    // panel offers both clone forms, so both turn up.
+    let ref = trimmed;
+    ref = ref.replace(/^git@[^:]+:/i, '');        // git@gitlab.com:user/repo.git
+    ref = ref.replace(/^ssh:\/\/[^/]+\//i, '');   // ssh://git@gitlab.com/user/repo.git
+    ref = ref.replace(/^https?:\/\/[^/]+\//i, ''); // https://gitlab.com/user/repo
+
+    // Slashes come off BEFORE ".git" and again after. Stripping ".git" first left
+    // it attached on "user/repo.git/", because the anchor no longer matched the
+    // end of the string. Both orders of typing happen, so both are handled.
+    ref = ref.replace(/^\/+/, '').replace(/\/+$/, '');
+    ref = ref.replace(/\.git$/i, '');
+    ref = ref.replace(/\/+$/, '');
+
+    // GitLab puts a /-/ segment in deep links, so a copied file or settings URL
+    // still yields the project rather than a path that does not resolve.
+    const dashIndex = ref.indexOf('/-/');
+    if (dashIndex > 0) ref = ref.slice(0, dashIndex);
+
+    return ref;
+  }
+
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: four ways in, chosen rather than guessed */
+  // The old dialog listed snippets and offered to make another. Snippets turned out
+  // to be the wrong store: GitLab never repacks them, so every push keeps a full
+  // copy of bookmarks.json and the repository passes its allocation and goes
+  // permanently read-only. Project repositories get housekeeping and draw on the
+  // namespace allowance instead.
+  //
+  // Four options, and the user says which rather than BMZ inferring it. The
+  // difference that matters is the last one: the first three write this device's
+  // bookmarks INTO the repository, and the fourth must not, because the bookmarks
+  // already there came from another device.
+  // mode is 'setup' for a device with nothing connected, 'migrate' for one already
+  // on a snippet, and 'stopped' for one whose snippet has begun refusing writes.
+  //
+  /* [ZeroLabs] 2026-09-07 10:40 PM - edited: migration shows the fourth option too */
+  // It used to hide it, on the reasoning that someone migrating is moving their
+  // own bookmarks rather than joining someone else's repository. That reasoning
+  // only held for the FIRST device. Every device after it migrates to a
+  // repository that already exists and already holds their bookmarks, and joining
+  // is the only correct answer for them - so the one option they needed was the
+  // one being hidden. The three that were left would each have done damage:
+  // creating makes a second repository and splits the devices, and pointing at
+  // the existing one as though it were empty writes this device's tree over what
+  // the first device put there.
+  //
+  // This shadows the older top-level showSnippetSetup, which belongs to the
+  // website-derived layer that the Firefox sidebar never reaches. Everything in
+  // this scope resolves to the one below.
+  async function showSnippetSetup(mode = 'setup') {
+    const migrating = mode === 'migrate' || mode === 'stopped';
+
+    const HEADINGS = {
+      setup: 'Set Up Bookmark Sync',
+      switch: 'Change repository',
+      migrate: 'Move your bookmarks to a repository',
+      stopped: 'Syncing has stopped'
+    };
+
+    const INTROS = {
+      setup: `Your bookmarks are stored in a private GitLab repository, which is what keeps them in step across your devices.`,
+
+      /* [ZeroLabs] 2026-09-08 1:10 AM - edited: the options describe themselves */
+      // This named an order that no longer exists, and it was explaining what each
+      // button already says on its own face.
+      switch: `Point this device at a different GitLab repository.`,
+
+      migrate: `Development of BMZ initially chose GitLab snippets for cloud sync and recent events have confirmed that was the wrong choice.
+        <br><br>
+        A snippet has a storage limit, and it counts every past version of your bookmarks rather than just the current one. A large collection reaches that limit eventually, and syncing then stops. BMZ would therefore like to migrate your bookmarks to a GitLab repository which does not share that same restriction.
+        <br><br>
+        Moving takes about a minute. Nothing is lost.`,
+
+      stopped: `GitLab is refusing to save to this snippet. Its storage limit counts every past version of your bookmarks, and this one has reached that limit.
+        <br><br>
+        <strong>Your bookmarks are safe. Nothing has been lost.</strong>
+        <br><br>
+        This is our fault and we apologize for the inconvenience. BMZ picked the wrong kind of storage for this, however the solution is ready for you. Moving your cloud bookmarks from the snippet to a repository takes about a minute and does not have the same limit.`
+    };
+
+    const modal = document.createElement('div');
+    modal.id = 'snippetSetupModal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px);
+      z-index: 10001; display: flex; align-items: center; justify-content: center;
+    `;
+
+    modal.innerHTML = `
+      <div style="background: var(--md-sys-color-surface); border-radius: 16px; padding: 24px; max-width: 520px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1px solid var(--md-sys-color-outline);">
+        <h2 style="margin: 0 0 16px 0; color: var(--md-sys-color-primary); font-size: 20px; font-weight: 600; text-align: center;">${HEADINGS[mode]}</h2>
+        <p style="margin-bottom: 20px; color: var(--md-sys-color-on-surface); line-height: 1.55;">
+          ${INTROS[mode]}
+        </p>
+        <div id="snippetSetupContent"></div>
+        <div id="snippetSetupError" style="display: none; margin-top: 16px; padding: 12px; background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); border-radius: 8px; font-size: 14px;"></div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const content = modal.querySelector('#snippetSetupContent');
+    const errorDiv = modal.querySelector('#snippetSetupError');
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: a way out of every screen */
+    // Escape, the backdrop, and a Close button on the chooser. Nothing here is so
+    // important that it earns the right to trap someone in a dialog, including the
+    // stopped-sync one: their bookmarks are safe either way and they can come back
+    // to it from Cloud Sync Options whenever they want.
+    const closeSetup = () => {
+      document.removeEventListener('keydown', onEscape);
+      modal.remove();
+    };
+
+    function onEscape(event) {
+      if (event.key === 'Escape') closeSetup();
+    }
+
+    document.addEventListener('keydown', onEscape);
+
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) closeSetup();
+    });
+
+    const showSetupError = (message) => {
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+    };
+
+    const clearSetupError = () => {
+      errorDiv.textContent = '';
+      errorDiv.style.display = 'none';
+    };
+
+    // adoptProjectStore has already saved the id and the kind by this point, so
+    // this only has to bring the sidebar up on it.
+    const finishSetup = async () => {
+      closeSetup();
+      startSnippetAutoSync();
+      loadQuickAccessForSnippet(snippetId).catch(err => {
+        console.error('[QuickAccess] Pin load after connect failed:', err);
+      });
+      await loadBookmarks();
+      renderBookmarks();
+    };
+
+    const PRIMARY = 'background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;';
+    const PLAIN = 'background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface-variant); border: none; padding: 12px 16px; border-radius: 8px; font-size: 14px; cursor: pointer;';
+    const CHOICE = 'display: block; width: 100%; text-align: left; background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface); border: 2px solid transparent; padding: 14px 16px; border-radius: 10px; font-size: 14px; cursor: pointer; margin-bottom: 10px;';
+    const FIELD = 'width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline); background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); font-size: 14px;';
+    const HINT = 'font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-top: 6px; line-height: 1.5;';
+
+    const choice = (id, title, detail) => `
+      <button id="${id}" style="${CHOICE}">
+        <div style="font-weight: 600; margin-bottom: 4px;">${title}</div>
+        <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); line-height: 1.45;">${detail}</div>
+      </button>
+    `;
+
+    // Step one of a migration. The snippet is read one last time so anything on it
+    // that never reached this device comes along, because the new repository is
+    // seeded from here. The export is offered, never required.
+    function renderMigrationStart() {
+      clearSetupError();
+      content.innerHTML = `
+        <div style="padding: 4px 0;">
+          <div style="display: flex; gap: 12px;">
+            <button id="startMigration" style="flex: 1; ${PRIMARY}">Continue</button>
+            <button id="exportFirst" style="${PLAIN}">Save a backup file first</button>
+          </div>
+          <div style="${HINT}">The backup is a bookmarks.html file you can open in any browser. It is optional.</div>
+          <div style="margin-top: 16px; text-align: center;"><button id="notNow" style="${PLAIN}">Not now</button></div>
+        </div>
+      `;
+
+      modal.querySelector('#exportFirst').addEventListener('click', async () => {
+        try {
+          await exportBookmarks();
+        } catch (error) {
+          console.error('[Setup] Export failed:', error);
+          showSetupError('Could not save the backup file: ' + (error.message || ''));
+        }
+      });
+
+      const notNow = modal.querySelector('#notNow');
+      if (notNow) notNow.addEventListener('click', closeSetup);
+
+      modal.querySelector('#startMigration').addEventListener('click', async () => {
+        const button = modal.querySelector('#startMigration');
+        button.disabled = true;
+        button.textContent = 'Reading your cloud bookmarks...';
+        try {
+          const pulled = await pullEverythingFromCurrentStore();
+          if (pulled.added > 0) {
+            console.log(`[Setup] Brought ${pulled.added} item(s) off the old store before migrating`);
+          }
+          /* [ZeroLabs] 2026-09-07 9:20 PM - added: say when the old store still wants a decision */
+          // The new repository is seeded from this device, so a deferral here means
+          // the old store holds something this device chose not to take. Migrating
+          // anyway is allowed, it just leaves that behind, so it is said out loud
+          // rather than discovered later by counting bookmarks.
+          //
+          // After the render, not before: renderChooser clears the error box.
+          renderChooser();
+          if (pulled.deferred) {
+            showSetupError('Your snippet has changes still waiting for your approval. You can continue, but anything you have not approved will not come across.');
+          }
+        } catch (error) {
+          console.error('[Setup] Could not read the old store:', error);
+          showSetupError('Could not read your cloud bookmarks: ' + (error.message || '') + ' You can still continue, but anything only on the snippet would be left behind.');
+          button.disabled = false;
+          button.textContent = 'Continue anyway';
+          button.onclick = renderChooser;
+        }
+      });
+    }
+
+    function renderChooser() {
+      clearSetupError();
+      /* [ZeroLabs] 2026-09-08 1:10 AM - edited: most likely answer first */
+      // Joining led the list because it is the right answer for every device
+      // except the first one, and by the time anyone reaches this screen the first
+      // device has usually already been set up. Creating a repository moved down
+      // for the same reason: on a second device it is the choice that splits your
+      // bookmarks across two stores.
+      content.innerHTML = `
+        <div style="padding: 4px 0;">
+          ${choice('optJoin', 'Connect to a repository that already has my bookmarks',
+            'Another device set this up. Nothing here is written over it. The two are merged instead.')}
+          ${choice('optEmpty', 'Use an empty repository I already made',
+            'You made one yourself and it has nothing in it yet. This device\'s bookmarks go into it.')}
+          ${choice('optCreate', 'Create a repository for me',
+            'BMZ makes a new private repository on your GitLab account and puts this device\'s bookmarks in it.')}
+          ${choice('optHowTo', 'Show me how to make one myself',
+            'Step by step, then point BMZ at it.')}
+          <div style="margin-top: 8px; text-align: center;">
+            <button id="setupBottom" style="${PLAIN}">${chooserBottomLabel()}</button>
+          </div>
+        </div>
+      `;
+
+      modal.querySelector('#setupBottom').addEventListener('click', chooserBottomAction);
+      modal.querySelector('#optCreate').addEventListener('click', renderCreate);
+      modal.querySelector('#optEmpty').addEventListener('click', () => renderPointAt('seed'));
+      modal.querySelector('#optHowTo').addEventListener('click', renderHowTo);
+      modal.querySelector('#optJoin').addEventListener('click', () => renderPointAt('join'));
+    }
+
+    /* [ZeroLabs] 2026-09-08 1:10 AM - added: the bottom button depends on what is behind it */
+    // The chooser is not always the first screen, so a single Close was wrong.
+    // Migration arrives here from the backup-first screen, and Change Repository
+    // arrives from the sync settings dialog, which was removed to get here. Both
+    // have somewhere to go back to. Only first-run setup has nothing behind it.
+    function chooserBottomLabel() {
+      return mode === 'setup' ? 'Close' : 'Back';
+    }
+
+    function chooserBottomAction() {
+      if (migrating) {
+        renderMigrationStart();
+        return;
+      }
+      if (mode === 'switch') {
+        closeSetup();
+        openSnippetSyncDialog();
+        return;
+      }
+      closeSetup();
+    }
+
+    function backButton() {
+      return `<button id="setupBack" style="${PLAIN}">Back</button>`;
+    }
+
+    function wireBack() {
+      modal.querySelector('#setupBack').addEventListener('click', renderChooser);
+    }
+
+    function renderCreate() {
+      clearSetupError();
+      content.innerHTML = `
+        <div style="padding: 4px 0;">
+          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px;">Repository name</label>
+          <input id="newRepoName" type="text" value="bmz-bookmarks" style="${FIELD}">
+          <div style="${HINT}">It is created as private. Only you can see it.</div>
+          <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button id="doCreate" style="flex: 1; ${PRIMARY}">Create and start syncing</button>
+            ${backButton()}
+          </div>
+        </div>
+      `;
+      wireBack();
+
+      modal.querySelector('#doCreate').addEventListener('click', async () => {
+        const name = modal.querySelector('#newRepoName').value.trim();
+        if (!name) {
+          showSetupError('Give the repository a name.');
+          return;
+        }
+        const button = modal.querySelector('#doCreate');
+        button.disabled = true;
+        button.textContent = 'Creating...';
+        try {
+          await createProjectStore(name);
+          await finishSetup();
+        } catch (error) {
+          console.error('[Setup] Could not create the repository:', error);
+          showSetupError('Could not create it: ' + (error.message || ''));
+          button.disabled = false;
+          button.textContent = 'Create and start syncing';
+        }
+      });
+    }
+
+    /* [ZeroLabs] 2026-09-07 11:05 PM - added: pick a repository instead of typing one */
+    // The token is already stored and the adapter already had a list() nobody
+    // called, so asking someone to go and copy a URL out of their address bar was
+    // work BMZ could do for them.
+    //
+    // The picker FILLS the paste field rather than replacing it. That keeps one
+    // code path through parseProjectRef and wirePointAt, and leaves the field as
+    // the way in for a repository the listing cannot show: past the 100 GitLab
+    // returns, or on a token whose scope will not list projects at all.
+    function repoPickerMarkup() {
+      return `
+        <label for="repoPicker" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px;">Your repositories</label>
+        <select id="repoPicker" style="${FIELD}">
+          <option value="">Loading your repositories...</option>
+        </select>
+        <div style="${HINT}">Or paste an address below.</div>
+      `;
+    }
+
+    // Loads in the background. The screen is usable the moment it draws, because
+    // the paste field never depended on this.
+    function wireRepoPicker() {
+      const picker = modal.querySelector('#repoPicker');
+      const field = modal.querySelector('#repoRef');
+      if (!picker || !field) return;
+
+      picker.addEventListener('change', () => {
+        if (picker.value) field.value = picker.value;
+      });
+
+      projectStore('main').list().then(projects => {
+        if (!projects || projects.length === 0) {
+          picker.innerHTML = '<option value="">No repositories found on your account</option>';
+          picker.disabled = true;
+          return;
+        }
+
+        const options = projects.map(project =>
+          `<option value="${escapeHtml(project.title)}">${escapeHtml(project.title)}</option>`
+        ).join('');
+        picker.innerHTML = `<option value="">Choose a repository...</option>${options}`;
+      }).catch(error => {
+        // Not an error worth a red box. The paste field still works, so this only
+        // has to stop promising a list that is not coming.
+        console.warn('[Setup] Could not list your repositories:', error);
+        picker.innerHTML = '<option value="">Could not load your repositories</option>';
+        picker.disabled = true;
+      });
+    }
+
+    function renderHowTo() {
+      clearSetupError();
+      content.innerHTML = `
+        <div style="padding: 4px 0;">
+          <ol style="margin: 0 0 16px 18px; padding: 0; font-size: 14px; line-height: 1.7; color: var(--md-sys-color-on-surface);">
+            <li><a href="https://gitlab.com/users/sign_in" target="_blank" rel="noopener noreferrer" style="color: var(--md-sys-color-primary); text-decoration: underline;">Sign in to your GitLab account</a> first.</li>
+            <li>Open <a href="https://gitlab.com/projects/new" target="_blank" rel="noopener noreferrer" style="color: var(--md-sys-color-primary); text-decoration: underline;">gitlab.com/projects/new</a> and choose "Create blank project".</li>
+            <li>Give it any name you like.</li>
+            <li>Set Visibility to <strong>Private</strong>.</li>
+            <li>Leave <strong>Initialize repository with a README</strong> ticked. BMZ needs a branch to write to.</li>
+            <li>Create it, then pick it from the list below. It will be at the top.</li>
+          </ol>
+          ${repoPickerMarkup()}
+          <label for="repoRef" style="display: block; font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Repository address</label>
+          <input id="repoRef" type="text" placeholder="https://gitlab.com/you/bmz-bookmarks" style="${FIELD}">
+          <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button id="doPoint" style="flex: 1; ${PRIMARY}">Start syncing</button>
+            ${backButton()}
+          </div>
+        </div>
+      `;
+      wireBack();
+      wireRepoPicker();
+      wirePointAt('seed');
+    }
+
+    function renderPointAt(mode) {
+      clearSetupError();
+      const joining = mode === 'join';
+      content.innerHTML = `
+        <div style="padding: 4px 0;">
+          ${repoPickerMarkup()}
+          <label for="repoRef" style="display: block; font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Repository address</label>
+          <input id="repoRef" type="text" placeholder="https://gitlab.com/you/bmz-bookmarks" style="${FIELD}">
+          <div style="${HINT}">
+            ${joining
+              ? 'Its bookmarks are read first and merged with the ones on this device. Nothing is removed without asking you.'
+              : 'This device\'s bookmarks are written into it. Pick the other option if it already holds bookmarks.'}
+          </div>
+          <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button id="doPoint" style="flex: 1; ${PRIMARY}">${joining ? 'Connect and merge' : 'Start syncing'}</button>
+            ${backButton()}
+          </div>
+        </div>
+      `;
+      wireBack();
+      wireRepoPicker();
+      wirePointAt(mode);
+    }
+
+    function wirePointAt(mode) {
+      const button = modal.querySelector('#doPoint');
+      const original = button.textContent;
+
+      button.addEventListener('click', async () => {
+        const typed = modal.querySelector('#repoRef').value;
+        const ref = parseProjectRef(typed);
+        if (!ref) {
+          showSetupError('Paste the repository address.');
+          return;
+        }
+
+        button.disabled = true;
+        button.textContent = 'Connecting...';
+        try {
+          /* [ZeroLabs] 2026-09-07 11:05 PM - added: do not write over a repository that is in use */
+          // useProjectStore seeds from THIS device, and its verbFor sends "update"
+          // for a bookmarks.json that already exists, so this path silently
+          // replaced whatever was there. Typing a full URL made that unlikely. A
+          // dropdown of every repository on the account makes it a slip.
+          //
+          // The right answer is almost always the join option, so it is named.
+          // One extra read on a path taken once is worth not overwriting a library.
+          if (mode !== 'join') {
+            let entries = null;
+            try {
+              entries = await projectStore('main').listEntries(encodeURIComponent(ref));
+            } catch (probeError) {
+              // Could not look. Let useProjectStore report the real problem rather
+              // than guessing at one here.
+              console.warn('[Setup] Could not check the repository first:', probeError);
+            }
+
+            if (entries) {
+              const alreadyHasBookmarks = entries.some(entry => entry.path === 'bookmarks.json');
+              const otherContent = BMZGitLabStore.contentEntries(entries);
+
+              /* [ZeroLabs] 2026-09-08 12:40 AM - added: two different wrong repositories */
+              // Already holds bookmarks is the destructive one and keeps its own
+              // warning. Holds somebody's actual project is not destructive, but
+              // BMZ would commit into it on every sync from then on, which nobody
+              // asked for. Both are a confirmation rather than a refusal: a person
+              // may genuinely want bookmarks living beside other files.
+              if (alreadyHasBookmarks) {
+                const proceed = confirm(
+                  'That repository already contains bookmarks.\n\n' +
+                  'Continuing REPLACES them with this device\'s bookmarks, on every device using it.\n\n' +
+                  'If you meant to join it and keep both sides, press Cancel and choose ' +
+                  '"Connect to a repository that already has my bookmarks" instead.\n\nReplace them?'
+                );
+                if (!proceed) {
+                  button.disabled = false;
+                  button.textContent = original;
+                  return;
+                }
+              } else if (otherContent.length > 0) {
+                // Naming a couple of them is what makes the repository recognisable.
+                // A README on its own never reaches here: BMZ creates repositories
+                // with one, and the how-to screen tells people to keep it.
+                const sample = otherContent.slice(0, 3).map(entry => entry.path).join(', ');
+                const more = otherContent.length > 3 ? `, and ${otherContent.length - 3} more` : '';
+                const proceed = confirm(
+                  'That repository is not empty. It already contains:\n\n' +
+                  `  ${sample}${more}\n\n` +
+                  'Nothing there will be deleted, but BMZ would add bookmarks.json to it ' +
+                  'and commit to it on every sync from now on.\n\n' +
+                  'Use it for your bookmarks anyway?'
+                );
+                if (!proceed) {
+                  button.disabled = false;
+                  button.textContent = original;
+                  return;
+                }
+              }
+            }
+          }
+
+          if (mode === 'join') {
+            await joinProjectStore(ref);
+          } else {
+            await useProjectStore(ref);
+          }
+          await finishSetup();
+        } catch (error) {
+          console.error('[Setup] Could not connect to the repository:', error);
+          showSetupError(error.message || 'Could not connect to that repository.');
+          button.disabled = false;
+          button.textContent = original;
+        }
+      });
+    }
+
+    if (migrating) {
+      renderMigrationStart();
+    } else {
+      renderChooser();
+    }
+  }
+
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: the outer migration card needs a way in */
+  // renderBookmarks and its cards live outside this scope, the same way
+  // showHeldPushDialog is reached. Nothing else here is exposed.
+  window.showSnippetSetup = showSnippetSetup;
+
+  // Read bookmarks from the cloud store
   async function readBookmarksFromSnippet(id = null) {
     const useId = id || snippetId;
     if (!useId) {
-      throw new Error('No Snippet ID provided');
+      throw new Error('No cloud sync connected');
     }
 
     try {
-      const response = await fetchGitLab(`https://gitlab.com/api/v4/snippets/${useId}`, {
-        headers: getSnippetHeaders()
-      });
+      /* [ZeroLabs] 2026-09-07 9:20 PM - edited: read through the store adapter */
+      // The two-step read and the raw endpoint fallback moved into the adapter,
+      // because a project repository answers both in one call and a snippet does
+      // not.
+      const content = await currentStore().readFile(useId, 'bookmarks.json');
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Bookmark Snippet not found');
-        }
-        throw new Error(`Failed to read Snippet: ${response.status}`);
-      }
-
-      const snippet = await response.json();
-
-      // GitLab snippets have a 'files' array
-      const bookmarkFile = snippet.files?.find(f =>
-        f.path === 'bookmarks.json' || f.file_name === 'bookmarks.json'
-      );
-      if (!bookmarkFile) {
-        throw new Error('Snippet does not contain bookmarks.json');
-      }
-
-      // Get file content
-      let content = bookmarkFile.content;
-
-      // If content is not in the response, fetch it using the raw endpoint
-      if (!content) {
-        const fileResponse = await fetch(
-          `https://gitlab.com/api/v4/snippets/${useId}/files/main/bookmarks.json/raw`,
-          { headers: getSnippetHeaders() }
-        );
-        if (!fileResponse.ok) {
-          throw new Error(`Failed to fetch file content: ${fileResponse.status}`);
-        }
-        content = await fileResponse.text();
+      if (content === null) {
+        throw new Error('Remote store does not contain bookmarks.json');
       }
 
       // If content is empty or just whitespace, return empty structure
       if (!content || content.trim() === '') {
-        console.log('Snippet file is empty, returning empty bookmark structure');
+        console.log('Cloud bookmarks file is empty, returning empty bookmark structure');
         return {
           version: 1,
           checksum: '',
@@ -12644,7 +13692,7 @@ function setupEventListeners() {
 
       return JSON.parse(content);
     } catch (error) {
-      console.error('Failed to read bookmarks from Snippet:', error);
+      console.error('Failed to read bookmarks from cloud storage:', error);
       throw error;
     }
   }
@@ -12661,34 +13709,22 @@ function setupEventListeners() {
     if (!useId) return null;
 
     try {
-      const response = await fetchGitLab(`https://gitlab.com/api/v4/snippets/${useId}`, {
-        headers: getSnippetHeaders()
-      });
-      if (!response.ok) return null;
+      /* [ZeroLabs] 2026-09-07 9:20 PM - edited: ask the store which files exist */
+      // metaFileExists decides whether the next push says create or update, and
+      // getting it wrong makes GitLab refuse the whole write. Asking the adapter
+      // for the file list keeps that answer correct on either backend.
+      const store = currentStore();
+      const filePaths = await store.listFiles(useId);
 
-      const snippet = await response.json();
-      const metaFile = snippet.files?.find(f =>
-        f.path === META_FILE || f.file_name === META_FILE
-      );
-
-      // A snippet with no meta file means no pins yet, which is the normal state
-      // of every snippet that existed before this feature. Not an error.
-      if (!metaFile) {
+      // A store with no meta file means no pins yet, which is the normal state of
+      // every snippet that existed before this feature. Not an error.
+      if (!filePaths.includes(META_FILE)) {
         metaFileExists = false;
         return { pins: [], tombstones: [] };
       }
       metaFileExists = true;
 
-      let content = metaFile.content;
-      if (!content) {
-        const fileResponse = await fetch(
-          `https://gitlab.com/api/v4/snippets/${useId}/files/main/${META_FILE}/raw`,
-          { headers: getSnippetHeaders() }
-        );
-        if (!fileResponse.ok) return { pins: [], tombstones: [] };
-        content = await fileResponse.text();
-      }
-
+      const content = await store.readFile(useId, META_FILE);
       if (!content || content.trim() === '') return { pins: [], tombstones: [] };
 
       const parsed = JSON.parse(content);
@@ -12697,7 +13733,7 @@ function setupEventListeners() {
         tombstones: Array.isArray(parsed.quickAccessRemoved) ? parsed.quickAccessRemoved : []
       };
     } catch (error) {
-      console.error('Failed to read quick access meta from Snippet:', error);
+      console.error('Failed to read quick access meta from cloud storage:', error);
       return null;
     }
   }
@@ -12734,10 +13770,10 @@ function setupEventListeners() {
     }, null, 2);
   }
 
-  // Update bookmarks in snippet
+  // Update bookmarks in the cloud store
   async function updateBookmarksInSnippet(bookmarkTree, version = null) {
     if (!snippetId) {
-      throw new Error('No Snippet ID provided');
+      throw new Error('No cloud sync connected');
     }
 
     /* [ZeroLabs] 2026-08-17 4:15 PM - added: load pins before any push */
@@ -12776,25 +13812,43 @@ function setupEventListeners() {
         });
       }
 
-      const response = await fetchGitLab(`https://gitlab.com/api/v4/snippets/${snippetId}`, {
-        method: 'PUT',
-        headers: getSnippetHeaders(),
-        body: JSON.stringify({ files })
-      });
+      /* [ZeroLabs] 2026-09-07 9:20 PM - edited: write through the store adapter */
+      const response = await currentStore().writeFiles(snippetId, files);
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to update Snippet: ${response.status} - ${errorText}`);
+
+        /* [ZeroLabs] 2026-09-07 9:20 PM - added: recognise a store that has filled up */
+        // GitLab reports this as a bare 400 saying "Repository Error updating the
+        // snippet", which names no cause and repeats forever. Every sync fails,
+        // nothing explains why, and the only visible symptom is that other devices
+        // quietly stop matching. Saying so is the difference between a user moving
+        // and a user losing sync without ever learning it happened.
+        if (isStoreFullError(response.status, errorText)) {
+          noteStoreIsFull();
+        }
+
+        throw new Error(`Failed to update cloud storage: ${response.status} - ${errorText}`);
       }
 
       // A successful write means the file is there now, so later pushes update
       // rather than create.
       if (files.length > 1) metaFileExists = true;
 
-      console.log('Updated bookmarks in Snippet:', snippetId);
+      /* [ZeroLabs] 2026-09-07 10:05 PM - added: a working write clears the failure */
+      // The card is driven entirely by this flag, so a manual sync that succeeds
+      // has to take it down. Awaited: the render that follows reads it.
+      syncFailure = { failed: false, reason: '', detail: '' };
+      await browser.storage.local.set({
+        snippet_sync_failed: false,
+        snippet_sync_failed_reason: '',
+        snippet_sync_failed_detail: ''
+      });
+
+      console.log('Updated bookmarks in cloud storage:', snippetId);
       return await response.json();
     } catch (error) {
-      console.error('Failed to update bookmarks in Snippet:', error);
+      console.error('Failed to update bookmarks in cloud storage:', error);
       throw error;
     }
   }
@@ -12835,7 +13889,7 @@ function setupEventListeners() {
     const roots = (tree[0] && tree[0].children) || [];
     const root = roots.find(r => normalizeBookmarkTitle(r.title || '') === segments[0]);
     if (!root) {
-      console.warn('[AddFromSnippet] No local root matches path segment:', segments[0]);
+      console.warn('[CloudAdd] No local root matches path segment:', segments[0]);
       return null;
     }
 
@@ -13001,7 +14055,15 @@ function setupEventListeners() {
   }
   window.syncAfterLocalDeletion = syncAfterLocalDeletion;
 
-  async function showHeldPushDialog() {
+  /* [ZeroLabs] 2026-09-07 10:05 PM - edited: never return silently on a click */
+  // fromUser is true when a person pressed Review changes. Both guards below used
+  // to return with no dialog and no message, so the button appeared broken. It was
+  // reachable because the failure path raised the deferral card without ever
+  // writing the held lists the dialog reads.
+  //
+  // The internal caller passes nothing, because it only calls this when a
+  // reconcile has just reported a deferral and a toast there would be noise.
+  async function showHeldPushDialog(fromUser = false) {
     const stored = await safeStorage.get([
       'snippet_push_held',
       'snippet_push_held_items',
@@ -13010,13 +14072,25 @@ function setupEventListeners() {
       'snippet_added_here_items',
       'snippet_pending_push_items'
     ]);
-    if (!stored.snippet_push_held) return;
 
     const fromSnippet = stored.snippet_push_held_items || [];
     const fromDevice = stored.snippet_pull_held_items || [];
     /* [ZeroLabs] 2026-08-27 2:02 PM - added: renames and moves wait here too */
     const overwrites = stored.snippet_overwrite_held_items || [];
-    if (fromSnippet.length === 0 && fromDevice.length === 0 && overwrites.length === 0) return;
+
+    const nothingHeld = !stored.snippet_push_held ||
+      (fromSnippet.length === 0 && fromDevice.length === 0 && overwrites.length === 0);
+
+    if (nothingHeld) {
+      if (fromUser) {
+        // The card was standing on a stale flag, so it goes as well. Leaving it
+        // up after saying there is nothing to review is its own small lie.
+        showToast('Nothing is waiting for your approval.');
+        await setSnippetNeedsReconcile(false);
+        renderBookmarks();
+      }
+      return;
+    }
 
     const modal = document.createElement('div');
     modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10001; display: flex; align-items: center; justify-content: center;';
@@ -13182,7 +14256,7 @@ function setupEventListeners() {
               await addChangelogEntry('delete', 'bookmark', node.title || 'Untitled', node.url || null, { fullData });
             }
           } catch (error) {
-            console.warn('[SnippetPush] Could not remove locally:', item.url, error.message);
+            console.warn('[CloudSync] Could not remove locally:', item.url, error.message);
           }
         }
         await loadBookmarks();
@@ -13227,7 +14301,7 @@ function setupEventListeners() {
               }
             }
           } catch (error) {
-            console.warn('[SnippetPush] Could not apply change to:', item.url, error.message);
+            console.warn('[CloudSync] Could not apply change to:', item.url, error.message);
           }
         }
         await loadBookmarks();
@@ -13259,6 +14333,10 @@ function setupEventListeners() {
   // ReferenceError - the same scope trap that broke the v4.5 announcement
   // card's button in v4.6. Exposed here so both browsers call it the same way.
   window.showHeldPushDialog = showHeldPushDialog;
+  /* [ZeroLabs] 2026-09-07 10:05 PM - added: the failed-sync card retries through this */
+  // Same reason as the line above: the cards are rendered outside this scope and
+  // can only reach in through window.
+  window.reconcileWithSnippet = reconcileWithSnippet;
 
   /* [ZeroLabs] 2026-08-27 12:20 PM - added: the sidebar's copy of the background's reconcile */
   // Same four outcomes and the same classification the background uses, so a
@@ -13376,8 +14454,14 @@ function setupEventListeners() {
       const remoteEntry = remoteEntries.get(key);
       if (!remoteEntry) return;
 
+      /* [ZeroLabs] 2026-09-07 9:20 PM - edited: surrounding whitespace is not a rename */
+      // Titles are compared trimmed. A browser will happily store "Sebtube " with a
+      // trailing space, while an HTML export and re-import strips it, so the two
+      // sides disagree over a character nobody can see. Only the comparison is
+      // trimmed; neither copy is rewritten.
+      const sameTitle = String(localEntry.title || '').trim() === String(remoteEntry.title || '').trim();
       const movedOrRenamed =
-        localEntry.title !== remoteEntry.title ||
+        !sameTitle ||
         localEntry.rootKey !== remoteEntry.rootKey ||
         localEntry.segments.join('/') !== remoteEntry.segments.join('/');
       if (!movedOrRenamed) return;
@@ -13458,7 +14542,7 @@ function setupEventListeners() {
       <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #ff9800;">${skippedItems.length} item(s) could not be added</h2>
       <p style="margin: 0 0 16px 0; font-size: 14px;">
         ${createdCount > 0 ? `${createdCount} item(s) were added and synced. ` : ''}These could not be placed on this device.
-        They are still in the snippet and on your other devices, so nothing has been lost.
+        They are still in the cloud and on your other devices, so nothing has been lost.
       </p>
       <div style="margin-bottom: 20px;">${list}</div>
       <label style="display: block; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #aaa); margin-bottom: 6px;">
@@ -13470,7 +14554,7 @@ function setupEventListeners() {
           Save them there and sync
         </button>
         <button id="unplaceableClose" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">
-          Leave them in the snippet only
+          Leave them in the cloud only
         </button>
       </div>
     `;
@@ -13631,7 +14715,7 @@ function setupEventListeners() {
           : 'Snippet updated.');
       }
     } catch (error) {
-      console.error('[AddFromSnippet] Failed:', error);
+      console.error('[CloudAdd] Failed:', error);
       showToast(`Error: ${error.message}`, 'error');
     }
   }
@@ -13980,7 +15064,7 @@ function setupEventListeners() {
       console.error('[SyncDiff] Could not read changelog for deletion hints:', error);
     }
 
-    let content = '<h2 style="margin: 0 0 16px 0; font-size: 20px;">Snippet Sync Changes</h2>';
+    let content = '<h2 style="margin: 0 0 16px 0; font-size: 20px;">Cloud Sync Changes</h2>';
 
     if (!hasChanges) {
       content += '<p style="color: var(--md-sys-color-on-surface-variant, #aaa);">No changes detected. Your local bookmarks match the Snippet.</p>';
@@ -14007,7 +15091,7 @@ function setupEventListeners() {
         // The checkboxes were solving a problem nobody had. Bringing the two
         // sides together takes everything, so the list is here to be read.
         /* [ZeroLabs] 2026-08-27 3:02 AM - edited: short label, caption cut */
-        content += '<div style="margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; font-size: 16px; color: #4caf50;">From Snippet</h3>';
+        content += '<div style="margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; font-size: 16px; color: #4caf50;">From Cloud</h3>';
         diff.added.forEach(item => {
           const deletedOn = item.url ? deletedHereByUrl.get(item.url) : null;
           content += `<div style="padding: 8px; margin-bottom: 4px; background: rgba(76, 175, 80, 0.1); border-left: 3px solid #4caf50; border-radius: 4px;">
@@ -14069,11 +15153,21 @@ function setupEventListeners() {
             Merge
           </button>
           <div style="display: flex; gap: 12px;">
-            <button id="pushLocalToRemote" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px;">
-              Overwrite Snippet with Local
+            <!-- [ZeroLabs] 2026-09-07 9:20 PM - added: which way the data moves -->
+            <!-- Same arrows as the pair in Cloud Sync Options. This pair is the
+                 more dangerous of the two: side by side, no captions, and the
+                 labels differ only in word order. -->
+            <button id="pushLocalToRemote" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;" aria-hidden="true">
+                <path d="M13,20H11V8L5.5,13.5L4.08,12.08L12,4.16L19.92,12.08L18.5,13.5L13,8V20Z"/>
+              </svg>
+              <span>Overwrite Cloud with Local</span>
             </button>
-            <button id="applyRemoteChanges" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error, #f44336); color: var(--md-sys-color-on-error, #fff); cursor: pointer; font-size: 14px;">
-              Overwrite Local with Snippet
+            <button id="applyRemoteChanges" style="flex: 1; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error, #f44336); color: var(--md-sys-color-on-error, #fff); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;" aria-hidden="true">
+                <path d="M11,4H13V16L18.5,10.5L19.92,11.92L12,19.84L4.08,11.92L5.5,10.5L11,16V4Z"/>
+              </svg>
+              <span>Overwrite Local with Cloud</span>
             </button>
           </div>
         ` : ''}
@@ -14107,7 +15201,7 @@ function setupEventListeners() {
         // The user is looking at the diff and choosing to overwrite, so the
         // outcome is worth one line and the intermediate steps are not.
         await syncToSnippet(true);
-        showToast('Snippet overwritten with local bookmarks.');
+        showToast('Cloud bookmarks overwritten with local.');
       });
     }
 
@@ -14128,7 +15222,7 @@ function setupEventListeners() {
   // Sync from Snippet to Firefox bookmarks
   async function syncFromSnippet(silent = false) {
     if (!snippetId) {
-      showToast('No Snippet connected', 'error');
+      showToast('No cloud sync connected', 'error');
       return;
     }
     if (snippetIsSyncing) {
@@ -14146,13 +15240,13 @@ function setupEventListeners() {
     // being read.
     const heldState = await safeStorage.get('snippet_push_held');
     if (heldState.snippet_push_held) {
-      console.log('[SyncFromSnippet] Skipped: a held push is waiting for consent');
+      console.log('[CloudPull] Skipped: a held push is waiting for consent');
       return;
     }
 
     snippetIsSyncing = true;
     try {
-      if (!silent) showToast('Checking for Snippet updates...');
+      if (!silent) showToast('Checking for cloud updates...');
 
       /* [ZeroLabs] 2026-08-17 4:15 PM - added: converge pins on every pull */
       // Ahead of the no-changes early return below, because pins can differ even
@@ -14185,13 +15279,13 @@ function setupEventListeners() {
       // review something that was already being handled. Deferrals still
       // surface, through the held dialog.
       if (silent) {
-        console.log('[SyncFromSnippet] Differences found; leaving them to the background');
+        console.log('[CloudPull] Differences found; leaving them to the background');
         return;
       }
 
       await showSyncDiffDialog(diff, remoteData);
     } catch (error) {
-      console.error('Sync from Snippet failed:', error);
+      console.error('Cloud sync failed:', error);
       showToast(`Error: ${error.message}`, 'error');
     } finally {
       snippetIsSyncing = false;
@@ -14257,7 +15351,7 @@ function setupEventListeners() {
 
   async function syncToSnippet(silent = false) {
     if (!snippetId) {
-      showToast('No Snippet connected', 'error');
+      showToast('No cloud sync connected', 'error');
       return;
     }
     if (snippetIsSyncing) {
@@ -14267,7 +15361,7 @@ function setupEventListeners() {
     snippetIsSyncing = true;
 
     try {
-      if (!silent) showToast('Syncing to Snippet...');
+      if (!silent) showToast('Syncing to the cloud...');
 
       const firefoxTree = await browser.bookmarks.getTree();
       const snippetData = await firefoxBookmarksToSnippetFormat(firefoxTree);
@@ -14289,9 +15383,9 @@ function setupEventListeners() {
       /* [ZeroLabs] 2026-08-27 - added: both sides agree, the records are spent */
       await clearLocalBookmarkEvents();
 
-      if (!silent) showToast('Synced to Snippet successfully!');
+      if (!silent) showToast('Synced to the cloud successfully!');
     } catch (error) {
-      console.error('Sync to Snippet failed:', error);
+      console.error('Sync to cloud storage failed:', error);
       showToast(`Error: ${error.message}`, 'error');
     } finally {
       snippetIsSyncing = false;
@@ -14428,11 +15522,31 @@ function setupEventListeners() {
       stopSnippetAutoSync();
       if (removeFromSupabase) await supabase.deleteGitLabToken();
       await clearSnippetToken();
-      await browser.storage.local.remove(['bmz_snippet_id', 'snippet_local_version']);
+      /* [ZeroLabs] 2026-09-07 9:20 PM - edited: the backend goes with the connection */
+      // bmz_store_kind survived a disconnect, so connecting a SNIPPET afterwards
+      // left the project backend pointed at a snippet id and every call failed.
+      // Which store a device uses is part of the connection, not of the device.
+      await browser.storage.local.remove([
+        'bmz_snippet_id',
+        'snippet_local_version',
+        'bmz_store_kind',
+        'bmz_store_branch',
+        /* [ZeroLabs] 2026-09-07 11:40 PM - added: a failure belongs to the store that had it */
+        // Same reasoning as the backend keys above. Carrying it past a disconnect
+        // would report the old store's failure against whatever is connected next.
+        'snippet_sync_failed',
+        'snippet_sync_failed_reason',
+        'snippet_sync_failed_detail'
+      ]);
+      syncFailure = { failed: false, reason: '', detail: '' };
+      syncFailureDismissed = false;
+      storeFullNoticeShown = false;
       await supabase.clearSession();
       await setTokenMode('local');
       snippetId = null;
       snippetLocalVersion = 0;
+      storeKind = null;
+      storeBranch = null;
       updateGitLabButtonIcon();
       showToast(removeFromSupabase ? 'Disconnected from all devices' : 'Disconnected this device');
     };
@@ -14580,7 +15694,7 @@ function setupEventListeners() {
     modal.innerHTML = `
       <div style="background:var(--md-sys-color-surface,#1e1e1e);padding:24px;border-radius:12px;max-width:440px;width:90%;color:var(--md-sys-color-on-surface,#e0e0e0);">
         <h2 style="margin:0 0 12px 0;font-size:18px;">🔑 Your GitLab Token</h2>
-        <p style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);margin:0 0 12px 0;">This is the Personal Access Token currently saved in BMZ on this device. Keep it private — it grants access to your GitLab bookmark snippet.</p>
+        <p style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);margin:0 0 12px 0;">This is the Personal Access Token currently saved in BMZ on this device. Keep it private. It grants access to your GitLab bookmark storage.</p>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
           <input type="password" readonly id="revealTokenInput" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--md-sys-color-outline,#444);background:var(--md-sys-color-surface-variant,#2a2a2a);color:var(--md-sys-color-on-surface,#e0e0e0);font-size:12px;font-family:monospace;box-sizing:border-box;">
           <button id="toggleReveal" style="padding:10px 12px;border-radius:8px;border:1px solid var(--md-sys-color-outline,#444);background:var(--md-sys-color-surface-variant,#2a2a2a);color:var(--md-sys-color-on-surface,#e0e0e0);font-size:12px;cursor:pointer;">Show</button>
@@ -14633,17 +15747,12 @@ function setupEventListeners() {
       return;
     }
 
-    const response = await fetchGitLab(`https://gitlab.com/api/v4/snippets/${snippetId}`, {
-      method: 'PUT',
-      headers: getSnippetHeaders(),
-      body: JSON.stringify({
-        files: [{
-          action: metaFileExists ? 'update' : 'create',
-          file_path: META_FILE,
-          content: buildQuickAccessMetaContent()
-        }]
-      })
-    });
+    /* [ZeroLabs] 2026-09-07 9:20 PM - edited: write through the store adapter */
+    const response = await currentStore().writeFiles(snippetId, [{
+      action: metaFileExists ? 'update' : 'create',
+      file_path: META_FILE,
+      content: buildQuickAccessMetaContent()
+    }]);
 
     if (!response.ok) {
       throw new Error(`Failed to update pins: ${response.status}`);
@@ -14685,6 +15794,47 @@ function setupEventListeners() {
 
     const currentMode = await getTokenMode();
 
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: which store controls this device gets */
+    // Three states, not two, and the third is the one that mattered. A device
+    // already on a project switches repositories. A device already on a snippet
+    // keeps the snippet controls, because those still describe what it uses and
+    // switching snippets was always available. A device connected to NOTHING gets
+    // neither: it goes through the setup dialog, which only offers repositories.
+    const REPO_BUTTON = `
+            <!-- The repository equivalent of Select Existing Snippet. Without it a
+                 project user could only change repository by disconnecting, which
+                 throws the token away as well. -->
+            <button id="changeRepository" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+              Change Repository
+            </button>`;
+
+    const SNIPPET_BUTTONS = `
+            <button id="createNewSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+              Create New Snippet with Current Bookmarks
+            </button>
+            <button id="selectExistingSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+              Select Existing Snippet
+            </button>`;
+
+    /* [ZeroLabs] 2026-09-07 9:20 PM - added: the third state needs a way in */
+    // A device holding a token but connected to nothing had no button at all
+    // here. The setup dialog opens by itself right after a token is entered, so
+    // this was only reachable by dismissing that one, but from then on the
+    // dialog offered Disconnect and Cancel and no route to a store.
+    const SETUP_BUTTON = `
+            <button id="openStoreSetup" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px; font-weight: 500;">
+              Set Up Bookmark Sync
+            </button>`;
+
+    let storeChoiceButtons = '';
+    if (storeKind === 'project') {
+      storeChoiceButtons = REPO_BUTTON;
+    } else if (snippetId) {
+      storeChoiceButtons = SNIPPET_BUTTONS;
+    } else {
+      storeChoiceButtons = SETUP_BUTTON;
+    }
+
     if (snippetToken) {
       const modeLabel = currentMode === 'supabase' ? '☁️ Supabase' : '💻 Local';
       const switchLabel = currentMode === 'supabase' ? 'Switch to Local' : 'Enable Supabase';
@@ -14708,7 +15858,7 @@ function setupEventListeners() {
                  that contains them. Only the inner group spins, so the status
                  text sitting in the middle of the ring stays upright. -->
             <div style="display: flex; justify-content: center; padding: 8px 0;">
-              <button id="manualSyncNow" title="Sync with your snippet" aria-label="Sync with your snippet" style="position: relative; width: 128px; height: 128px; max-width: 100%; border-radius: 50%; border: none; background: var(--md-sys-color-surface-container, #2a2a2a); box-shadow: var(--md-elevation-1); cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center;">
+              <button id="manualSyncNow" title="Sync your bookmarks" aria-label="Sync your bookmarks" style="position: relative; width: 128px; height: 128px; max-width: 100%; border-radius: 50%; border: none; background: var(--md-sys-color-surface-container, #2a2a2a); box-shadow: var(--md-elevation-1); cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center;">
                 <!-- The loader rides the circle's edge, which leaves the tanuki
                      and the label alone in the middle instead of fighting them
                      for room. Spinning shows one coloured arc; settled shows the
@@ -14723,12 +15873,12 @@ function setupEventListeners() {
             <hr style="border: none; border-top: 1px solid var(--md-sys-color-outline, #444); margin: 4px 0;">
           ` : ''}
           <button id="snippetOptionsToggle" aria-expanded="${snippetId ? 'false' : 'true'}" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-            <span>Snippet Sync Options</span>
+            <span>Cloud Sync Options</span>
             <svg id="snippetOptionsChevron" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;transition:transform 0.2s ease;transform:rotate(${snippetId ? '-90' : '0'}deg);"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
           </button>
           <div id="snippetOptionsPanel" style="display: ${snippetId ? 'none' : 'flex'}; flex-direction: column; gap: 12px;">
             <p style="margin: 0; color: var(--md-sys-color-on-surface-variant, #aaa); font-size: 13px;">
-              ${snippetId ? 'Connected to Snippet: <code style="font-size: 11px;">' + snippetId + '</code>' : 'Not connected to any Snippet'}
+              ${snippetId ? 'Connected to: <code style="font-size: 11px;">' + snippetId + '</code>' : 'Not connected to any Snippet'}
             </p>
             <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--md-sys-color-surface-variant,#2a2a2a);border-radius:8px;">
               <span style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);">Token Storage: <strong style="color:var(--md-sys-color-on-surface,#e0e0e0);">${modeLabel}</strong></span>
@@ -14745,24 +15895,46 @@ function setupEventListeners() {
                 Anything that would delete a bookmark will defer for consent.
               </div>
             </div>
-            <button id="createNewSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
-              Create New Snippet with Current Bookmarks
-            </button>
-            <button id="selectExistingSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
-              Select Existing Snippet
-            </button>
+            <!-- [ZeroLabs] 2026-09-07 9:20 PM - added: snippet-only actions, hidden once off snippets -->
+            <!-- These two make and pick SNIPPETS. Offering them to someone already
+                 syncing to a repository would quietly move them back onto the
+                 storage they were migrated off. They keep their snippet wording
+                 because that is exactly what they still do. -->
+            ${storeChoiceButtons}
             ${snippetId ? `
               <!-- [ZeroLabs] 2026-08-27 12:20 PM - added: forcing, always reachable -->
               <!-- The sync button resolves everything it safely can, which means
                    a divergence in renames or moves never surfaces a choice, and a
                    wholesale recovery has no route. These stay available whatever
                    the current difference happens to look like. -->
+              <!-- [ZeroLabs] 2026-09-07 9:20 PM - added: the way off snippets -->
+              <!-- Offered before anything breaks. A snippet keeps every past
+                   version of bookmarks.json, so a large collection eventually
+                   passes its allocation and the store goes permanently read-only.
+                   Only shown while this device is still on a snippet. -->
+              ${storeKind === 'project' ? '' : `
               <hr style="border: none; border-top: 1px solid var(--md-sys-color-outline, #444); margin: 4px 0;">
-              <button id="forceOverwriteSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error-container, #3b1a1a); color: var(--md-sys-color-on-error-container, #f9dedc); cursor: pointer; font-size: 14px;">
-                Overwrite Snippet with Local
+              <button id="migrateToRepo" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px;">
+                Move your bookmarks to a repository
+              </button>`}
+              <hr style="border: none; border-top: 1px solid var(--md-sys-color-outline, #444); margin: 4px 0;">
+              <!-- [ZeroLabs] 2026-09-07 9:20 PM - added: which way the data moves -->
+              <!-- Both buttons are destructive and their labels differ by word
+                   order alone, which is exactly the kind of pair someone misreads
+                   in a hurry. The arrow says the direction before the text does:
+                   up is this device writing over the cloud, down is the cloud
+                   writing over this device. -->
+              <button id="forceOverwriteSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error-container, #3b1a1a); color: var(--md-sys-color-on-error-container, #f9dedc); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;" aria-hidden="true">
+                  <path d="M13,20H11V8L5.5,13.5L4.08,12.08L12,4.16L19.92,12.08L18.5,13.5L13,8V20Z"/>
+                </svg>
+                <span>Overwrite Cloud with Local</span>
               </button>
-              <button id="forceOverwriteLocal" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error-container, #3b1a1a); color: var(--md-sys-color-on-error-container, #f9dedc); cursor: pointer; font-size: 14px;">
-                Overwrite Local with Snippet
+              <button id="forceOverwriteLocal" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error-container, #3b1a1a); color: var(--md-sys-color-on-error-container, #f9dedc); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;" aria-hidden="true">
+                  <path d="M11,4H13V16L18.5,10.5L19.92,11.92L12,19.84L4.08,11.92L5.5,10.5L11,16V4Z"/>
+                </svg>
+                <span>Overwrite Local with Cloud</span>
               </button>
             ` : ''}
             <button id="disconnectSnippet" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-error-container, #3b1a1a); color: var(--md-sys-color-on-error-container, #f9dedc); cursor: pointer; font-size: 14px;">
@@ -14805,7 +15977,7 @@ function setupEventListeners() {
           </label>
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;">
             <input type="radio" name="tokenMode" value="supabase" ${currentMode === 'supabase' ? 'checked' : ''} style="margin-top:2px;flex-shrink:0;">
-            <span><span style="display:inline-flex;align-items:center;gap:5px;"><strong>Supabase</strong><span class="bmz-tooltip-wrap" style="position:relative;display:inline-flex;align-items:center;"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--md-sys-color-on-surface-variant,#aaa);color:var(--md-sys-color-surface,#1e1e1e);font-size:10px;font-weight:700;cursor:help;flex-shrink:0;line-height:1;">i</span><span class="bmz-tooltip" style="display:none;position:fixed;background:var(--md-sys-color-inverse-surface,#e0e0e0);color:var(--md-sys-color-inverse-on-surface,#1a1a1a);padding:8px 10px;border-radius:6px;font-size:12px;width:220px;z-index:10010;line-height:1.4;pointer-events:none;white-space:normal;">Your token is encrypted and stored in Supabase. When it renews, all your BMZ clients update silently, with no manual steps. Only your encrypted token is stored; it can only access your GitLab bookmark snippet.</span></span></span><br><span style="color:var(--md-sys-color-on-surface-variant,#aaa);font-size:12px;">(auto-sync across devices)</span></span>
+            <span><span style="display:inline-flex;align-items:center;gap:5px;"><strong>Supabase</strong><span class="bmz-tooltip-wrap" style="position:relative;display:inline-flex;align-items:center;"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--md-sys-color-on-surface-variant,#aaa);color:var(--md-sys-color-surface,#1e1e1e);font-size:10px;font-weight:700;cursor:help;flex-shrink:0;line-height:1;">i</span><span class="bmz-tooltip" style="display:none;position:fixed;background:var(--md-sys-color-inverse-surface,#e0e0e0);color:var(--md-sys-color-inverse-on-surface,#1a1a1a);padding:8px 10px;border-radius:6px;font-size:12px;width:220px;z-index:10010;line-height:1.4;pointer-events:none;white-space:normal;">Your token is encrypted and stored in Supabase. When it renews, all your BMZ clients update silently, with no manual steps. Only your encrypted token is stored; it can only access your GitLab bookmark storage.</span></span></span><br><span style="color:var(--md-sys-color-on-surface-variant,#aaa);font-size:12px;">(auto-sync across devices)</span></span>
           </label>
           <div id="supabaseQuickLoad" style="display:none;margin-top:12px;padding:10px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;font-size:12px;color:var(--md-sys-color-on-surface-variant,#aaa);">
             ☁️ Already set up Supabase on another device? <button id="loadFromSupabaseBtn" style="background:none;border:none;color:var(--md-sys-color-primary,#818cf8);cursor:pointer;font-size:12px;text-decoration:underline;padding:0;">Sign in to load your token automatically →</button>
@@ -14985,6 +16157,35 @@ function setupEventListeners() {
       /* [ZeroLabs] 2026-08-27 12:20 PM - added: the two forced overwrites */
       // Both name what is about to be lost before doing it. The snippet one
       // reads the remote first purely so the count is real rather than vague.
+      /* [ZeroLabs] 2026-09-07 9:20 PM - added: open the migration from settings */
+      const migrateBtn = dialog.querySelector('#migrateToRepo');
+      if (migrateBtn) {
+        migrateBtn.addEventListener('click', async () => {
+          // The settings dialog would sit behind the migration one otherwise, and
+          // finishing the move leaves it showing a snippet that is no longer used.
+          modal.remove();
+          await showSnippetSetup('migrate');
+        });
+      }
+
+      /* [ZeroLabs] 2026-09-07 9:20 PM - added: reach setup from the settings dialog */
+      const openSetupBtn = dialog.querySelector('#openStoreSetup');
+      if (openSetupBtn) {
+        openSetupBtn.addEventListener('click', async () => {
+          modal.remove();
+          await showSnippetSetup();
+        });
+      }
+
+      /* [ZeroLabs] 2026-09-07 9:20 PM - added: switch to a different repository */
+      const changeRepoBtn = dialog.querySelector('#changeRepository');
+      if (changeRepoBtn) {
+        changeRepoBtn.addEventListener('click', async () => {
+          modal.remove();
+          await showSnippetSetup('switch');
+        });
+      }
+
       const forceOverwriteSnippetBtn = dialog.querySelector('#forceOverwriteSnippet');
       if (forceOverwriteSnippetBtn) {
         forceOverwriteSnippetBtn.addEventListener('click', async () => {
@@ -14996,16 +16197,16 @@ function setupEventListeners() {
             const losing = diff.added.length;
 
             const proceed = confirm(losing > 0
-              ? `Warning: the snippet will be replaced with this device's bookmarks.\n\n${losing} item(s) currently in the snippet are not on this device and will be lost, on every device using it.\n\nContinue?`
-              : 'The snippet will be replaced with this device\'s bookmarks. Nothing in the snippet is missing here, so nothing will be lost.\n\nContinue?');
+              ? `Warning: your cloud bookmarks will be replaced with this device's.\n\n${losing} item(s) currently in the cloud are not on this device and will be lost, on every device using it.\n\nContinue?`
+              : 'Your cloud bookmarks will be replaced with this device\'s. Nothing in the cloud is missing here, so nothing will be lost.\n\nContinue?');
             if (!proceed) return;
 
             modal.remove();
             /* [ZeroLabs] 2026-08-27 2:41 PM - edited: one result, not the push's pair */
             await syncToSnippet(true);
-            showToast('Snippet overwritten with local bookmarks.');
+            showToast('Cloud bookmarks overwritten with local.');
           } catch (error) {
-            console.error('[ForceOverwrite] Snippet overwrite failed:', error);
+            console.error('[ForceOverwrite] Cloud overwrite failed:', error);
             showToast(`Error: ${error.message}`, 'error');
           }
         });
@@ -15187,7 +16388,17 @@ function setupEventListeners() {
           updateGitLabButtonIcon();
           modal.remove();
 
-          await openSnippetSyncDialog();
+          /* [ZeroLabs] 2026-09-07 9:20 PM - edited: first-run chooser instead of reopening settings */
+          // Reopening the settings dialog left a brand new user to find their own
+          // way onto a store, and the only routes it offered were snippet ones.
+          // The setup dialog asks the four questions and only creates repositories.
+          // A device that is already connected has nothing to choose, so the
+          // settings dialog is still right for that one.
+          if (snippetId) {
+            await openSnippetSyncDialog();
+          } else {
+            await showSnippetSetup();
+          }
         });
 
         tokenInput.addEventListener('keypress', (e) => {
@@ -15265,7 +16476,7 @@ function setupEventListeners() {
 
       dialog.innerHTML = `
         <h2>💾 Backup Your Bookmarks?</h2>
-        <p>You're about to replace your local bookmarks with the snippet data. Would you like to download a backup of your current bookmarks first?</p>
+        <p>You're about to replace your local bookmarks with the cloud data. Would you like to download a backup of your current bookmarks first?</p>
         <p>This creates a safety backup that you can restore later if needed.</p>
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <button id="backupAndReplace" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #4285f4); color: var(--md-sys-color-on-primary, #fff); cursor: pointer; font-size: 14px;">💾 Download Backup & Replace</button>
@@ -15310,7 +16521,7 @@ function setupEventListeners() {
           ⚠️ WARNING: This Will Override Your Native Browser Bookmarks
         </h2>
         <p style="margin: 0 0 16px 0; font-size: 14px;">
-          This action will <strong>permanently replace</strong> your current Firefox bookmarks with the data from the Snippet.
+          This action will <strong>permanently replace</strong> your current Firefox bookmarks with the data from the cloud.
         </p>
         <p style="margin: 0 0 20px 0; font-size: 14px; font-weight: 500;">
           Are you absolutely sure you want to proceed?
@@ -15338,7 +16549,7 @@ function setupEventListeners() {
 
         // Second confirmation
         const confirmed = confirm(
-          'FINAL CONFIRMATION: This will permanently delete all your current Firefox bookmarks and replace them with the Snippet data. This cannot be undone. Click OK to proceed.'
+          'FINAL CONFIRMATION: This will permanently delete all your current Firefox bookmarks and replace them with the cloud data. This cannot be undone. Click OK to proceed.'
         );
 
         if (!confirmed) {
@@ -15347,7 +16558,7 @@ function setupEventListeners() {
         }
 
         try {
-          showToast('Syncing from Snippet... This may take a moment.');
+          showToast('Syncing from the cloud... This may take a moment.');
 
           // Get current bookmark tree
           const currentTree = await browser.bookmarks.getTree();
@@ -15605,7 +16816,7 @@ function setupEventListeners() {
             text-align: left;
             border-left: 4px solid #4caf50;
           ">
-            <div style="font-weight: 500;">Replace Remote Snippet with Local</div>
+            <div style="font-weight: 500;">Replace Cloud with Local</div>
             <div style="font-size: 0.9em; opacity: 0.8; margin-top: 4px;">
               Overwrite the ${snippetText} with your local bookmarks
             </div>
@@ -15622,7 +16833,7 @@ function setupEventListeners() {
             text-align: left;
             border-left: 4px solid var(--md-sys-color-error, #f87171);
           ">
-            <div style="font-weight: 500;">Replace Local with Remote Snippet</div>
+            <div style="font-weight: 500;">Replace Local with Cloud</div>
             <div style="font-size: 0.9em; opacity: 0.8; margin-top: 4px;">
               Use the ${snippetText} only (your local bookmarks will be lost)
             </div>
@@ -15777,7 +16988,7 @@ function setupEventListeners() {
               loadQuickAccessForSnippet(snippetId).catch(err => {
                 console.error('[QuickAccess] Pin load after connect failed:', err);
               });
-              showToast('Snippet connected — bookmarks are already in sync.');
+              showToast('Cloud sync connected. Bookmarks are already in sync.');
               return;
             }
 
@@ -15819,9 +17030,9 @@ function setupEventListeners() {
               updateGitLabButtonIcon();
               try {
                 await replaceRemoteWithLocal(selectedSnippetId);
-                showToast('Remote snippet replaced with local bookmarks.');
+                showToast('Cloud bookmarks replaced with local.');
               } catch (error) {
-                console.error('Failed to replace remote snippet:', error);
+                console.error('Failed to replace cloud bookmarks:', error);
                 showToast(`Error: ${error.message}`, 'error');
               }
             } else if (mergeChoice === 'replace') {
@@ -15848,7 +17059,7 @@ function setupEventListeners() {
                 const remoteData = await readBookmarksFromSnippet(selectedSnippetId);
                 await applyRemoteChangesToFirefox(remoteData);
               } catch (error) {
-                console.error('Failed to replace bookmarks from snippet:', error);
+                console.error('Failed to replace bookmarks from cloud storage:', error);
                 showToast(`Error: ${error.message}`, 'error');
               }
             }
@@ -15857,7 +17068,7 @@ function setupEventListeners() {
             snippetId = selectedSnippetId;
             await safeStorage.set({ bmz_snippet_id: snippetId });
             updateGitLabButtonIcon();
-            showToast('Snippet connected: ' + snippetId);
+            showToast('Cloud sync connected: ' + snippetId);
           }
         });
       });
@@ -15883,10 +17094,15 @@ function setupEventListeners() {
       await supabase.loadSession();
 
       await loadSnippetToken();
-      const snippetIdResult = await safeStorage.get(['bmz_snippet_id']);
+      /* [ZeroLabs] 2026-09-07 9:20 PM - edited: load which KIND of store the id names */
+      // Absent means snippet, so an install that predates the project backend keeps
+      // working with no migration and no prompt.
+      const snippetIdResult = await safeStorage.get(['bmz_snippet_id', 'bmz_store_kind', 'bmz_store_branch']);
       if (snippetIdResult.bmz_snippet_id) {
         snippetId = snippetIdResult.bmz_snippet_id;
       }
+      storeKind = snippetIdResult.bmz_store_kind || null;
+      storeBranch = snippetIdResult.bmz_store_branch || null;
       /* [ZeroLabs] 2026-08-26 11:38 PM - edited: restore last sync time and reconcile flag */
       // snippet_last_sync was read nowhere before, so the 60 second floor in
       // markSnippetChanges measured against 0 and never actually held.

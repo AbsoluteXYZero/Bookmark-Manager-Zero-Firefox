@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
     <!-- [ZeroLabs] 2026-08-19 7:12 PM - edited: version badge to 5.2 -->
-    <img src="https://img.shields.io/badge/version-5.6-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-5.7-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -32,7 +32,7 @@
 
 ## Overview
 
-Bookmark Manager Zero is a Firefox extension that provides a beautiful, feature-rich sidebar interface for managing your **native Firefox bookmarks**. It works directly with the bookmarks already built into your browser, with optional cloud sync via GitLab Snippets for backup and cross-device synchronization.
+Bookmark Manager Zero is a Firefox extension that provides a beautiful, feature-rich sidebar interface for managing your **native Firefox bookmarks**. It works directly with the bookmarks already built into your browser, with optional cloud sync via a private GitLab repository for backup and cross-device synchronization.
 
 Changes sync **bi-directionally and instantly**: any edits made in Bookmark Manager Zero immediately appear in Firefox's native bookmark system, and vice versa. Don't worry about accidental changes—the built-in undo feature and a changelog in the settings let you quickly restore recently deleted renamed, or moved bookmarks and folders
 
@@ -109,7 +109,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 ### Core Functionality
 
 - **Native Bookmark Integration** - Works directly with Firefox's bookmark system
-- **GitLab Snippet Sync (Optional)** - Cloud backup and cross-device synchronization
+- **GitLab Repository Sync (Optional)** - Cloud backup and cross-device synchronization
 
   - PAT authentication with AES-256-GCM encryption
   - Auto-sync every 5 minutes + event-driven sync on changes
@@ -230,11 +230,11 @@ Add cloud backup and cross-device synchronization to your bookmarks:
    - Click the Gitlab icon in the GUI or open extension settings (gear icon)
    - Paste your token (must start with `glpat-` prefix)
    - Token will be encrypted with AES-256-GCM before storage
-   - Choose to create new Snippet or connect to existing one
+   - Choose how to set up your repository from the four options below
 
 3. **Your bookmarks sync automatically**:
 
-   - Changes sync across all your devices via private GitLab Snippets
+   - Changes sync across all your devices via a private GitLab repository
    - Still works with native Firefox bookmarks (bidirectional sync maintained)
    - Auto-sync every 5 minutes when sidebar is open
    - Event-driven sync also triggers on bookmark/folder changes
@@ -243,24 +243,25 @@ Add cloud backup and cross-device synchronization to your bookmarks:
 **Adding Sync to Existing Bookmarks**
 
 Already using the extension? Add GitLab sync anytime:
-1. Click the GitLab icon or settings (gear icon) → GitLab Snippet Sync
+1. Click the GitLab icon or settings (gear icon) → Cloud Sync Options
 2. Enter your GitLab Personal Access Token
-3. Choose your setup option:
+3. Choose how you want your repository set up:
 
-   - **Create New Snippet** - Start fresh with a new snippet in GitLab
-   - **Connect to Existing Snippet** - Link to a snippet you already created
-4. **If you have local bookmarks**, you'll see a dialog with 3 options:
-
-   - **Keep Local Bookmarks** - Cancel setup and keep your local bookmarks unchanged
-   - **Merge Bookmarks** - Combine your local bookmarks with the snippet (recommended)
-   - **Replace with Snippet** - Use only the snippet's bookmarks
-     - Safety feature: Option to download backup before replacing
-     - Choose "Download Backup & Replace" (recommended) or "Skip Backup & Replace"
+   - **Connect to a repository that already has my bookmarks** - Another device set this up. Nothing here is written over it; the two are merged instead. This is the right choice for your second and every later device
+   - **Use an empty repository I already made** - You made one yourself and it has nothing in it yet. This device's bookmarks go into it. If it already holds bookmarks, or any other files, BMZ names what is there and asks before going ahead
+   - **Create a repository for me** - BMZ makes a new private repository on your GitLab account and puts this device's bookmarks in it
+   - **Show me how to make one myself** - Step by step, then point BMZ at it
+4. **Pick your repository from the dropdown**, which lists the repositories on your account that BMZ can write to, most recently active first. You can paste an address instead if the one you want is not listed.
 5. After connecting, the sync dialog offers:
 
    - **Sync** - The large circular button. Press it to compare both sides. Additions are applied silently in both directions; anything that would remove, rename or move a bookmark stops and asks first. Opening the dialog does not sync on its own, so you can reach the options below without triggering anything.
-   - **Background auto-sync** - A toggle under Snippet Sync Options, on by default. With it off, nothing syncs on its own and the button above still works.
-   - **Overwrite Snippet with Local** / **Overwrite Local with Snippet** - Under Snippet Sync Options. Each names how many bookmarks would be lost before doing anything, and the second saves a restore point to the changelog first.
+   - **Background auto-sync** - A toggle under Cloud Sync Options, on by default. With it off, nothing syncs on its own and the button above still works.
+   - **Change Repository** - Point this device at a different repository without disconnecting and re-entering your token.
+   - **Overwrite Cloud with Local** / **Overwrite Local with Cloud** - Under Cloud Sync Options. Each carries an arrow showing which way your bookmarks move, and names how many would be lost before doing anything. The second saves a restore point to the changelog first.
+
+**Moving from a Snippet**
+
+Earlier versions stored bookmarks in a GitLab Snippet. A snippet has a storage limit that counts every past version of your bookmarks rather than only the current one, so a large collection eventually reaches it and syncing stops. If you are still on a snippet, BMZ shows a card offering to move you, and the move takes about a minute. Nothing is lost. Migrate your first device with any option except the first, then use the first one on every other device so they join the same repository rather than creating their own.
 
 **Token Tips**
 
@@ -310,18 +311,19 @@ All external service usage is disclosed in [PRIVACY.md](PRIVACY.md).
 
 ### Important Notice: GitLab API Usage
 
-**How GitLab Snippets Are Used:**
+**How GitLab Repositories Are Used:**
 
-- This extension uses GitLab Snippets as intended by GitLab: for storing structured data
-- Your bookmarks are stored in a private Snippet in your own GitLab account
-- Snippets are a legitimate GitLab feature designed for storing code, configuration, and structured data
-- The extension uses standard GitLab Snippets API endpoints documented in the official GitLab API
+- This extension uses a GitLab project repository as intended by GitLab: for storing versioned files
+- Your bookmarks are stored as `bookmarks.json` in a private repository in your own GitLab account
+- The extension uses standard GitLab Projects, Repository Files and Commits API endpoints documented in the official GitLab API
+- Writes go through the Commits API, so every sync lands as a single commit and can never be left half applied
+- Snippet storage is still supported for existing installs, but new setups create a repository
 
 **API Usage Considerations:**
 
 - **Event-driven sync**: API calls are made when you add/edit/delete bookmarks or folders
 - **Auto-sync polling**: When enabled, checks for remote changes every 5 minutes (when sidebar is open)
-- **Manual sync**: Use the "Pull from Snippet" and "Push to Snippet" buttons for manual control
+- **Manual sync**: Press the sync button in Cloud Sync Options for a one-off check
 - **Sidebar requirement**: Sidebar must remain open for background sync to work
 - **Rate limiting protection**: Built-in exponential backoff with jitter respects GitLab API limits
 - **Rate limits**: GitLab has API rate limits; typical bookmark usage stays well within limits
@@ -329,7 +331,7 @@ All external service usage is disclosed in [PRIVACY.md](PRIVACY.md).
 **Best Practices:**
 
 - Keep the sidebar open if you want automatic background sync
-- Use manual "Snippet Sync button" in the GUI to check for changes from other devices when needed
+- Use the manual sync button in the GUI to check for changes from other devices when needed
 - The extension automatically syncs when you make changes (add/edit/delete bookmarks)
 - For very large collections (>5000 bookmarks), edits will naturally sync less frequently
 

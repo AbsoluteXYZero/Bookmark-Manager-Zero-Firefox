@@ -1,5 +1,12 @@
 // This script runs in the background and handles extension tasks.
 
+/* [ZeroLabs] 2026-09-07 9:20 PM - added: shared GitLab storage seam (see also: gitlab-store.js, sidebar.html) */
+// Everything that reads or writes the remote store goes through BMZGitLabStore.
+// Chrome loads it with importScripts because its background page is a service
+// worker. Firefox uses an event page, where importScripts does not exist, so
+// manifest.json lists gitlab-store.js BEFORE background.js instead. The file
+// itself is identical in both extensions and holds no browser API calls.
+
 // Version from manifest.json - single source of truth
 const APP_VERSION = browser.runtime.getManifest().version;
 
@@ -2115,8 +2122,11 @@ async function snippetTreeToSnippetFormat(firefoxTree) {
 // wrapper: in a private window that wrapper keeps everything in memory, and a
 // private session has nothing here to push with anyway.
 async function loadSnippetPushConfig() {
+  /* [ZeroLabs] 2026-09-07 9:20 PM - edited: read which store this device uses */
   const stored = await browser.storage.local.get([
     'bmz_snippet_id',
+    'bmz_store_kind',
+    'bmz_store_branch',
     'gitlab_token',
     'snippet_local_version',
     'snippet_last_sync'
@@ -2126,26 +2136,73 @@ async function loadSnippetPushConfig() {
   // This returning null used to be indistinguishable from "nothing to do", which
   // made an unattended failure impossible to diagnose from the log alone.
   if (!stored.bmz_snippet_id) {
-    console.log('[SnippetPush] No snippet connected on this device');
+    console.log('[CloudSync] No snippet connected on this device');
     return null;
   }
   if (!stored.gitlab_token) {
-    console.log('[SnippetPush] No stored GitLab token');
+    console.log('[CloudSync] No stored GitLab token');
     return null;
   }
 
   const token = await decryptApiKey(stored.gitlab_token);
   if (!token) {
-    console.warn('[SnippetPush] Stored token could not be decrypted in the background');
+    console.warn('[CloudSync] Stored token could not be decrypted in the background');
     return null;
   }
 
   return {
     snippetId: stored.bmz_snippet_id,
+    storeKind: stored.bmz_store_kind || null,
+    branch: stored.bmz_store_branch || null,
     token,
     localVersion: Number(stored.snippet_local_version) || 0,
     lastSync: Number(stored.snippet_last_sync) || 0
   };
+}
+
+/* [ZeroLabs] 2026-09-07 10:05 PM - added: a failed sync is not a deferred one */
+// These were the same flag, and that was wrong in both directions. A push that
+// FAILS is not a push waiting for your approval: nothing was held, no lists were
+// written, and the sidebar's Review changes button opened a dialog that read
+// those empty lists and returned without drawing anything. So the card said
+// "Sync was paused to protect your data" about a sync that had not paused, and
+// its only button did nothing at all.
+//
+// A failure now has its own flag and its own card. reason is 'store-full' when
+// GitLab has stopped accepting writes, which is terminal and gets the migration
+// offer, or 'error' for anything that might work on the next attempt.
+async function noteSyncFailure(reason, detail) {
+  try {
+    await browser.storage.local.set({
+      snippet_sync_failed: true,
+      snippet_sync_failed_reason: reason,
+      snippet_sync_failed_detail: String(detail || '').slice(0, 300),
+      snippet_sync_failed_at: Date.now()
+    });
+  } catch (error) {
+    console.error('[CloudSync] Could not record the failure:', error);
+  }
+
+  try {
+    await browser.action.setBadgeText({ text: '!' });
+    await browser.action.setBadgeBackgroundColor({ color: reason === 'store-full' ? '#ef4444' : '#f59e0b' });
+  } catch (error) {
+    // Badge unavailable; the stored flag still reaches the sidebar
+  }
+}
+
+// Called from every success path. A failure that has been fixed must stop being
+// reported, and the card is driven entirely by this flag.
+async function clearSyncFailure() {
+  try {
+    await browser.storage.local.set({
+      snippet_sync_failed: false,
+      snippet_sync_failed_reason: '',
+      snippet_sync_failed_detail: ''
+    });
+  } catch (error) {
+    console.error('[CloudSync] Could not clear the failure flag:', error);
+  }
 }
 
 // The sidebar owns the same flag and reads it on open, so a push skipped while
@@ -2154,7 +2211,7 @@ async function setSnippetReconcileBadge(needs) {
   try {
     await browser.storage.local.set({ snippet_needs_reconcile: !!needs });
   } catch (error) {
-    console.error('[SnippetPush] Failed to store reconcile flag:', error);
+    console.error('[CloudSync] Failed to store reconcile flag:', error);
   }
 
   try {
@@ -2167,43 +2224,45 @@ async function setSnippetReconcileBadge(needs) {
   }
 }
 
-// Same two-step read the sidebar does: the snippet API may or may not inline
-// file contents, so fall back to the raw endpoint when it does not.
+/* [ZeroLabs] 2026-09-07 9:20 PM - added: the store this config points at (see also: gitlab-store.js) */
+// Every remote call in the background page goes through here. The two-step read,
+// the raw endpoint fallback and the API shape all moved into the adapter, so
+// switching a user from a snippet to a project repository changes this one
+// function and nothing else in the file.
+//
+// snippetFetchGitLab is passed in rather than reimplemented, so its timeout and
+// error handling still wrap every request exactly as before.
+/* [ZeroLabs] 2026-09-07 9:20 PM - added: say which store the logs are about */
+// The snippet failure was diagnosed slowly because every log line said "Snippet"
+// and none of them said WHICH one, or on which backend. With two backends in
+// play that is the first thing anyone reading a log needs to know.
+function describeStore(config) {
+  const kind = config.storeKind || 'snippet';
+  const branch = config.branch ? ` on ${config.branch}` : '';
+  return `${kind} ${config.snippetId}${branch}`;
+}
+
+function storeForConfig(config) {
+  return BMZGitLabStore.create({
+    kind: config.storeKind || BMZGitLabStore.SNIPPET,
+    branch: config.branch,
+    request: snippetFetchGitLab,
+    headers: () => ({
+      'Authorization': `Bearer ${config.token}`,
+      'Content-Type': 'application/json'
+    })
+  });
+}
+
+/* [ZeroLabs] 2026-09-07 9:20 PM - edited: read through the store adapter */
 async function readRemoteSnippetBookmarks(config) {
-  const headers = {
-    'Authorization': `Bearer ${config.token}`,
-    'Content-Type': 'application/json'
-  };
+  const store = storeForConfig(config);
+  const content = await store.readFile(config.snippetId, 'bookmarks.json');
 
-  const response = await snippetFetchGitLab(
-    `https://gitlab.com/api/v4/snippets/${config.snippetId}`,
-    { headers }
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to read Snippet: ${response.status}`);
+  if (content === null) {
+    throw new Error('Remote store does not contain bookmarks.json');
   }
-
-  const snippet = await response.json();
-  const bookmarkFile = snippet.files?.find(f =>
-    f.path === 'bookmarks.json' || f.file_name === 'bookmarks.json'
-  );
-  if (!bookmarkFile) {
-    throw new Error('Snippet does not contain bookmarks.json');
-  }
-
-  let content = bookmarkFile.content;
-  if (!content) {
-    const fileResponse = await snippetFetchGitLab(
-      `https://gitlab.com/api/v4/snippets/${config.snippetId}/files/main/bookmarks.json/raw`,
-      { headers }
-    );
-    if (!fileResponse.ok) {
-      throw new Error(`Failed to fetch file content: ${fileResponse.status}`);
-    }
-    content = await fileResponse.text();
-  }
-
-  if (!content || content.trim() === '') return null;
+  if (content.trim() === '') return null;
   return JSON.parse(content);
 }
 
@@ -2363,7 +2422,7 @@ async function createSnippetItemsLocally(entries) {
       created++;
     } catch (error) {
       // A URL the browser refuses must not take the rest of the sync with it
-      console.warn('[SnippetPush] Could not create locally:', entry.url, error.message);
+      console.warn('[CloudSync] Could not create locally:', entry.url, error.message);
     }
   }
 
@@ -2411,7 +2470,7 @@ async function recordLocalBookmarkEvent(kind, node) {
       [opposite]: Array.from(otherList)
     });
   } catch (error) {
-    console.error('[SnippetPush] Could not record local bookmark event:', error);
+    console.error('[CloudSync] Could not record local bookmark event:', error);
   }
 }
 
@@ -2436,7 +2495,7 @@ async function recordLocalBookmarkEdit(id, explicitUrl) {
     list.add(url);
     await browser.storage.local.set({ snippet_local_edited: Array.from(list).slice(-2000) });
   } catch (error) {
-    console.error('[SnippetPush] Could not record local edit:', error);
+    console.error('[CloudSync] Could not record local edit:', error);
   }
 }
 
@@ -2466,16 +2525,16 @@ function scheduleSnippetPush(reason) {
   // Same name replaces the pending alarm, so a burst of edits collapses into one
   // push 30 seconds after the last of them.
   browser.alarms.create(SNIPPET_PUSH_ALARM, { delayInMinutes: SNIPPET_PUSH_DELAY_MIN });
-  console.log(`[SnippetPush] Push scheduled (${reason})`);
+  console.log(`[CloudSync] Push scheduled (${reason})`);
 }
 
 async function runSnippetPush() {
   /* [ZeroLabs] 2026-08-27 12:14 AM - edited: log every exit path */
   // Nobody is watching this run, so every way out of it has to leave a trace.
-  console.log('[SnippetPush] Running');
+  console.log('[CloudSync] Running');
 
   if (!(await isBackgroundSyncEnabled())) {
-    console.log('[SnippetPush] Background sync is switched off');
+    console.log('[CloudSync] Background sync is switched off');
     await browser.storage.local.set({ snippet_push_pending: false });
     return;
   }
@@ -2486,8 +2545,14 @@ async function runSnippetPush() {
     return;
   }
 
+  /* [ZeroLabs] 2026-09-07 9:20 PM - added: name the store, once it is known */
+  // Below the config load on purpose. In Chrome this sat at the top of the
+  // function, which read the binding before it was assigned and threw on every
+  // run.
+  console.log('[CloudSync] Store is', describeStore(config));
+
   if (!navigator.onLine) {
-    console.log('[SnippetPush] Offline, retrying after the next alarm');
+    console.log('[CloudSync] Offline, retrying after the next alarm');
     browser.alarms.create(SNIPPET_PUSH_ALARM, { delayInMinutes: SNIPPET_PUSH_DELAY_MIN });
     return;
   }
@@ -2495,7 +2560,7 @@ async function runSnippetPush() {
   // Shared 60 second floor with the sidebar, both reading the same stored stamp
   const sinceLastSync = Date.now() - config.lastSync;
   if (config.lastSync && sinceLastSync < SNIPPET_MIN_SYNC_INTERVAL_MS) {
-    console.log(`[SnippetPush] Last push was ${Math.round(sinceLastSync / 1000)}s ago, deferring`);
+    console.log(`[CloudSync] Last push was ${Math.round(sinceLastSync / 1000)}s ago, deferring`);
     browser.alarms.create(SNIPPET_PUSH_ALARM, { delayInMinutes: SNIPPET_PUSH_DELAY_MIN });
     return;
   }
@@ -2581,8 +2646,18 @@ async function runSnippetPush() {
       const remoteEntry = remoteEntries.get(key);
       if (!remoteEntry) return; // Additions are handled by the loops above
 
+      /* [ZeroLabs] 2026-09-07 9:20 PM - edited: surrounding whitespace is not a rename */
+      // Titles are compared trimmed. A browser will happily store "Sebtube " with
+      // a trailing space, while an HTML export and re-import strips it, so the two
+      // sides disagree over a character nobody can see. That produced a consent
+      // prompt reading "Name: Sebtube -> Sebtube", impossible to decide about and
+      // straight back again on the next round trip through the format.
+      //
+      // Only the comparison is trimmed. Neither copy is rewritten, so whatever
+      // each side stores is left exactly as it is.
+      const sameTitle = String(localEntry.title || '').trim() === String(remoteEntry.title || '').trim();
       const movedOrRenamed =
-        localEntry.title !== remoteEntry.title ||
+        !sameTitle ||
         localEntry.rootKey !== remoteEntry.rootKey ||
         localEntry.segments.join('/') !== remoteEntry.segments.join('/');
       if (!movedOrRenamed) return;
@@ -2616,7 +2691,7 @@ async function runSnippetPush() {
     let addedLocally = 0;
     if (toAddLocally.length > 0) {
       addedLocally = await createSnippetItemsLocally(toAddLocally);
-      console.log(`[SnippetPush] Added ${addedLocally} item(s) from the snippet to this device`);
+      console.log(`[CloudSync] Added ${addedLocally} item(s) from the snippet to this device`);
       tree = await browser.bookmarks.getTree();
       snippetData = await snippetTreeToSnippetFormat(tree);
     }
@@ -2649,7 +2724,7 @@ async function runSnippetPush() {
         snippet_push_attempts: 0
       });
       await setSnippetReconcileBadge(true);
-      console.warn('[SnippetPush] Deferred for consent', {
+      console.warn('[CloudSync] Deferred for consent', {
         wouldRemoveFromSnippet: removesFromSnippet.length,
         wouldRemoveFromDevice: removesFromDevice.length,
         wouldOverwriteOnDevice: overwritesOnDevice.length
@@ -2673,7 +2748,9 @@ async function runSnippetPush() {
       });
       await clearLocalBookmarkEvents();
       await setSnippetReconcileBadge(false);
-      console.log('[SnippetPush] Already in sync, version recorded as', remoteVersion);
+      /* [ZeroLabs] 2026-09-07 10:05 PM - added: a working sync clears an old failure */
+      await clearSyncFailure();
+      console.log('[CloudSync] Already in sync, version recorded as', remoteVersion);
       return;
     }
 
@@ -2684,26 +2761,33 @@ async function runSnippetPush() {
       lastModified: Date.now()
     };
 
-    const response = await snippetFetchGitLab(
-      `https://gitlab.com/api/v4/snippets/${config.snippetId}`,
-      {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${config.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          files: [{
-            action: 'update',
-            file_path: 'bookmarks.json',
-            content: JSON.stringify(payload, null, 2)
-          }]
-        })
-      }
-    );
+    /* [ZeroLabs] 2026-09-07 9:20 PM - edited: write through the store adapter */
+    const store = storeForConfig(config);
+    const response = await store.writeFiles(config.snippetId, [{
+      action: 'update',
+      file_path: 'bookmarks.json',
+      content: JSON.stringify(payload, null, 2)
+    }]);
 
     if (!response.ok) {
-      throw new Error(`Failed to update Snippet: ${response.status}`);
+      /* [ZeroLabs] 2026-09-07 10:05 PM - added: recognise a store that has filled up */
+      // The sidebar already knew this failure by sight, but the sidebar is not
+      // where the failing writes happen. Unattended syncing read the status,
+      // discarded the body, threw, retried twice more, gave up and raised a card
+      // claiming a deferral. Nobody was ever told the store was full.
+      const errorText = await response.text();
+
+      if (BMZGitLabStore.isStoreFullError(response.status, errorText)) {
+        // Terminal on purpose. This never recovers, so retrying three times and
+        // then again on every five minute poll is pure waste, and each attempt
+        // consumes more of the room that ran out in the first place.
+        await noteSyncFailure('store-full', errorText);
+        await browser.storage.local.set({ snippet_push_pending: false, snippet_push_attempts: 0 });
+        console.error('[CloudSync] The store is full and is refusing writes. Sync stopped until you migrate.');
+        return;
+      }
+
+      throw new Error(`Failed to update cloud storage: ${response.status} - ${errorText}`);
     }
 
     await browser.storage.local.set({
@@ -2720,7 +2804,9 @@ async function runSnippetPush() {
     /* [ZeroLabs] 2026-08-27 11:36 AM - added: both sides agree, the records are spent */
     await clearLocalBookmarkEvents();
     await setSnippetReconcileBadge(false);
-    console.log('[SnippetPush] Pushed bookmarks.json at version', remoteVersion + 1);
+    /* [ZeroLabs] 2026-09-07 10:05 PM - added: a working sync clears an old failure */
+    await clearSyncFailure();
+    console.log('[CloudSync] Pushed bookmarks.json at version', remoteVersion + 1);
   } catch (error) {
     // A dead token or a missing snippet fails identically every time, so retries
     // are capped rather than left to hammer GitLab until the browser closes.
@@ -2728,13 +2814,17 @@ async function runSnippetPush() {
     const attempts = snippet_push_attempts + 1;
     await browser.storage.local.set({ snippet_push_attempts: attempts });
 
-    console.error(`[SnippetPush] Attempt ${attempts} failed:`, error);
+    console.error(`[CloudSync] Attempt ${attempts} failed:`, error);
 
     if (attempts < SNIPPET_MAX_PUSH_ATTEMPTS) {
       browser.alarms.create(SNIPPET_PUSH_ALARM, { delayInMinutes: SNIPPET_PUSH_DELAY_MIN });
     } else {
-      // Give up until the next bookmark change, and say so where it can be seen
-      await setSnippetReconcileBadge(true);
+      /* [ZeroLabs] 2026-09-07 10:05 PM - edited: report the failure as a failure */
+      // This called setSnippetReconcileBadge(true), which is the flag meaning
+      // "a sync is waiting for your approval". Nothing was waiting. The sidebar
+      // then drew the deferral card over a sync that had simply failed, and its
+      // Review changes button read the empty held lists and did nothing.
+      await noteSyncFailure('error', error && error.message);
       await browser.storage.local.set({ snippet_push_pending: false, snippet_push_attempts: 0 });
     }
   }
