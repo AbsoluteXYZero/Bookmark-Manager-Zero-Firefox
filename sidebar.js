@@ -5850,7 +5850,7 @@ function renderMigrationCard(container) {
 function syncNoticeSummary(counts) {
   const n = (c, one, many) => `${c} ${c === 1 ? one : many}`;
   const parts = [];
-  if (counts.fromSnippet > 0) parts.push(n(counts.fromSnippet, 'bookmark', 'bookmarks') + ' to remove from your Snippet');
+  if (counts.fromSnippet > 0) parts.push(n(counts.fromSnippet, 'bookmark', 'bookmarks') + ' to remove from your cloud bookmarks');
   if (counts.fromDevice > 0) parts.push(n(counts.fromDevice, 'bookmark', 'bookmarks') + ' to remove from this device');
   if (counts.overwrites > 0) parts.push(n(counts.overwrites, 'bookmark', 'bookmarks') + ' to rename or move');
   return parts.join('  ·  ');
@@ -14154,7 +14154,7 @@ function setupEventListeners() {
     // Approve pushes, so this device's own additions travel as part of it
     if (pendingPush.length > 0) {
       body += collapsibleNote(
-        `Add ${plural(pendingPush.length, 'bookmark', 'bookmarks')} from this device to your Snippet.`,
+        `Add ${plural(pendingPush.length, 'bookmark', 'bookmarks')} from this device to your cloud bookmarks.`,
         pendingPush, 'var(--md-sys-color-on-surface, #e0e0e0)');
     }
     if (fromSnippet.length > 0) {
@@ -14410,7 +14410,7 @@ function setupEventListeners() {
 
     /* [ZeroLabs] 2026-08-27 - edited: removals use the consent dialog, like everywhere else */
     // This used to hand the raw diff back, and the caller showed the diff dialog:
-    // "2 item(s) only in the snippet", with a Merge button. That is the same fact
+    // "2 item(s) only in the cloud", with a Merge button. That is the same fact
     // told backwards. A bookmark you deleted here that the snippet still holds is
     // not something you are missing - it is your deletion waiting to travel, and
     // Merge would have put it straight back. The worker and the Website both use
@@ -14712,7 +14712,7 @@ function setupEventListeners() {
       } else if (!silent) {
         showToast(created > 0
           ? `Added ${created} item(s) and synced.`
-          : 'Snippet updated.');
+          : 'Cloud updated.');
       }
     } catch (error) {
       console.error('[CloudAdd] Failed:', error);
@@ -15075,7 +15075,7 @@ function setupEventListeners() {
       /* [ZeroLabs] 2026-08-27 2:33 AM - edited: say where each side's items are, not "remove" */
       // Both of these end up on both sides after a merge. Calling one "to
       // remove" in red read as a threat to bookmarks that were never in danger.
-      if (diff.added.length > 0) content += `<div style="margin-bottom: 4px; color: #4caf50;">${diff.added.length} item(s) only in the snippet</div>`;
+      if (diff.added.length > 0) content += `<div style="margin-bottom: 4px; color: #4caf50;">${diff.added.length} item(s) only in the cloud</div>`;
       if (diff.removed.length > 0) content += `<div style="margin-bottom: 4px; color: #90caf9;">${diff.removed.length} item(s) only on this device</div>`;
       /* [ZeroLabs] 2026-08-27 3:02 AM - edited: drop the leading glyphs */
       if (diff.moved.length > 0) content += `<div style="margin-bottom: 4px; color: #ff9800;">${diff.moved.length} item(s) to move</div>`;
@@ -15695,10 +15695,10 @@ function setupEventListeners() {
       <div style="background:var(--md-sys-color-surface,#1e1e1e);padding:24px;border-radius:12px;max-width:440px;width:90%;color:var(--md-sys-color-on-surface,#e0e0e0);">
         <h2 style="margin:0 0 12px 0;font-size:18px;">🔑 Your GitLab Token</h2>
         <p style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);margin:0 0 12px 0;">This is the Personal Access Token currently saved in BMZ on this device. Keep it private. It grants access to your GitLab bookmark storage.</p>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
-          <input type="password" readonly id="revealTokenInput" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--md-sys-color-outline,#444);background:var(--md-sys-color-surface-variant,#2a2a2a);color:var(--md-sys-color-on-surface,#e0e0e0);font-size:12px;font-family:monospace;box-sizing:border-box;">
-          <button id="toggleReveal" style="padding:10px 12px;border-radius:8px;border:1px solid var(--md-sys-color-outline,#444);background:var(--md-sys-color-surface-variant,#2a2a2a);color:var(--md-sys-color-on-surface,#e0e0e0);font-size:12px;cursor:pointer;">Show</button>
-          <button id="copyRevealToken" style="padding:10px 14px;border-radius:8px;border:none;background:var(--md-sys-color-primary,#818cf8);color:var(--md-sys-color-on-primary,#fff);font-size:13px;cursor:pointer;">Copy</button>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px;">
+          <input type="password" readonly id="revealTokenInput" style="flex:1 1 100%;min-width:0;padding:10px;border-radius:8px;border:1px solid var(--md-sys-color-outline,#444);background:var(--md-sys-color-surface-variant,#2a2a2a);color:var(--md-sys-color-on-surface,#e0e0e0);font-size:12px;font-family:monospace;box-sizing:border-box;">
+          <button id="toggleReveal" style="flex:1 1 auto;flex-shrink:0;padding:10px 12px;border-radius:8px;border:1px solid var(--md-sys-color-outline,#444);background:var(--md-sys-color-surface-variant,#2a2a2a);color:var(--md-sys-color-on-surface,#e0e0e0);font-size:12px;cursor:pointer;">Show</button>
+          <button id="copyRevealToken" style="flex:1 1 auto;flex-shrink:0;padding:10px 14px;border-radius:8px;border:none;background:var(--md-sys-color-primary,#818cf8);color:var(--md-sys-color-on-primary,#fff);font-size:13px;cursor:pointer;">Copy</button>
         </div>
         <button id="closeRevealModal" style="width:100%;padding:12px;border-radius:8px;border:none;background:var(--md-sys-color-surface-variant,#2a2a2a);color:var(--md-sys-color-on-surface-variant,#aaa);font-size:14px;cursor:pointer;">Close</button>
       </div>
@@ -15870,16 +15870,26 @@ function setupEventListeners() {
                 <span id="manualSyncStatus" style="position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%); font-size: 13px; font-weight: 700; color: #ffffff; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">Sync</span>
               </button>
             </div>
-            <hr style="border: none; border-top: 1px solid var(--md-sys-color-outline, #444); margin: 4px 0;">
           ` : ''}
+          <!-- [ZeroLabs] 2026-09-08 3:35 AM - moved: out of the collapsed panel -->
+          <!-- Which store you are connected to is the first thing you want when
+               you open this dialog, and it was hidden behind the Cloud Sync
+               Options toggle, which is collapsed whenever a store IS connected.
+               It sits with the sync button now, above the divider, since both
+               describe the current connection rather than offering an action.
+               Rendered in both states, so a device connected to nothing says so
+               here too. -->
+          <div style="text-align: center; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #aaa); line-height: 1.7; padding: 4px 0;">
+            ${snippetId
+              ? `Connected to ${storeKind === 'project' ? 'Repository' : 'Snippet'}:<br><code id="connectedStoreName" style="font-size: 12px; word-break: break-all;">${escapeHtml(String(snippetId))}</code>`
+              : 'Not connected to any store'}
+          </div>
+          <hr style="border: none; border-top: 1px solid var(--md-sys-color-outline, #444); margin: 4px 0;">
           <button id="snippetOptionsToggle" aria-expanded="${snippetId ? 'false' : 'true'}" style="padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-secondary-container, #2a2a2a); color: var(--md-sys-color-on-secondary-container, #d0bcff); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
             <span>Cloud Sync Options</span>
             <svg id="snippetOptionsChevron" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;transition:transform 0.2s ease;transform:rotate(${snippetId ? '-90' : '0'}deg);"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
           </button>
           <div id="snippetOptionsPanel" style="display: ${snippetId ? 'none' : 'flex'}; flex-direction: column; gap: 12px;">
-            <p style="margin: 0; color: var(--md-sys-color-on-surface-variant, #aaa); font-size: 13px;">
-              ${snippetId ? 'Connected to: <code style="font-size: 11px;">' + snippetId + '</code>' : 'Not connected to any Snippet'}
-            </p>
             <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--md-sys-color-surface-variant,#2a2a2a);border-radius:8px;">
               <span style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);">Token Storage: <strong style="color:var(--md-sys-color-on-surface,#e0e0e0);">${modeLabel}</strong></span>
               <button id="switchTokenMode" style="padding:6px 12px;border-radius:6px;border:none;background:var(--md-sys-color-secondary-container,#3a3a5c);color:var(--md-sys-color-on-secondary-container,#d0bcff);font-size:12px;cursor:pointer;">${switchLabel}</button>
@@ -15952,6 +15962,21 @@ function setupEventListeners() {
       // all most visits need. Expanded when nothing is connected, because then
       // Create and Select are the only useful actions and a collapsed panel
       // would leave the dialog with nothing but Cancel.
+      /* [ZeroLabs] 2026-09-08 3:10 AM - added: fill in the store's real name */
+      // Not awaited. The dialog is already usable, and a slow GitLab must not
+      // hold it shut over a label. On failure the id simply stays, which is what
+      // the dialog showed before this existed.
+      if (snippetId) {
+        currentStore().describe(snippetId).then(info => {
+          const name = BMZGitLabStore.cleanStoreName(info && info.name);
+          if (!name) return;
+          const el = dialog.querySelector('#connectedStoreName');
+          if (el) el.textContent = name;
+        }).catch(error => {
+          console.warn('[Store] Could not read the store name:', error);
+        });
+      }
+
       const snippetOptionsToggle = dialog.querySelector('#snippetOptionsToggle');
       const snippetOptionsPanel = dialog.querySelector('#snippetOptionsPanel');
       const snippetOptionsChevron = dialog.querySelector('#snippetOptionsChevron');
@@ -16131,8 +16156,8 @@ function setupEventListeners() {
             // just a second notification for a non-event.
             if (outcome.changed) {
               showToast(outcome.addedLocally > 0
-                ? `Synced. ${outcome.addedLocally} added here, snippet updated.`
-                : 'Synced. Snippet updated.');
+                ? `Synced. ${outcome.addedLocally} added here, cloud updated.`
+                : 'Synced. Cloud updated.');
             }
           } catch (error) {
             console.error('[ManualSync] Failed:', error);
@@ -17579,9 +17604,56 @@ if (document.readyState === 'loading') {
       }
     });
   }
-  const schedule = function () { requestAnimationFrame(fitHeaderText); };
+  /* [ZeroLabs] 2026-09-08 4:05 AM - added: scale the status message, never clip it */
+  // The status bar puts a fixed-width section on each side of the progress
+  // message, so on a narrow sidebar a long message had nowhere to go and
+  // overlapped the "Scan All Bookmarks" label to its left. The CSS now lets the
+  // middle section shrink; this makes the text fit inside whatever it gets.
+  //
+  // Scaled rather than truncated: every one of these messages carries a count or
+  // a stage that is the entire reason it is on screen, and an ellipsis would eat
+  // exactly the numbers you are watching.
+  function fitStatusText() {
+    const center = document.querySelector('.scan-status-bar .status-center');
+    const el = document.getElementById('scanProgress');
+    if (!center || !el) return;
+
+    el.style.transformOrigin = 'center center';
+    el.style.transform = '';                           // reset before measuring
+
+    // The info icon shares the centre section, so its width is not available.
+    const icon = center.querySelector('.info-icon');
+    const iconWidth = icon ? icon.getBoundingClientRect().width + 6 : 0;
+    const box = center.clientWidth - iconWidth;
+
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const width = range.getBoundingClientRect().width;
+
+    // Floor at 0.6: below that the numbers stop being readable, and at that point
+    // overflowing slightly is the lesser evil.
+    if (width > box && box > 0) {
+      el.style.transform = 'scale(' + Math.max(0.6, box / width) + ')';
+    }
+  }
+
+  const schedule = function () {
+    requestAnimationFrame(function () {
+      fitHeaderText();
+      fitStatusText();
+    });
+  };
   function initHeaderFit() {
     schedule();
+
+    /* [ZeroLabs] 2026-09-08 4:05 AM - added: the status text changes constantly */
+    // Unlike the header, this one is rewritten on every scanned batch, so it has
+    // to be re-fitted on content change rather than only on resize.
+    const progress = document.getElementById('scanProgress');
+    if (progress && window.MutationObserver && !progress.dataset.fitObserved) {
+      progress.dataset.fitObserved = '1';
+      new MutationObserver(schedule).observe(progress, { childList: true, characterData: true, subtree: true });
+    }
     // Re-fit when the button cluster changes width (e.g. GitLab login swaps login -> sync+logout)
     const cluster = document.querySelector('.header-settings');
     if (cluster && window.ResizeObserver && !cluster.dataset.fitObserved) {

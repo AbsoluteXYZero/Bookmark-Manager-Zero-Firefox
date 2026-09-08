@@ -1,6 +1,19 @@
 ## Changelog
 
-### v5.7 (Current)
+### v5.8 (Current)
+
+**Changes:**
+- **The connected store is shown up front, with its name** - The sync settings said only "Connected to: 86198128", and said it behind the Cloud Sync Options toggle, which is collapsed exactly when a store IS connected. It now sits under the sync button and reads "Connected to Repository: you/bmz-bookmarks" or "Connected to Snippet: BMZ Bookmarks". The kind appears instantly and the name fills in a moment later.
+- **The scanning tooltip no longer quotes a stale speed** - It claimed 10 bookmarks every 300ms. The real figure had changed, and more to the point scan speed now follows the Scan Intensity setting, so any fixed number goes wrong the moment you move that slider. It now describes what scanning does and points at the setting.
+
+**Bug Fixes:**
+- **The Copy button in the token viewer no longer runs off the edge** - The token field refused to shrink below the width of the token itself, which pushed the last button out of a narrow panel. The field now takes its own row and the buttons sit below it.
+- **The scan progress text no longer overlaps the label beside it** - The middle of the status bar could not shrink below its own text, so a long message spilled out of both sides and landed on top of "Scan All Bookmarks". It now fits the space available, scaling down rather than being cut off, because those messages are mostly counts and an ellipsis would eat the numbers.
+- **Sync toasts and prompts no longer say "Snippet"** - Several were built across two lines and escaped the rename in 5.7, including "Synced. Snippet updated." and the paused-sync card's summary.
+
+---
+
+### v5.7
 
 **Changes:**
 - **Your bookmarks now sync to a GitLab repository instead of a snippet** - A snippet has a storage limit, and it counts every past version of your bookmarks rather than only the current one. A large collection reaches that limit eventually, after which GitLab refuses every save and reports an error that names no cause. Reading still works, so the only outward sign is that your devices quietly stop matching. A repository does not work this way. New setups create one, and if you are still on a snippet BMZ offers to move you. Nothing is lost in the move, and it asks before changing anything on either side.

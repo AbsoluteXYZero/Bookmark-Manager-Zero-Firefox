@@ -692,8 +692,17 @@
       flex: 0 0 auto;
     }
 
+    /* [ZeroLabs] 2026-09-08 4:05 AM - edited: let the middle section actually shrink */
+    /* A flex item defaults to min-width:auto, so this refused to go narrower than
+       its own text. With the sections on either side set to flex:0 0 auto, a long
+       progress message made the whole row wider than the bar, and justify-content
+       centre then spilled that text out of BOTH edges - which is what put the blue
+       progress text on top of "Scan All Bookmarks".
+       min-width:0 lets it take only the space the two fixed sections leave, and
+       fitStatusText scales the message down rather than clipping it. */
     .scan-status-bar .status-center {
       flex: 1 1 auto;
+      min-width: 0;
       justify-content: center;
       gap: 6px;
     }
@@ -746,8 +755,13 @@
       color: var(--md-sys-color-error);
     }
 
+    /* [ZeroLabs] 2026-09-08 4:05 AM - edited: measurable as one line, so it can be scaled */
+    /* inline-block gives the element a width to measure and a box to transform;
+       nowrap keeps it on one line so scaling is the only thing that has to give. */
     .scan-status-bar .scan-progress {
       font-variant-numeric: tabular-nums;
+      display: inline-block;
+      white-space: nowrap;
     }
 
     .scan-status-bar.scanning .scan-progress {
@@ -3607,7 +3621,7 @@
     </div>
     <div class="status-center">
       <span class="scan-progress" id="scanProgress">Ready</span>
-      <span class="info-icon" title="Scans bookmarks on-demand as you expand folders&#10;Scans 10 bookmarks every 300ms">i</span>
+      <span class="info-icon" title="Scans as you expand folders. Keeps running in the background.&#10;Speed adjustable in the Settings.">i</span>
     </div>
     <div class="status-right">
       <span class="total-count" id="totalCount">0 bookmarks</span>

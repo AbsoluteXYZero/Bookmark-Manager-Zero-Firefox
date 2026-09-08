@@ -79,6 +79,16 @@
         return files.map(file => file.path || file.file_name).filter(Boolean);
       },
 
+      /* [ZeroLabs] 2026-09-08 3:10 AM - added: a name the user recognises */
+      // The settings dialog showed a bare id, which says nothing about what the
+      // store is or which one it is. A snippet has a title; a project has a path.
+      async describe(id) {
+        const response = await request(`${API}/snippets/${id}`, { headers: headers() });
+        if (!response.ok) await failure(response, 'Read snippet');
+        const snippet = await readJson(response);
+        return { kind: KIND_SNIPPET, name: (snippet && snippet.title) || '' };
+      },
+
       // The listing sometimes carries the content inline and sometimes does not,
       // so the raw endpoint is the fallback rather than the first choice.
       async readFile(id, filePath) {
@@ -191,6 +201,16 @@
         return (entries || []).map(entry => ({ path: entry.path, type: entry.type }));
       },
 
+      /* [ZeroLabs] 2026-09-08 3:10 AM - added: a name the user recognises */
+      // path_with_namespace rather than name, because "bmz-bookmarks" on its own
+      // does not say whose account it is on, and a user may have more than one.
+      async describe(id) {
+        const response = await request(`${API}/projects/${id}`, { headers: headers() });
+        if (!response.ok) await failure(response, 'Read project');
+        const project = await readJson(response);
+        return { kind: KIND_PROJECT, name: (project && project.path_with_namespace) || '' };
+      },
+
       async readFile(id, filePath) {
         const url = `${API}/projects/${id}/repository/files/${encodePath(filePath)}/raw?ref=${encodeURIComponent(ref)}`;
         const response = await request(url, { headers: headers() });
@@ -256,6 +276,17 @@
   const BOILERPLATE = /^(readme(\.(md|txt|rst|adoc))?|license(\.(md|txt))?|copying|changelog(\.md)?|\.gitignore|\.gitattributes|\.gitkeep)$/i;
   const BMZ_FILES = ['bookmarks.json', 'bmz-meta.json'];
 
+  /* [ZeroLabs] 2026-09-08 3:10 AM - added: drop the suffix BMZ adds to its own snippets */
+  // Every snippet BMZ creates is titled "BMZ Bookmarks - Managed by Bookmark
+  // Manager Zero". The second half is there so the snippet is identifiable in
+  // GitLab's own list, and it is noise once you are already inside BMZ.
+  // A title the user chose is left exactly as they wrote it.
+  const BMZ_TITLE_SUFFIX = / - Managed by Bookmark Manager Zero\s*$/i;
+
+  function cleanStoreName(name) {
+    return String(name || '').replace(BMZ_TITLE_SUFFIX, '').trim();
+  }
+
   function contentEntries(entries) {
     return (entries || []).filter(entry => {
       if (entry.type === 'tree') return true;
@@ -278,6 +309,7 @@
     create: createStore,
     isStoreFullError,
     contentEntries,
+    cleanStoreName,
     SNIPPET: KIND_SNIPPET,
     PROJECT: KIND_PROJECT
   };
