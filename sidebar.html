@@ -673,6 +673,14 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      /* [ZeroLabs] 2026-09-08 6:25 AM - added: the three sections were touching */
+      /* There was no gap at all, so once the progress message filled the middle
+         it sat flush against "Scan All Bookmarks" on one side and the bookmark
+         count on the other. space-between only spreads SLACK, and at narrow
+         widths there is none, so a real gap is needed. fitStatusText measures
+         the middle section AFTER the gap is applied, so the message simply
+         scales into the smaller space rather than eating the separation. */
+      gap: 10px;
       padding: 3px 8px;
       background: var(--md-sys-color-surface-variant);
       border-top: 1px solid var(--md-sys-color-outline-variant);
