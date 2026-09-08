@@ -762,6 +762,10 @@
       font-variant-numeric: tabular-nums;
       display: inline-block;
       white-space: nowrap;
+      /* [ZeroLabs] 2026-09-08 6:05 AM - added: let the explicit scaled width stick */
+      /* As a flex item this defaults to min-width:auto, which would floor it at the
+         unscaled text width and undo the width fitStatusText sets. */
+      min-width: 0;
     }
 
     .scan-status-bar.scanning .scan-progress {

@@ -17618,30 +17618,38 @@ if (document.readyState === 'loading') {
     const el = document.getElementById('scanProgress');
     if (!center || !el) return;
 
-    // Reset both, then measure. transform is cleared because an earlier build
-    // used it and a stale one would survive a reload of the panel only.
+    /* [ZeroLabs] 2026-09-08 6:05 AM - edited: transform, with the layout width corrected */
+    // font-size CANNOT work here. On the Fold 5 the Android WebView enforces a
+    // minimum font size and ignores anything smaller, so a computed 5px still
+    // renders at its clamped width. That is the documented reason fitHeaderText
+    // uses transform: scale(), which is a compositor operation and immune to it.
+    //
+    // transform alone was not enough either, because it does not change layout:
+    // the element kept reserving its full width and went on colliding with the
+    // bookmark count. So the width is set explicitly to the SCALED width, which
+    // makes the box the flex row reserves match the pixels actually painted.
     el.style.transform = '';
-    el.style.fontSize = '';
+    el.style.width = '';
+    el.style.fontSize = '';    // clear the font attempt from the previous build
 
     // The info icon shares the centre section, so its width is not available.
     const icon = center.querySelector('.info-icon');
     const iconWidth = icon ? icon.getBoundingClientRect().width + 6 : 0;
     const box = center.clientWidth - iconWidth;
-    const width = el.scrollWidth;
 
-    if (width <= box || box <= 0) return;
+    // Range rather than scrollWidth: it reports the true rendered text width even
+    // while the element is being squeezed by its flex parent.
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const natural = range.getBoundingClientRect().width;
 
-    /* [ZeroLabs] 2026-09-08 5:05 AM - edited: shrink the FONT, not the painted pixels */
-    // transform: scale() is a paint-time effect. The element keeps its full
-    // layout width, so the centre section still had an over-wide child and the
-    // message went on overlapping the bookmark count on the right. Reducing the
-    // font size changes the real layout, so the flex row genuinely fits.
-    //
-    // Floor at 60%: below that the counts stop being readable, and at that point
-    // a slight overlap is the lesser evil.
-    const base = parseFloat(window.getComputedStyle(el).fontSize) || 12;
-    const scaled = Math.max(base * 0.6, base * (box / width));
-    el.style.fontSize = scaled.toFixed(2) + 'px';
+    if (natural <= box || natural === 0) return;
+
+    // Floor at 60%: below that the counts stop being readable.
+    const ratio = Math.max(0.6, box > 0 ? box / natural : 0);
+    el.style.transformOrigin = 'left center';
+    el.style.transform = 'scale(' + ratio + ')';
+    el.style.width = (natural * ratio).toFixed(2) + 'px';
   }
 
   const schedule = function () {
