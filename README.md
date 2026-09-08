@@ -34,7 +34,7 @@
 
 Bookmark Manager Zero is a Firefox extension that provides a beautiful, feature-rich sidebar interface for managing your **native Firefox bookmarks**. It works directly with the bookmarks already built into your browser, with optional cloud sync via a private GitLab repository for backup and cross-device synchronization.
 
-Changes sync **bi-directionally and instantly**: any edits made in Bookmark Manager Zero immediately appear in Firefox's native bookmark system, and vice versa. Don't worry about accidental changes—the built-in undo feature and a changelog in the settings let you quickly restore recently deleted renamed, or moved bookmarks and folders
+Changes sync **bi-directionally and instantly**: any edits made in Bookmark Manager Zero immediately appear in Firefox's native bookmark system, and vice versa. Don't worry about accidental changes—the built-in undo feature and the Event Log in the settings let you quickly restore recently deleted renamed, or moved bookmarks and folders
 
 It enhances your bookmark management experience with modern UI, advanced search, safety checking, and intelligent organization tools while keeping your data exactly where it belongs: in Firefox.
 
@@ -175,7 +175,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - **Bulk Operations** - Multi-select mode for batch editing/deletion
 - **Duplicate Detection** - Find and manage duplicate bookmarks
 - **Undo System** - Restore recently deleted bookmarks
-- **Bookmark Changelog** - Track all bookmark and folder changes (creates, moves, deletes, renames) with persistent history
+- **Event Log** - Track all bookmark and folder changes (creates, moves, deletes, renames) with persistent history, plus any errors BMZ runs into
 - **Pre-Sync Snapshot Protection** - Automatic snapshots before sync operations with one-click restore to undo mistaken syncs
 - **Favicon Display** - Show website icons
 
@@ -257,7 +257,7 @@ Already using the extension? Add GitLab sync anytime:
    - **Sync** - The large circular button. Press it to compare both sides. Additions are applied silently in both directions; anything that would remove, rename or move a bookmark stops and asks first. Opening the dialog does not sync on its own, so you can reach the options below without triggering anything.
    - **Background auto-sync** - A toggle under Cloud Sync Options, on by default. With it off, nothing syncs on its own and the button above still works.
    - **Change Repository** - Point this device at a different repository without disconnecting and re-entering your token.
-   - **Overwrite Cloud with Local** / **Overwrite Local with Cloud** - Under Cloud Sync Options. Each carries an arrow showing which way your bookmarks move, and names how many would be lost before doing anything. The second saves a restore point to the changelog first.
+   - **Overwrite Cloud with Local** / **Overwrite Local with Cloud** - Under Cloud Sync Options. Each carries an arrow showing which way your bookmarks move, and names how many would be lost before doing anything. The second saves a restore point to the Event Log first.
 
 **Moving from a Snippet**
 
