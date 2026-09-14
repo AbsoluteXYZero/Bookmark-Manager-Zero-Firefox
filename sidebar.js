@@ -4058,6 +4058,128 @@ async function initMainUI() {
 
   // Automatically check bookmark statuses after initial render
   autoCheckBookmarkStatuses();
+
+  /* [ZeroLabs] 2026-09-13 - added: look for published notices once the sidebar is up */
+  // Not awaited. It fetches, and toasts whenever that lands.
+  checkNotices().catch(() => {});
+}
+
+/* [ZeroLabs] 2026-09-13 - added: published notices, shown once as a toast */
+// notices.json on the BMZ website is the message source, shared by all three
+// clients. Publishing is editing the file and pushing; the site sends no-store
+// on .json so the edit is live at once. Each entry has a numeric id that only
+// ever goes up. The sidebar keeps the highest id it has shown and toasts
+// everything above it, so rewording or deleting an old entry never re-notifies
+// anyone. Only a new, higher id fires.
+//
+// A toast auto-dismisses, so the same notice is also written to the Event Log as
+// a notice entry. Without that, one shown while the user was not looking is gone
+// for good.
+//
+// Silent on every failure. A missing or malformed file must never disturb the
+// sidebar; it simply tries again on the next open.
+/* [ZeroLabs] 2026-09-13 - added: a published notice is a dialog, not a toast */
+// A corner toast that vanishes in seconds is the wrong shape for an update
+// message someone is meant to read. This is centred, sized to be read, and
+// stays until the X or Escape is pressed. The backdrop does NOT close it: a
+// stray tap, easy on a phone, must not dismiss a message before it was read.
+// It resolves when closed, so several notices arrive one after another.
+function showNoticeDialog(text) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); z-index: 10003; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;';
+
+    const panel = document.createElement('div');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-labelledby', 'bmzNoticeTitle');
+    panel.style.cssText = 'position: relative; background: var(--md-sys-color-surface, #1e1e1e); color: var(--md-sys-color-on-surface, #e0e0e0); border: 1px solid var(--md-sys-color-outline, #444); border-radius: 16px; padding: 28px 28px 20px 28px; width: 100%; max-width: 560px; max-height: 85vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.45); box-sizing: border-box;';
+
+    const close = document.createElement('button');
+    close.setAttribute('aria-label', 'Close');
+    close.textContent = '\u00d7';
+    close.style.cssText = 'position: absolute; top: 10px; right: 12px; width: 36px; height: 36px; border: none; background: transparent; color: var(--md-sys-color-on-surface-variant, #aaa); font-size: 26px; line-height: 1; cursor: pointer; border-radius: 8px;';
+
+    const title = document.createElement('h2');
+    title.id = 'bmzNoticeTitle';
+    title.textContent = 'A message from BMZ';
+    title.style.cssText = 'margin: 0 32px 14px 0; font-size: 18px; font-weight: 600; color: var(--md-sys-color-primary, #90caf9);';
+
+    // textContent, never innerHTML: the text comes from a file on the web.
+    // pre-line keeps any line breaks written into the JSON.
+    const body = document.createElement('div');
+    body.textContent = text;
+    body.style.cssText = 'font-size: 15px; line-height: 1.6; white-space: pre-line; word-break: break-word;';
+
+    const foot = document.createElement('div');
+    foot.textContent = 'You can read this again at any time in the Event Log.';
+    foot.style.cssText = 'margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--md-sys-color-outline-variant, #333); font-size: 12px; color: var(--md-sys-color-on-surface-variant, #aaa);';
+
+    panel.appendChild(close);
+    panel.appendChild(title);
+    panel.appendChild(body);
+    panel.appendChild(foot);
+    overlay.appendChild(panel);
+
+    const finish = () => {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve();
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') finish();
+    };
+
+    close.addEventListener('click', finish);
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(overlay);
+    close.focus();
+  });
+}
+
+async function checkNotices() {
+  let notices;
+  try {
+    const response = await fetch('https://bmzweb.absolutezero.fyi/notices.json', { cache: 'no-store' });
+    if (!response.ok) return;
+    notices = await response.json();
+  } catch (error) {
+    return;
+  }
+  if (!Array.isArray(notices)) return;
+
+  const stored = await safeStorage.get('bmz_notices_seen_id');
+  const seenId = Number(stored.bmz_notices_seen_id) || 0;
+
+  const unseen = notices
+    /* [ZeroLabs] 2026-09-13 - added: only notices addressed to this client */
+    // A website or Android fix is not news to an extension user, and a Web Store
+    // update is not news to the website. Each entry names its targets; one with
+    // no targets field goes to everyone.
+    .filter(notice => notice && Number(notice.id) > seenId && typeof notice.text === 'string')
+    /* [ZeroLabs] 2026-09-13 - added: a draft stays in the file and goes nowhere */
+    // JSON has no comments, and a stray // would invalidate the whole file and
+    // silence every notice. This is how the template entry, and any notice
+    // written ahead of time, sits in the file without being sent.
+    .filter(notice => notice.draft !== true)
+    .filter(notice => {
+      if (!Array.isArray(notice.targets)) return true;
+      return notice.targets.includes('firefox');
+    })
+    .sort((a, b) => Number(a.id) - Number(b.id));
+
+  if (unseen.length === 0) return;
+
+  /* [ZeroLabs] 2026-09-13 - edited: dialog, one at a time, recorded on close */
+  // The id is stored after each dialog is CLOSED, not when it opens. A notice
+  // abandoned by shutting the sidebar is shown again next time, and only then
+  // written to the Event Log, so there is never a duplicate entry.
+  for (const notice of unseen) {
+    await showNoticeDialog(notice.text);
+    await addChangelogEntry('notice', 'notice', notice.text, null, {});
+    await safeStorage.set({ bmz_notices_seen_id: Number(notice.id) });
+  }
 }
 
 // Initialize (entry point - now handles authentication flow)
@@ -9842,6 +9964,8 @@ async function openChangelogModal() {
       else if (entry.type === 'pre-sync-snapshot') iconColor = '#f59e0b';
       /* [ZeroLabs] 2026-09-08 7:40 AM - added: errors are recorded here too */
       else if (entry.type === 'error') iconColor = '#ef4444';
+      /* [ZeroLabs] 2026-09-13 - added: published notices are recorded here too */
+      else if (entry.type === 'notice') iconColor = '#3b82f6';
       else iconColor = '#f59e0b';
 
       // SVG icons for operation types
@@ -9854,6 +9978,8 @@ async function openChangelogModal() {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M14,18L12.6,16.6L15.2,14H4V12H15.2L12.6,9.4L14,8L19,13L14,18M20,6H10A2,2 0 0,0 8,8V11H10V8H20V20H10V17H8V20A2,2 0 0,0 10,22H20A2,2 0 0,0 22,20V8A2,2 0 0,0 20,6Z"/></svg>`;
       } else if (entry.type === 'undo') {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 19.56,16H22.01C21.43,12.16 17.97,9 13.9,9H12.5V8M12.5,16C10.54,16 8.77,15.28 7.38,14.12L11,10.5H2V19.5L5.6,15.9C7.45,17.5 9.85,18.5 12.5,18.5C17.1,18.5 20.95,15.4 21.9,11.2H19.38C18.77,14.16 15.76,16.34 12.5,16Z"/></svg>`;
+      } else if (entry.type === 'notice') {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M21,19V20H3V19L5,17V11C5,7.9 7.03,5.17 10,4.29C10,4.19 10,4.1 10,4A2,2 0 0,1 12,2A2,2 0 0,1 14,4C14,4.1 14,4.19 14,4.29C16.97,5.17 19,7.9 19,11V17L21,19M14,21A2,2 0 0,1 12,23A2,2 0 0,1 10,21"/></svg>`;
       } else if (entry.type === 'error') {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z"/></svg>`;
       } else if (entry.type === 'pre-sync-snapshot') {
@@ -9864,7 +9990,7 @@ async function openChangelogModal() {
 
       // SVG icons for item types (skip for sync snapshots)
       let itemIcon = '';
-      if (entry.type !== 'pre-sync-snapshot' && entry.type !== 'error') {
+      if (entry.type !== 'pre-sync-snapshot' && entry.type !== 'error' && entry.type !== 'notice') {
         if (entry.itemType === 'folder') {
           itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-primary);"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg>`;
         } else {
@@ -9874,7 +10000,9 @@ async function openChangelogModal() {
 
       let detailsHtml = '';
       if (entry.details) {
-        if (entry.type === 'error') {
+        if (entry.type === 'notice') {
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Announcement from BMZ</div>`;
+        } else if (entry.type === 'error') {
           /* [ZeroLabs] 2026-09-08 7:40 AM - added: the frame is the useful half */
           // The message says what broke; this says where.
           //
