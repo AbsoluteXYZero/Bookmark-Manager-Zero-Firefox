@@ -1,6 +1,30 @@
 ## Changelog
 
-### v5.8 (Current)
+### v5.9 (Current)
+
+**Changes:**
+- **Dragging bookmarks is now BMZ's own, and the scroll wheel works while you drag** - The browser's built-in drag would not let the wheel scroll the list, would not start from a touch at all, and drew its own "you cannot drop here" cursor over places where you plainly could. BMZ now handles the drag itself: the wheel scrolls the list with an item in hand, the item follows the pointer without lagging behind it, and Escape cancels a drag part way.
+- **Scrolling by dragging to the edge finally moves** - Holding a bookmark near the top or bottom of the list was supposed to scroll it, and barely did. There are now three speeds. The middle of the list does nothing, so a careful drop is still possible, the outer third scrolls gently, and the last few pixels at each end scroll quickly.
+- **Choosing a folder now shows your folders as a tree** - Every place that asked where to put something listed every folder and subfolder in one flat run, with spaces faked in front of the names to suggest a structure. Moving an item, moving a selection, adding a bookmark and making a folder all now show the real tree, collapsed, with the folder you are already in opened for you.
+- **The alphabetical sort option is gone** - It re-ordered that flat list across every level at once, so a subfolder could appear above the folder it lives in. The tree shows the real order, which is the order you arranged.
+- **Select everything in a folder in one press** - Multi-select offered all, one at a time, or the folder itself. Each folder row now has a button that selects everything inside it, subfolders and their contents included, and pressing it again clears them.
+- **Folders still open and close while selecting** - Turning multi-select on used to turn the whole folder row into a checkbox, so you could not browse into a folder while building a selection. Only the checkbox selects the folder now.
+- **The multi-select toolbar no longer shoves your bookmarks down** - It slides down out of the panel above and sits over the top of the list, so nothing moves, and the list gains matching headroom at the very top so the first bookmark is still reachable. The checkboxes slide in from the left and back out.
+- **Press and hold now starts multi-select on a touch screen** - It opened the context menu instead, which the button at the end of each row already does.
+- **Approving sync changes shows what it is doing** - The window stays open with a count and a progress bar instead of closing and leaving you to guess, and the whole approval is recorded in the Event Log as one entry that can be undone in one action.
+- **The folder tree shows each folder's icon and its bookmark count** - A folder picker listed bare names. Every folder now carries the same icon the sidebar draws, with the same number inside it, counting everything in that folder including its subfolders.
+- **The multi-select button turns red while multi-select is on** - It lit up in the theme colour, which read as decoration rather than as a state. That button is the only way to leave the mode, so it now wears the same red as Delete until you press it again.
+- **Announcements are published instead of built in** - The "What's New as of Aug 27" card is gone. Update messages now arrive as a message from BMZ, which means a new one no longer has to wait for a new release, and it is kept in the Event Log so a message you missed is still there.
+
+**Bug Fixes:**
+- **Large changes are no longer partly dropped** - Anything needing approval was cut to the first 200 items. Renaming a folder holding more than that moved 200 bookmarks, left the rest behind, and then pushed the leftovers back under the old name, splitting the folder across both names on every device.
+- **Renaming a folder now reaches your other devices** - A folder rename was never recorded as a change made by this device, so the next sync read it as something another device had done and offered to undo it. The rename never travelled.
+- **Moving a selection no longer flattens a folder** - Selecting a folder together with bookmarks inside it and moving them put the folder in the destination and lifted its contents out of it. Anything already inside something else in the selection is now left alone and travels with its folder.
+- **Deleting or moving thousands of items no longer loses track of who did it** - The record of this device's own changes was capped, and a big folder could overflow it. Once an entry was pushed out, the next sync treated your own deletion as someone else's addition and put it back.
+
+---
+
+### v5.8
 
 **Changes:**
 - **The connected store is shown up front, with its name** - The sync settings said only "Connected to: 86198128", and said it behind the Cloud Sync Options toggle, which is collapsed exactly when a store IS connected. It now sits under the sync button and reads "Connected to Repository: you/bmz-bookmarks" or "Connected to Snippet: BMZ Bookmarks". The kind appears instantly and the name fills in a moment later.

@@ -1613,6 +1613,228 @@
       z-index: 2;
     }
 
+    /* [ZeroLabs] 2026-09-22 10:32 PM - added: the bar appears at once, it does not grow */
+    /*
+      #bulkActionsBar uses the .filters class, which carries
+      transition: all 0.3s and hides by collapsing max-height to 0. So showing
+      it ANIMATED its height from nothing to full, and every row below slid
+      down during those 300 milliseconds and settled back. That is the spring.
+      It now appears and disappears instantly.
+    */
+    #bulkActionsBar {
+      transition: none;
+    }
+
+    /* [ZeroLabs] 2026-09-23 12:43 AM - added: the move dialog's folder tree */
+    .folder-tree-picker {
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      padding: 4px;
+      background: var(--md-sys-color-surface-container);
+    }
+
+    .folder-tree-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface);
+      white-space: nowrap;
+    }
+
+    .folder-tree-row:hover {
+      background: var(--md-sys-color-surface-variant);
+    }
+
+    .folder-tree-row.selected {
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-weight: 600;
+    }
+
+    /* The twisty is its own hit area, so opening a folder never selects it */
+    .folder-tree-twisty {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .folder-tree-twisty.leaf {
+      visibility: hidden;
+    }
+
+    .folder-tree-twisty svg {
+      transition: transform 0.15s ease;
+    }
+
+    .folder-tree-twisty.expanded svg {
+      transform: rotate(90deg);
+    }
+
+    /* [ZeroLabs] 2026-09-23 3:10 PM - added: the sidebar's folder icon inside the picker */
+    /* Same SVG path and same .folder-count element the sidebar uses, at 24px
+       instead of 32px, because a picker row is 12px text and a full size icon
+       would cut the visible folder count of the panel by a third. The digit
+       sizes below are the sidebar's own steps scaled to match, so a four digit
+       count still fits inside the outline instead of spilling over it. */
+    .folder-tree-icon {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .folder-tree-icon .folder-count {
+      font-size: 9px;
+      letter-spacing: -0.4px;
+    }
+
+    .folder-tree-icon .folder-count[data-digits="3"] {
+      font-size: 8px;
+      letter-spacing: -0.6px;
+    }
+
+    .folder-tree-icon .folder-count[data-digits="4"],
+    .folder-tree-icon .folder-count[data-digits="5"] {
+      font-size: 6px;
+      letter-spacing: -0.8px;
+    }
+
+    .folder-tree-icon .folder-count[data-digits="6"],
+    .folder-tree-icon .folder-count[data-digits="7"],
+    .folder-tree-icon .folder-count[data-digits="8"],
+    .folder-tree-icon .folder-count[data-digits="9"] {
+      font-size: 5px;
+      letter-spacing: -1px;
+    }
+
+    /* A selected row paints itself with the primary container colour, and the
+       icon's own primary blue sits badly on it. On that row alone the icon
+       follows the row's text colour. */
+    .folder-tree-row.selected .folder-icon-outline,
+    .folder-tree-row.selected .folder-count {
+      color: currentColor;
+    }
+
+    .folder-tree-name {
+      overflow: hidden;
+      text-overflow: clip;
+    }
+
+    /* [ZeroLabs] 2026-09-23 12:24 AM - added: the bar slides out from under the GUI */
+    /*
+      Same idea as the checkboxes entering from the left. The bar starts fully
+      above its resting place, which is behind the header, and slides down into
+      view, so it reads as the GUI extending downward. Leaving runs in reverse
+      and the JS waits for it before hiding the element.
+
+      The header carries z-index 100 and the bar 40, so the part that is still
+      travelling is covered by the header rather than floating over it.
+    */
+    #bulkActionsBar.bmz-bar-in {
+      animation: bmzBulkBarIn 260ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #bulkActionsBar.bmz-bar-out {
+      animation: bmzBulkBarOut 220ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    @keyframes bmzBulkBarIn {
+      from {
+        transform: translateY(-100%);
+      }
+      to {
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes bmzBulkBarOut {
+      from {
+        transform: translateY(0);
+      }
+      to {
+        transform: translateY(-100%);
+      }
+    }
+
+    /* [ZeroLabs] 2026-09-22 10:26 PM - added: multi-select controls must not change row height */
+    /*
+      This is what made the rows move down when multi-select turned on, and no
+      amount of scroll correction could hide it, because rows ABOVE the visible
+      area were growing too.
+
+      .item-checkbox had no rule at all, so it used the browser default, which
+      carries 3px of margin top and bottom. .folder-select-all-btn inherits
+      font-size 16px from .bookmark-menu-btn while holding a 14px icon, so its
+      line box was taller than the icon. Both added height to every row.
+    */
+    /* [ZeroLabs] 2026-09-22 11:18 PM - edited: the boxes slide in from the left and back out */
+    /*
+      No reserved space: the checkbox is still rendered only in multi-select
+      mode. What changes is that it arrives and leaves instead of appearing.
+
+      In runs on insert, because the row is rebuilt with the checkbox in it.
+      Out is driven from the toggle, which tags the boxes and waits for the
+      animation before re-rendering the rows without them.
+    */
+    .item-checkbox {
+      width: 14px;
+      height: 14px;
+      margin: 0 2px 0 0;
+      flex-shrink: 0;
+      align-self: center;
+      animation: bmzCheckboxIn 260ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .item-checkbox-leaving {
+      animation: bmzCheckboxOut 220ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    @keyframes bmzCheckboxIn {
+      from {
+        opacity: 0;
+        transform: translateX(-16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes bmzCheckboxOut {
+      from {
+        opacity: 1;
+        transform: translateX(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateX(-16px);
+      }
+    }
+
+    .folder-select-all-btn {
+      padding: 0 4px;
+      font-size: 0;
+      line-height: 0;
+    }
+
+    .folder-select-all-btn svg {
+      display: block;
+    }
+
     .folder-header {
       padding: 4px 4px;
       cursor: pointer;
@@ -2654,55 +2876,14 @@
       transition: fill 0.3s ease;
     }
 
-    /* [ZeroLabs] 2026-08-27 - edited: neutral surface, primary accent */
-    /* Was an orange frame (#e8a020) around primary-container, which is PURPLE in
-       every dark theme - it only ever looked deliberate in a light one. It also
-       wore amber, and amber now means "needs your decision" in BMZ: the sync
-       arrows, the notice card, the Approve button. An informational card must not
-       borrow that. Neutral surface with the primary accent instead, matching the
-       shape of .sync-notice-card and using the same elevation and lit-edge
-       variables so it follows the theme. */
-    .announcement-card {
-      background: var(--md-sys-color-surface-variant, #1e293b);
-      border: 0.5px solid var(--bmz-panel-hairline, transparent);
-      border-left: 4px solid var(--md-sys-color-primary, #818cf8);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 12px;
-      box-shadow: var(--md-elevation-1), var(--bmz-lit-top, 0 0 0 0 transparent);
-    }
-    .announcement-card-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--md-sys-color-on-surface);
-      margin-bottom: 10px;
-    }
-    .announcement-card-body {
-      font-size: 13px;
-      line-height: 1.65;
-      color: var(--md-sys-color-on-surface-variant);
-      margin-bottom: 16px;
-    }
-    .announcement-card-actions {
-      display: flex;
-      gap: 10px;
-    }
-    .announcement-card-dismiss-btn {
-      flex: 1;
-      padding: 10px 16px;
-      background: var(--md-sys-color-surface-container, #2a2a2a);
-      color: var(--md-sys-color-on-surface);
-      border: 1px solid var(--md-sys-color-outline);
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      box-shadow: var(--md-elevation-1), var(--bmz-lit-top-strong, 0 0 0 0 transparent), var(--bmz-sunk-bottom, 0 0 0 0 transparent);
-      transition: box-shadow 0.2s ease, background 0.2s ease;
-    }
-    .announcement-card-dismiss-btn:hover {
-      box-shadow: var(--md-elevation-2), var(--bmz-lit-top-strong, 0 0 0 0 transparent), var(--bmz-sunk-bottom, 0 0 0 0 transparent);
-    }
+    /* [ZeroLabs] 2026-09-23 3:10 PM - removed: the announcement card styles */
+    /* The what's-new card that used .announcement-card, .announcement-card-title,
+       .announcement-card-body, .announcement-card-actions and
+       .announcement-card-dismiss-btn is gone. Announcements are published
+       through notices.json and drawn by showNoticeDialog, which carries its own
+       inline styles. Nothing referenced these rules any more, so they went with
+       the card rather than being left to look live. The WEBSITE keeps its copy:
+       its migration and sync notice cards are built on .announcement-card. */
 
     /* [ZeroLabs] 2026-08-27 - added: deferred sync notice card (see also: Bookmark-Manager-Zero-Website/index.html) */
     /* Self-contained rather than built on .announcement-card, because Chrome has
@@ -3683,14 +3864,12 @@
           <input type="text" id="newBookmarkUrl" class="form-input" placeholder="https://example.com">
         </div>
         <div class="form-group">
-          <label for="newBookmarkFolder">Add to folder:</label>
-          <select id="newBookmarkFolder" class="form-input">
+          <!-- [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list -->
+          <label id="newBookmarkFolderLabel">Add to folder:</label>
+          <select id="newBookmarkFolder" class="form-input" style="display: none;" aria-hidden="true">
             <option value="">Root</option>
           </select>
-          <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; cursor: pointer;">
-            <input type="checkbox" id="sortBookmarkFoldersAlpha" style="cursor: pointer;">
-            <span>Sort alphabetically</span>
-          </label>
+          <div id="newBookmarkFolderTree" class="folder-tree-picker" role="tree" aria-labelledby="newBookmarkFolderLabel"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -3714,14 +3893,12 @@
           <input type="text" id="newFolderName" class="form-input" placeholder="New Folder">
         </div>
         <div class="form-group">
-          <label for="newFolderParent">Create in:</label>
-          <select id="newFolderParent" class="form-input">
+          <!-- [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list -->
+          <label id="newFolderParentLabel">Create in:</label>
+          <select id="newFolderParent" class="form-input" style="display: none;" aria-hidden="true">
             <option value="">Root</option>
           </select>
-          <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; cursor: pointer;">
-            <input type="checkbox" id="sortFolderParentsAlpha" style="cursor: pointer;">
-            <span>Sort alphabetically</span>
-          </label>
+          <div id="newFolderParentTree" class="folder-tree-picker" role="tree" aria-labelledby="newFolderParentLabel"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -3745,13 +3922,11 @@
           <div id="moveToItemName" style="font-weight: 500; padding: 4px 0; word-break: break-word;"></div>
         </div>
         <div class="form-group">
-          <label for="moveToFolder">Destination folder:</label>
-          <select id="moveToFolder" class="form-input">
+          <!-- [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list -->
+          <label id="moveToFolderLabel">Destination folder:</label>
+          <select id="moveToFolder" class="form-input" style="display: none;" aria-hidden="true">
           </select>
-          <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; cursor: pointer;">
-            <input type="checkbox" id="sortMoveToFoldersAlpha" style="cursor: pointer;">
-            <span>Sort alphabetically</span>
-          </label>
+          <div id="moveToFolderTree" class="folder-tree-picker" role="tree" aria-labelledby="moveToFolderLabel"></div>
         </div>
       </div>
       <div class="modal-footer">

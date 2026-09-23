@@ -2465,8 +2465,12 @@ async function recordLocalBookmarkEvent(kind, node) {
       otherList.delete(url);
     });
 
+    /* [ZeroLabs] 2026-09-23 1:00 AM - removed: the 2000 entry cap */
+    // Same reasoning as the edited list: these are cleared on every clean sync,
+    // so an eviction can only ever lose a real attribution for no benefit.
+    // Deleting a folder of 3000 bookmarks is exactly when that would happen.
     await browser.storage.local.set({
-      [key]: Array.from(list).slice(-2000),
+      [key]: Array.from(list),
       [opposite]: Array.from(otherList)
     });
   } catch (error) {
@@ -2481,19 +2485,58 @@ async function recordLocalBookmarkEvent(kind, node) {
 // see a difference, each push their own, and they revert each other forever.
 async function recordLocalBookmarkEdit(id, explicitUrl) {
   try {
+    /* [ZeroLabs] 2026-09-23 1:00 AM - edited: a folder is recorded through its contents (see also: Bookmark-Manager-Zero-Chrome/background.js) */
+    // This used to stop here for anything without a URL, which is every folder.
+    // The browser sends ONE onChanged for a renamed folder and none for the
+    // bookmarks inside it, so a folder rename was recorded nowhere at all.
+    //
+    // The next reconcile compares every bookmark by title, root and folder
+    // path, finds that all of them moved, sees nothing in the edited list, and
+    // concludes another device did it. That is Outcome 4: sync stops and offers
+    // to put them BACK under the old name. Renaming a folder asked you to undo
+    // your own rename, and the rename never reached the cloud.
+    //
+    // A folder now records the URL of every bookmark beneath it, which is
+    // exactly what the comparison looks at.
+    const urls = [];
     let url = explicitUrl;
+
     if (!url) {
       // onMoved carries only parent ids, and onChanged only carries the fields
       // that changed, so the URL usually has to be looked up.
       const nodes = await browser.bookmarks.get(id);
       url = nodes && nodes[0] && nodes[0].url;
     }
-    if (!url) return; // Folders are represented by the bookmarks inside them
 
+    if (url) {
+      urls.push(url);
+    } else {
+      // A folder. Walk it. A folder deleted a moment later simply yields
+      // nothing, which the catch below already tolerates.
+      const [subtree] = await browser.bookmarks.getSubTree(id);
+      const walk = (node) => {
+        if (!node) return;
+        if (node.url) {
+          urls.push(node.url);
+          return;
+        }
+        (node.children || []).forEach(walk);
+      };
+      walk(subtree);
+    }
+
+    if (urls.length === 0) return;
+
+    /* [ZeroLabs] 2026-09-23 1:00 AM - removed: the 2000 entry cap */
+    // The list is wiped by clearLocalBookmarkEvents on every clean sync, so it
+    // only ever holds what happened since the last one. Nothing could add
+    // thousands of entries at once until now, so the ceiling was unreachable;
+    // a folder rename reaches it, and an eviction there would silently turn one
+    // of this device's own edits into a deferral.
     const stored = await browser.storage.local.get('snippet_local_edited');
     const list = new Set(stored.snippet_local_edited || []);
-    list.add(url);
-    await browser.storage.local.set({ snippet_local_edited: Array.from(list).slice(-2000) });
+    urls.forEach(entry => list.add(entry));
+    await browser.storage.local.set({ snippet_local_edited: Array.from(list) });
   } catch (error) {
     console.error('[CloudSync] Could not record local edit:', error);
   }
@@ -2700,8 +2743,14 @@ async function runSnippetPush() {
     // Additions never need consent and are already applied by this point, but a
     // dialog appearing while bookmarks quietly arrive should account for them.
     // Approve also pushes, so this device's own additions travel with it.
+    /* [ZeroLabs] 2026-09-22 6:54 PM - edited: store every item, cap only the display (see also: sidebar.js) */
+    // These lists used to be cut at 200. The dialog has its own cap of 50 rows
+    // plus an "and N more" line, so the 200 protected nothing and made the
+    // counts in the sentences wrong. Worse, the same list is what the approve
+    // handler iterates, so a folder rename touching more than 200 bookmarks had
+    // the rest silently dropped and then pushed back at the old path.
     const entryPath = (e) => [e.rootKey].concat(e.segments).join('/');
-    const addedHereItems = toAddLocally.slice(0, 200).map(e => ({
+    const addedHereItems = toAddLocally.map(e => ({
       url: e.url, title: e.title, path: entryPath(e)
     }));
     const pendingPushItems = [];
@@ -2715,11 +2764,11 @@ async function runSnippetPush() {
     if (removesFromSnippet.length > 0 || removesFromDevice.length > 0 || overwritesOnDevice.length > 0) {
       await browser.storage.local.set({
         snippet_push_held: true,
-        snippet_push_held_items: removesFromSnippet.slice(0, 200),
-        snippet_pull_held_items: removesFromDevice.slice(0, 200),
-        snippet_overwrite_held_items: overwritesOnDevice.slice(0, 200),
+        snippet_push_held_items: removesFromSnippet,
+        snippet_pull_held_items: removesFromDevice,
+        snippet_overwrite_held_items: overwritesOnDevice,
         snippet_added_here_items: addedHereItems,
-        snippet_pending_push_items: pendingPushItems.slice(0, 200),
+        snippet_pending_push_items: pendingPushItems,
         snippet_push_pending: false,
         snippet_push_attempts: 0
       });

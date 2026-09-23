@@ -2659,44 +2659,12 @@ async function dismissSetupCard() {
   }
 }
 
-// ============================================================================
-// V4.5 ANNOUNCEMENT CARD
-// ============================================================================
-/* [ZeroLabs] 2026-08-27 - edited: repurposed from the v4.5 card */
-// One reusable "what's new" card rather than a new one per release. The storage
-// key carries the DATE, so writing the next announcement means changing the key
-// with it and the card reappears for everyone - including people who dismissed
-// the last one. A fixed key would have to be renamed by hand, and forgetting
-// would leave the new copy invisible to exactly the users who read the old one.
-// A date also avoids a version number, which differs between the extensions and
-// the website anyway.
-const LATEST_CARD_KEY = 'bmz_latest_card_20260827';
-let hasSeenLatestCard = true; // Default to true, will be loaded from storage
-
-async function loadLatestCardFlag() {
-  /* [ZeroLabs] 2026-08-17 3:28 PM - added: suppress announcement in private mode */
-  // Same reason as the setup card: nothing persists in a private window.
-  if (isPrivateMode) {
-    hasSeenLatestCard = true;
-    return;
-  }
-  try {
-    const result = await safeStorage.get(LATEST_CARD_KEY);
-    hasSeenLatestCard = result[LATEST_CARD_KEY] || false;
-  } catch (error) {
-    hasSeenLatestCard = false;
-  }
-}
-
-async function dismissLatestCard() {
-  hasSeenLatestCard = true;
-  try {
-    await safeStorage.set({ [LATEST_CARD_KEY]: true });
-    renderBookmarks();
-  } catch (error) {
-    console.error('Error saving latest card flag:', error);
-  }
-}
+/* [ZeroLabs] 2026-09-23 3:10 PM - removed: the what's-new card and its flag */
+// The card announced the changes of August 27 and was shown once per install.
+// Announcements are published through notices.json now, so a new message needs
+// no code change in any client. LATEST_CARD_KEY, hasSeenLatestCard,
+// loadLatestCardFlag and dismissLatestCard are all gone. The stored
+// bmz_latest_card_20260827 flag is left in storage and is simply never read.
 
 // ============================================================================
 // GLOBAL ERROR BOUNDARY
@@ -4025,7 +3993,6 @@ async function initMainUI() {
   loadCheckingSettings();
   loadScanConcurrency();
   await loadSetupCardFlag();
-  await loadLatestCardFlag();
   /* [ZeroLabs] 2026-08-17 4:15 PM - added: load quick access and recent state */
   await loadQuickAccess();
   await loadRecentOpens();
@@ -4084,7 +4051,79 @@ async function initMainUI() {
 // stays until the X or Escape is pressed. The backdrop does NOT close it: a
 // stray tap, easy on a phone, must not dismiss a message before it was read.
 // It resolves when closed, so several notices arrive one after another.
-function showNoticeDialog(text) {
+/* [ZeroLabs] 2026-09-23 4:40 PM - added: bullets in a notice become a real list */
+// A notice is plain text in a JSON file, and it used to render as one block
+// with white-space: pre-line. That was fine for paragraphs and wrong for a
+// list: the second and later lines of a long bullet wrapped back to the left
+// margin, under the bullet character instead of under the text, which on a
+// phone turned a tidy list into a slab.
+//
+// A line that begins with a bullet character now becomes a real <li>, so the
+// browser does the hanging indent. Everything else stays a paragraph. Still
+// textContent on every node, never innerHTML: the text comes from a file on
+// the web and must never be able to inject markup.
+//
+// The accepted markers are the bullet, the hyphen and the asterisk, so a
+// notice can be written with whichever is convenient.
+const NOTICE_BULLET_PATTERN = /^[•\-*]\s+/;
+
+function renderNoticeText(container, text) {
+  const lines = String(text).split('\n');
+  let list = null;
+
+  const closeList = () => {
+    list = null;
+  };
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+
+    // A blank line only separates blocks. The margins below do the spacing.
+    if (trimmed === '') {
+      closeList();
+      return;
+    }
+
+    if (NOTICE_BULLET_PATTERN.test(trimmed)) {
+      if (!list) {
+        list = document.createElement('ul');
+        list.style.cssText = 'margin: 0 0 12px 0; padding-left: 22px;';
+        container.appendChild(list);
+      }
+      const item = document.createElement('li');
+      item.textContent = trimmed.replace(NOTICE_BULLET_PATTERN, '');
+      item.style.cssText = 'margin-bottom: 8px; line-height: 1.5;';
+      list.appendChild(item);
+      return;
+    }
+
+    closeList();
+    const paragraph = document.createElement('p');
+    paragraph.textContent = trimmed;
+    paragraph.style.cssText = 'margin: 0 0 12px 0;';
+    container.appendChild(paragraph);
+  });
+
+  // The last block does not need the gap under it
+  const last = container.lastElementChild;
+  if (last) last.style.marginBottom = '0';
+}
+
+/* [ZeroLabs] 2026-09-23 4:05 PM - edited: one dialog, never a queue of them */
+// It used to open one dialog per unseen notice, one after another. That is fine
+// for somebody who missed one message, and awful for a new install: with
+// seventeen entries in the file, a first run meant seventeen dialogs to close.
+//
+// Now the NEWEST unseen notice is the dialog, and everything older sits behind
+// one collapsed row that opens in place. A brand new user reads the current
+// message and may open the history; an existing user with one unseen notice
+// sees exactly what they saw before, because the row is not drawn at all when
+// there is nothing older.
+//
+// `notice.date` is optional and is only a heading for the older entries. An
+// entry without one still renders, separated by its rule, so the entries
+// already published do not have to be rewritten.
+function showNoticeDialog(notice, earlier = []) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); z-index: 10003; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;';
@@ -4105,19 +4144,84 @@ function showNoticeDialog(text) {
     title.textContent = 'A message from BMZ';
     title.style.cssText = 'margin: 0 32px 14px 0; font-size: 18px; font-weight: 600; color: var(--md-sys-color-primary, #90caf9);';
 
-    // textContent, never innerHTML: the text comes from a file on the web.
-    // pre-line keeps any line breaks written into the JSON.
     const body = document.createElement('div');
-    body.textContent = text;
-    body.style.cssText = 'font-size: 15px; line-height: 1.6; white-space: pre-line; word-break: break-word;';
+    body.style.cssText = 'font-size: 15px; line-height: 1.6; word-break: break-word;';
+    renderNoticeText(body, notice.text);
+
+    panel.appendChild(close);
+    panel.appendChild(title);
+
+    if (notice.date) {
+      const stamp = document.createElement('div');
+      stamp.textContent = notice.date;
+      stamp.style.cssText = 'margin-bottom: 10px; font-size: 12px; color: var(--md-sys-color-on-surface-variant, #aaa);';
+      panel.appendChild(stamp);
+    }
+
+    panel.appendChild(body);
+
+    /* [ZeroLabs] 2026-09-23 4:05 PM - added: every older notice, collapsed */
+    // This is the whole archive for this client, not only the unseen ones, so
+    // somebody curious about what changed before can read back through it. It
+    // is drawn whenever anything older exists, and only a file holding a single
+    // notice leaves it out.
+    if (earlier.length > 0) {
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.style.cssText = 'display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 18px; padding: 10px 12px; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface, #e0e0e0); border: 1px solid var(--md-sys-color-outline-variant, #333); border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; text-align: left;';
+
+      const caret = document.createElement('span');
+      caret.textContent = '▶';
+      caret.style.cssText = 'font-size: 10px; transition: transform 0.15s ease;';
+
+      const label = document.createElement('span');
+      const plural = earlier.length === 1 ? 'update' : 'updates';
+      label.textContent = `${earlier.length} earlier ${plural}`;
+
+      toggle.appendChild(caret);
+      toggle.appendChild(label);
+
+      const history = document.createElement('div');
+      history.hidden = true;
+      history.style.cssText = 'margin-top: 10px;';
+
+      earlier.forEach((older, index) => {
+        const entry = document.createElement('div');
+        entry.style.cssText = index === 0
+          ? 'padding-top: 4px;'
+          : 'margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--md-sys-color-outline-variant, #333);';
+
+        if (older.date) {
+          const olderStamp = document.createElement('div');
+          olderStamp.textContent = older.date;
+          olderStamp.style.cssText = 'margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--md-sys-color-on-surface-variant, #aaa);';
+          entry.appendChild(olderStamp);
+        }
+
+        const olderBody = document.createElement('div');
+        olderBody.style.cssText = 'font-size: 14px; line-height: 1.55; word-break: break-word; color: var(--md-sys-color-on-surface-variant, #ccc);';
+        renderNoticeText(olderBody, older.text);
+        entry.appendChild(olderBody);
+
+        history.appendChild(entry);
+      });
+
+      toggle.addEventListener('click', () => {
+        const opening = history.hidden;
+        history.hidden = !opening;
+        toggle.setAttribute('aria-expanded', String(opening));
+        caret.style.transform = opening ? 'rotate(90deg)' : '';
+      });
+
+      panel.appendChild(toggle);
+      panel.appendChild(history);
+    }
 
     const foot = document.createElement('div');
     foot.textContent = 'You can read this again at any time in the Event Log.';
     foot.style.cssText = 'margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--md-sys-color-outline-variant, #333); font-size: 12px; color: var(--md-sys-color-on-surface-variant, #aaa);';
 
-    panel.appendChild(close);
-    panel.appendChild(title);
-    panel.appendChild(body);
     panel.appendChild(foot);
     overlay.appendChild(panel);
 
@@ -4171,15 +4275,37 @@ async function checkNotices() {
 
   if (unseen.length === 0) return;
 
-  /* [ZeroLabs] 2026-09-13 - edited: dialog, one at a time, recorded on close */
-  // The id is stored after each dialog is CLOSED, not when it opens. A notice
-  // abandoned by shutting the sidebar is shown again next time, and only then
-  // written to the Event Log, so there is never a duplicate entry.
-  for (const notice of unseen) {
-    await showNoticeDialog(notice.text);
-    await addChangelogEntry('notice', 'notice', notice.text, null, {});
-    await safeStorage.set({ bmz_notices_seen_id: Number(notice.id) });
+  /* [ZeroLabs] 2026-09-23 4:05 PM - edited: one dialog holding the newest, with the rest behind it */
+  // Was a loop opening one dialog per unseen notice. A new install starting at
+  // id 0 therefore had to close one dialog per entry in the file, which does
+  // not scale: seventeen entries meant seventeen dialogs.
+  //
+  // The newest unseen notice is now the message, and EVERY older notice for
+  // this client sits behind a collapsed row, whether or not it was seen before.
+  // That keeps the dialog to one for everybody and still lets somebody curious
+  // read back through what changed.
+  const newest = unseen[unseen.length - 1];
+
+  const earlier = notices
+    .filter(item => item && typeof item.text === 'string' && item.draft !== true)
+    .filter(item => Number(item.id) < Number(newest.id))
+    .filter(item => {
+      if (!Array.isArray(item.targets)) return true;
+      return item.targets.includes('firefox');
+    })
+    .sort((a, b) => Number(b.id) - Number(a.id));
+
+  await showNoticeDialog(newest, earlier);
+
+  /* [ZeroLabs] 2026-09-23 4:05 PM - edited: record on close, as before */
+  // Everything unseen goes to the Event Log, including the entries the user
+  // never expanded, so choosing not to read the history loses nothing. The
+  // stored id moves only after the dialog is CLOSED, so a dialog abandoned by
+  // shutting the sidebar comes back next time and is written once, not twice.
+  for (const item of unseen) {
+    await addChangelogEntry('notice', 'notice', item.text, null, {});
   }
+  await safeStorage.set({ bmz_notices_seen_id: Number(newest.id) });
 }
 
 // Initialize (entry point - now handles authentication flow)
@@ -5512,43 +5638,10 @@ function renderBookmarks() {
     }, 0);
   }
 
-  /* [ZeroLabs] 2026-08-27 - edited: one reusable what's-new card */
-  if (!hasSeenLatestCard) {
-    const announcementCard = document.createElement('div');
-    announcementCard.className = 'announcement-card';
-    announcementCard.innerHTML = `
-      <div class="announcement-card-title">What's New as of Aug 27, 2026</div>
-      <div class="announcement-card-body">
-        Sync now runs robustly in the background, even with BMZ closed.
-        <br><br>
-        Every sync is now a proper merge. BMZ compares your local bookmarks against your
-        Snippet, quietly adds whatever is missing from either, and stops the moment something
-        would be removed, renamed or otherwise overwritten to ask your permission before any
-        action takes place. A card appears at the top of your bookmark list and the sync button
-        turns amber. Nothing is lost or changed while it waits.
-        <br><br>
-        Sync settings have been rebuilt and streamlined around a single button that shows you
-        what it's doing, and a switch to turn automatic syncing off (on is the default).
-        <br><br>
-        Deletion is now undoable everywhere — including bulk deletions and whole folders.
-        Restoring a folder from the changelog brings its contents back too.
-        <br><br>
-        BMZ now warns you before saving a bookmark that isn't a valid link.
-      </div>
-      <div class="announcement-card-actions">
-        <button class="announcement-card-dismiss-btn" id="latestCardDismissBtn">Got it</button>
-      </div>
-    `;
-    bookmarkList.appendChild(announcementCard);
-
-    // Dismiss only. The v4.5 card's "Set Up Sync" button broke in v4.6 because its
-    // handler was scoped inside setupEventListeners; with no action button there
-    // is nothing left to scope wrongly.
-    setTimeout(() => {
-      const dismissBtn = document.getElementById('latestCardDismissBtn');
-      if (dismissBtn) dismissBtn.addEventListener('click', dismissLatestCard);
-    }, 0);
-  }
+  /* [ZeroLabs] 2026-09-23 3:10 PM - removed: the August 27 what's-new card */
+  // Announcements go through notices.json now, which reaches every client from
+  // one file and does not need a code change to publish. The card, its storage
+  // flag and its loader are gone with it.
 
   /* [ZeroLabs] 2026-08-17 4:15 PM - added: quick access and recent sections */
   // Hidden while searching or filtering: the tree is already showing matches
@@ -5664,7 +5757,8 @@ function createQuickAccessRow(bookmark) {
   const row = createBookmarkElement(bookmark, { mirror: 'quick-access' });
   const pinKey = normalizeUrlKey(bookmark.url);
 
-  row.draggable = true;
+  /* [ZeroLabs] 2026-09-23 1:22 AM - edited: BMZ's pointer drag replaces the native one */
+  row.draggable = false;
   row.dataset.pinKey = pinKey;
 
   row.addEventListener('dragstart', (e) => {
@@ -6429,6 +6523,60 @@ Not in whitelist or blacklist" data-status-message="${escapedMessage}">
 }
 
 // Create folder element
+/* [ZeroLabs] 2026-09-22 7:41 PM - added: everything inside a folder, at any depth (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js, Bookmark-Manager-Zero-Website/js/sidebar-adapted.js) */
+// Bookmarks AND subfolders, so the whole contents can be moved or deleted in
+// one action. The folder itself is not included: the point is to act on what
+// is inside it, and its own row is already selectable.
+//
+// Both bulk actions must therefore cope with a folder and its children being
+// ticked together. bulkDeleteItems already drops anything contained by another
+// selection, and bulkMoveItems now does the same.
+function collectContentIdsInFolder(folder) {
+  const ids = [];
+
+  const walk = (node) => {
+    if (!node) return;
+    ids.push(node.id);
+    if (Array.isArray(node.children)) node.children.forEach(walk);
+  };
+
+  (folder.children || []).forEach(walk);
+  return ids;
+}
+
+/* [ZeroLabs] 2026-09-22 7:42 PM - added: select or deselect everything in one folder */
+// Until now the only choices were everything visible, the folder as a single
+// item, or one bookmark at a time.
+//
+// The same button clears the folder again. It deselects only when every item
+// inside is already selected, so pressing it on a partly selected folder
+// completes the selection rather than throwing away what is ticked.
+function toggleSelectAllInFolder(folder) {
+  const ids = collectContentIdsInFolder(folder);
+
+  if (ids.length === 0) {
+    showToast('This folder is empty.');
+    return;
+  }
+
+  const allSelected = ids.every(id => selectedItems.has(id));
+
+  ids.forEach(id => {
+    if (allSelected) {
+      selectedItems.delete(id);
+    } else {
+      selectedItems.add(id);
+    }
+    // Only rows on screen have a checkbox to tick. A collapsed folder's
+    // contents change all the same, and render correctly when it opens,
+    // because the checkbox is drawn from selectedItems.
+    const checkbox = bookmarkList.querySelector(`.item-checkbox[data-id="${id}"]`);
+    if (checkbox) checkbox.checked = !allSelected;
+  });
+
+  updateSelectedCount();
+}
+
 function createFolderElement(folder) {
   const folderDiv = document.createElement('div');
   folderDiv.className = 'folder-item';
@@ -6441,8 +6589,10 @@ function createFolderElement(folder) {
   const folderTitle = folder.title || 'Unnamed Folder';
 
   folderDiv.innerHTML = `
-    <div class="folder-header" draggable="true" role="button" aria-expanded="${isExpanded}" aria-label="${escapeHtml(folderTitle)} folder with ${childCount} items">
+    <div class="folder-header" role="button" aria-expanded="${isExpanded}" aria-label="${escapeHtml(folderTitle)} folder with ${childCount} items">
       ${multiSelectMode ? `<input type="checkbox" class="item-checkbox" data-id="${folder.id}" ${selectedItems.has(folder.id) ? 'checked' : ''} aria-label="Select ${escapeHtml(folderTitle)} folder">` : ''}
+      <!-- [ZeroLabs] 2026-09-22 7:32 PM - added: select every bookmark in this folder -->
+      ${multiSelectMode ? `<button class="bookmark-menu-btn folder-select-all-btn" title="Select or deselect everything in this folder" aria-label="Select or deselect everything in ${escapeHtml(folderTitle)} folder"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M0.41,13.41L6,19L7.41,17.58L1.83,12M22.24,5.58L11.66,16.17L7.5,12L6.07,13.41L11.66,19L23.66,7M18,7L16.59,5.58L10.24,11.93L11.66,13.34L18,7Z"/></svg></button>` : ''}
       <div class="folder-toggle ${isExpanded ? 'expanded' : ''}" aria-hidden="true"></div>
       <div class="folder-icon-container" aria-hidden="true">
         <svg class="folder-icon-outline" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -6462,19 +6612,17 @@ function createFolderElement(folder) {
 
   header.addEventListener('click', (e) => {
     // Don't toggle if clicking menu button or checkbox
+    /* [ZeroLabs] 2026-09-22 7:32 PM - edited: the select-all button is not a row click */
     if (e.target.closest('.folder-menu-btn') ||
+        e.target.closest('.folder-select-all-btn') ||
         e.target.closest('.item-checkbox')) {
       return;
     }
-    // In multi-select mode, toggle the checkbox
-    if (multiSelectMode) {
-      const checkbox = folderDiv.querySelector('.item-checkbox');
-      if (checkbox) {
-        checkbox.checked = !checkbox.checked;
-        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-      return;
-    }
+    /* [ZeroLabs] 2026-09-22 7:46 PM - removed: the row no longer selects the folder */
+    // Multi-select mode used to turn the whole folder row into a checkbox, so
+    // the folder could not be opened or closed while selecting. Browsing is
+    // exactly what a user needs while building a selection. The checkbox at the
+    // left selects the folder, and it returns above before reaching here.
     toggleFolder(folder.id, folderDiv);
   });
 
@@ -6484,10 +6632,32 @@ function createFolderElement(folder) {
     toggleFolderMenu(folder);
   });
 
+  /* [ZeroLabs] 2026-09-22 7:32 PM - added: the select-all-in-folder button */
+  // Wired like the menu button above. The website needs a capture-phase and
+  // touchend version of this for the Android WebView; the sidebar does not.
+  const selectAllBtn = header.querySelector('.folder-select-all-btn');
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSelectAllInFolder(folder);
+    });
+  }
+
   // Add right-click context menu support for folder
   folderDiv.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    /* [ZeroLabs] 2026-09-22 7:17 PM - added: a touch hold selects, it does not open the menu */
+    // On a touch screen the platform raises contextmenu for a press and hold,
+    // which is the same gesture that enters multi-select with a mouse. The
+    // mouse path is a 750 ms timer on mousedown, and touch never gets there:
+    // the emulated mouse events arrive after the gesture, if at all. So the
+    // contextmenu event IS the hold, and it enters multi-select instead. The
+    // hamburger button still opens this menu on a tap.
+    if (window.isTouchPointer && window.isTouchPointer() && window.enterMultiSelectFromLongPress) {
+      window.enterMultiSelectFromLongPress(e.target);
+      return;
+    }
     toggleFolderMenu(folder);
   });
 
@@ -6572,7 +6742,8 @@ function createBookmarkElement(bookmark, options = {}) {
     bookmarkDiv.classList.add('bookmark-item-mirror');
     bookmarkDiv.dataset.mirror = options.mirror;
   }
-  bookmarkDiv.draggable = !isMirror;
+  /* [ZeroLabs] 2026-09-23 1:22 AM - edited: BMZ's pointer drag replaces the native one */
+  bookmarkDiv.draggable = false;
 
   // Get link status (default to unknown)
   const linkStatus = bookmark.linkStatus || 'unknown';
@@ -6689,6 +6860,12 @@ function createBookmarkElement(bookmark, options = {}) {
   bookmarkDiv.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    /* [ZeroLabs] 2026-09-22 7:17 PM - added: a touch hold selects, it does not open the menu */
+    // See the folder handler for why the contextmenu event is the touch hold.
+    if (window.isTouchPointer && window.isTouchPointer() && window.enterMultiSelectFromLongPress) {
+      window.enterMultiSelectFromLongPress(e.target);
+      return;
+    }
     contextMenuOrigin = options.mirror || 'tree';
     toggleBookmarkMenu(bookmark);
   });
@@ -7066,54 +7243,524 @@ loadPreviewPopupSetting();
 // Drag and drop helper functions
 // Auto-scroll during drag when cursor is near top/bottom edges
 // Note: capture phase is required because child drag handlers call stopPropagation()
-let dragScrollInterval = null;
+/* [ZeroLabs] 2026-09-22 7:57 PM - edited: one scroll loop, a wider zone and a real speed (see also: Bookmark-Manager-Zero-Firefox/sidebar.js, Bookmark-Manager-Zero-Website/js/sidebar-adapted.js) */
+// The list barely moved, and the cause was the loop rather than the numbers.
+// startDragScroll cancelled the pending animation frame and scheduled a new one
+// on EVERY dragover. While the pointer moves, dragover fires faster than the
+// frame rate, so the callback was cancelled before it could ever run and the
+// list only crept along while the pointer was still.
+//
+// Now one loop runs for the whole drag and reads a speed variable, so the
+// pointer's event rate cannot starve it. The zone was also a fixed 60px, which
+// is hard to sit inside on a phone, and the cap of 20px per frame was low.
+let dragScrollFrame = null;
+let dragScrollSpeed = 0;
 let isDragging = false;
 
 document.addEventListener('dragstart', () => { isDragging = true; }, true);
 document.addEventListener('dragend', () => { isDragging = false; stopDragScroll(); }, true);
 document.addEventListener('drop', () => { isDragging = false; stopDragScroll(); }, true);
 
-bookmarkList.addEventListener('dragover', (e) => {
+document.addEventListener('dragover', (e) => {
   if (!isDragging) return;
+
+  /* [ZeroLabs] 2026-09-22 9:33 PM - removed: accepting the drag here (reverted) */
+  // Calling preventDefault and setting dropEffect from this capture-phase
+  // handler made the crossed-circle cursor show for the WHOLE drag instead of
+  // fixing it, so it is gone. Do not reintroduce it here.
+
+  updateDragScrollFromPointer(e.clientX, e.clientY);
+}, true);
+
+/* [ZeroLabs] 2026-09-22 9:58 PM - removed: three attempts to control the drag cursor */
+// Accepting the drag from a document capture listener, from a bookmarkList
+// bubble listener, and from a document bubble listener all failed to change the
+// crossed-circle cursor. Measurement showed the rows already accept the drag
+// with effectAllowed=move and dropEffect=move, so the cursor in the side panel
+// is not being decided by drop acceptance the way the spec describes.
+//
+// Nothing here now. The pointer drag engine removes the question entirely,
+// because a pointer drag has no browser-drawn drag cursor at all.
+
+
+/* [ZeroLabs] 2026-09-22 8:20 PM - edited: one speed, one band, and nothing outside the list */
+// Rewritten to Zero's description after two wrong attempts.
+//
+// The speed was a curve, so it changed with every pixel of pointer movement and
+// full speed existed only in a narrow strip he had to hunt for. It is now ONE
+// speed: anywhere in the band scrolls at exactly that rate. Nothing ramps,
+// nothing accelerates, and there is no dependence on the list's length.
+//
+// The pointer leaving the list vertically stops the scroll. Scrolling while
+// over the toolbar was my own idea and he did not want it.
+/* [ZeroLabs] 2026-09-22 8:26 PM - edited: the band is a third of the list, not 90 pixels */
+// 90 pixels is a sliver on a tall panel, so the full speed was only reachable
+// by putting the cursor on the very edge and hunting for it. The band is now a
+// third of the visible list at each end, with a floor for a short panel. The
+// middle third still does nothing, which is what makes a precise drop possible.
+/* [ZeroLabs] 2026-09-22 9:14 PM - edited: the dead middle is guaranteed by construction */
+// The previous version set each band to half the list, so the top and bottom
+// bands met in the centre and there was no neutral area left: hovering in the
+// middle scrolled. The dead middle is now the thing that is defined first, and
+// the bands are whatever is left over, so it can never be squeezed out again.
+//
+// The steps inside a band stay weighted rather than equal, so the slow speed
+// owns the first half of the band and the top speed needs a deliberate move to
+// the edge.
+const DRAG_SCROLL_DEAD_RATIO = 0.3;   // share of the list that never scrolls
+const DRAG_SCROLL_ZONE_MIN_PX = 120;
+const DRAG_SCROLL_DEAD_MIN_PX = 80;   // a short panel still keeps a neutral middle
+
+// Depth into the band where the middle speed starts. The top speed is not a
+// depth: it is the edge strip defined below.
+const DRAG_SCROLL_STEP_2_AT = 0.5;
+
+/* [ZeroLabs] 2026-09-22 9:01 PM - edited: three steps, and the top one is 80 percent of before */
+// The band is split into three equal depths and each one has its own fixed
+// speed. Within a step nothing changes, so the list travels at a rate the user
+// chose rather than one that drifts with every pixel of pointer movement.
+//
+/* [ZeroLabs] 2026-09-22 9:20 PM - edited: Zero's speeds, and the top one is an edge strip */
+// The top speed is no longer a share of the band. It is the outermost 5 percent
+// of the list, measured from the edge, so it is reached only by pushing right
+// to the end rather than by being deep in the band.
+const DRAG_SCROLL_SPEEDS_PX = [3, 8, 15];        // entering the band, mid depth, at the edge
+const DRAG_SCROLL_TOP_SPEED_RATIO = 0.05;        // outermost share of the list that gets the top speed
+
+function dragScrollSpeedFor(distanceFromEdge, zone, listHeight) {
+  // The top speed is a strip measured from the edge of the list itself
+  if (distanceFromEdge <= listHeight * DRAG_SCROLL_TOP_SPEED_RATIO) {
+    return DRAG_SCROLL_SPEEDS_PX[2];
+  }
+
+  const depth = Math.min(1, Math.max(0, (zone - distanceFromEdge) / zone));
+  if (depth < DRAG_SCROLL_STEP_2_AT) return DRAG_SCROLL_SPEEDS_PX[0];
+  return DRAG_SCROLL_SPEEDS_PX[1];
+}
+
+function updateDragScrollFromPointer(clientX, clientY) {
   const rect = bookmarkList.getBoundingClientRect();
-  const scrollZone = 60;
-  const maxSpeed = 20;
-  const y = e.clientY - rect.top;
-  const bottomY = rect.bottom - e.clientY;
 
-  if (y < scrollZone) {
-    const speed = Math.ceil(maxSpeed * (1 - y / scrollZone));
-    startDragScroll(-speed);
-  } else if (bottomY < scrollZone) {
-    const speed = Math.ceil(maxSpeed * (1 - bottomY / scrollZone));
-    startDragScroll(speed);
-  } else {
-    stopDragScroll();
+  // Take the neutral middle out first, then split what remains between the two
+  // ends. The second clamp is what stops a tall band from eating the middle.
+  const wantedZone = Math.max(DRAG_SCROLL_ZONE_MIN_PX, rect.height * (1 - DRAG_SCROLL_DEAD_RATIO) / 2);
+  const largestZone = (rect.height - DRAG_SCROLL_DEAD_MIN_PX) / 2;
+  const zone = Math.max(0, Math.min(wantedZone, largestZone));
+
+  const insideList =
+    clientY >= rect.top && clientY <= rect.bottom &&
+    clientX >= rect.left && clientX <= rect.right;
+
+  if (!insideList) {
+    setDragScrollSpeed(0);
+    return;
   }
-}, true);
 
-bookmarkList.addEventListener('dragleave', (e) => {
-  if (!bookmarkList.contains(e.relatedTarget)) {
-    stopDragScroll();
+  const fromTop = clientY - rect.top;
+  const fromBottom = rect.bottom - clientY;
+
+  if (fromTop < zone) {
+    setDragScrollSpeed(-dragScrollSpeedFor(fromTop, zone, rect.height));
+    return;
   }
-}, true);
 
-function startDragScroll(speed) {
-  if (dragScrollInterval) cancelAnimationFrame(dragScrollInterval);
-  const scroll = () => {
-    bookmarkList.scrollTop += speed;
-    dragScrollInterval = requestAnimationFrame(scroll);
-  };
-  dragScrollInterval = requestAnimationFrame(scroll);
+  if (fromBottom < zone) {
+    setDragScrollSpeed(dragScrollSpeedFor(fromBottom, zone, rect.height));
+    return;
+  }
+
+  setDragScrollSpeed(0);
+}
+
+/* [ZeroLabs] 2026-09-22 8:38 PM - edited: a timer, because rAF is starved during a drag */
+// Measured from Zero's console: with the speed correctly set to 45 pixels per
+// frame, scrollTop moved 9 pixels in 200 milliseconds. Sixty frames a second
+// would have moved about 540. Chromium throttles requestAnimationFrame while a
+// native drag is in progress, so the loop ran roughly once per 200ms.
+//
+// This is why the original autoscroll always felt slow and why changing the
+// distances and speeds never helped: the numbers were never the problem, the
+// callback was. setInterval keeps its rate during a drag.
+const DRAG_SCROLL_TICK_MS = 16;
+
+function setDragScrollSpeed(speed) {
+  dragScrollSpeed = speed;
+
+  if (speed === 0) {
+    stopDragScroll();
+    return;
+  }
+  // The timer is already running, and it reads the speed on every tick
+  if (dragScrollFrame) return;
+
+  dragScrollFrame = setInterval(() => {
+    if (!dragScrollSpeed) {
+      stopDragScroll();
+      return;
+    }
+    /* [ZeroLabs] 2026-09-22 8:52 PM - edited: bypass the smooth scrolling on the list */
+    // #bookmarkList carries scroll-behavior: smooth (sidebar.html:668). A
+    // plain scrollTop write is therefore an ANIMATION request, and writing a
+    // new one every tick restarts that animation before it has gone anywhere.
+    // Measured: 9 pixels in 200ms with the speed set to 45 per tick, which is
+    // why no distance or speed I changed ever made a difference. Asking for an
+    // instant scroll is what makes the write land.
+    bookmarkList.scrollTo({
+      top: bookmarkList.scrollTop + dragScrollSpeed,
+      behavior: 'instant'
+    });
+  }, DRAG_SCROLL_TICK_MS);
 }
 
 function stopDragScroll() {
-  if (dragScrollInterval) {
-    cancelAnimationFrame(dragScrollInterval);
-    dragScrollInterval = null;
+  dragScrollSpeed = 0;
+  if (dragScrollFrame) {
+    clearInterval(dragScrollFrame);
+    dragScrollFrame = null;
   }
 }
 
+
+// ============================================================================
+/* [ZeroLabs] 2026-09-22 9:14 PM - added: BMZ's own drag, replacing native HTML5 drag */
+// Native drag never carried anything but an internal id, and it cost three
+// things: the wheel cannot scroll during a native drag (Chromium 41272694, and Firefox is no better),
+// touch never starts one at all so Android could not reorder, and the browser
+// draws its own drop cursor which no amount of preventDefault would change.
+//
+// Owning the drag removes all three. The DROP RULES ARE UNCHANGED and still go
+// through handleDrop, handleDropToRoot, pinBookmark and reorderQuickAccess: a
+// bookmark row is before or after by its midpoint, a folder header is before or
+// into, the root zone appends, a Quick Access row reorders pins, and the Quick
+// Access body pins a bookmark from the tree.
+//
+// FIRST CUT IS MOUSE AND PEN ONLY. Touch needs a long press to tell a drag from
+// a scroll, and that lands with the website port.
+//
+// The native dragstart/dragover/drop listeners on rows, headers and zones are
+// now inert, because nothing sets draggable any more. They are left in place
+// for this round and come out once Zero confirms the engine.
+// ============================================================================
+
+const BMZ_DRAG_THRESHOLD_PX = 5;
+
+const bmzDrag = {
+  candidate: null,
+  active: false,
+  kind: null,        // 'tree' | 'tree-folder' | 'quick-access'
+  payload: null,     // bookmark or folder id, or a pin key
+  sourceEl: null,
+  ghost: null,
+  grabX: 0,
+  grabY: 0,
+  target: null       // { el, mode, id }
+};
+
+function bmzClearDropIndicators() {
+  removeAllDropIndicators();
+  document.querySelectorAll('.qa-drop-before, .qa-drop-after').forEach(el => {
+    el.classList.remove('qa-drop-before', 'qa-drop-after');
+  });
+  document.querySelectorAll('.bmz-section-drop-target').forEach(el => {
+    el.classList.remove('bmz-section-drop-target');
+  });
+  document.querySelectorAll('.root-drop-zone.drop-active').forEach(el => {
+    el.classList.remove('drop-active');
+  });
+}
+
+// What is under the pointer, and which half of it. The ghost carries
+// pointer-events: none, so it is never the answer.
+function bmzResolveDropTarget(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+
+  const half = (element) => {
+    const rect = element.getBoundingClientRect();
+    return y < rect.top + rect.height / 2;
+  };
+
+  if (bmzDrag.kind === 'quick-access') {
+    const row = el.closest('.bookmark-item[data-pin-key]');
+    if (!row || row === bmzDrag.sourceEl) return null;
+    return { el: row, mode: half(row) ? 'qa-before' : 'qa-after', id: row.dataset.pinKey };
+  }
+
+  // Pins are mirrors, so only a real tree bookmark can be dropped into them
+  const sectionBody = el.closest('.bmz-section-body');
+  if (sectionBody) {
+    if (bmzDrag.kind !== 'tree') return null;
+    if (!sectionBody.querySelector('.bookmark-item[data-pin-key]') &&
+        !sectionBody.querySelector('.bmz-section-empty')) return null;
+    return { el: sectionBody, mode: 'pin' };
+  }
+
+  const header = el.closest('.folder-header');
+  if (header) {
+    const folderDiv = header.closest('.folder-item');
+    if (!folderDiv) return null;
+    // Dropping a folder onto itself does nothing
+    if (bmzDrag.sourceEl && folderDiv === bmzDrag.sourceEl.closest('.folder-item')) return null;
+    return { el: folderDiv, mode: half(header) ? 'before' : 'into', id: folderDiv.dataset.id };
+  }
+
+  const row = el.closest('.bookmark-item:not(.bookmark-item-mirror)');
+  if (row) {
+    if (row === bmzDrag.sourceEl) return null;
+    return { el: row, mode: half(row) ? 'before' : 'after', id: row.dataset.id };
+  }
+
+  const rootZone = el.closest('.root-drop-zone');
+  if (rootZone) return { el: rootZone, mode: 'root' };
+
+  return null;
+}
+
+function bmzPaintDropTarget(target) {
+  bmzClearDropIndicators();
+  if (!target) return;
+
+  if (target.mode === 'before') target.el.classList.add('drop-before');
+  else if (target.mode === 'after') target.el.classList.add('drop-after');
+  else if (target.mode === 'into') target.el.classList.add('drop-into');
+  else if (target.mode === 'qa-before') target.el.classList.add('qa-drop-before');
+  else if (target.mode === 'qa-after') target.el.classList.add('qa-drop-after');
+  else if (target.mode === 'pin') target.el.classList.add('bmz-section-drop-target');
+  else if (target.mode === 'root') target.el.classList.add('drop-active');
+}
+
+function bmzBeginDrag(clientX, clientY) {
+  const candidate = bmzDrag.candidate;
+  if (!candidate) return;
+
+  bmzDrag.active = true;
+  bmzDrag.kind = candidate.kind;
+  bmzDrag.payload = candidate.payload;
+  bmzDrag.sourceEl = candidate.el;
+  bmzDrag.target = null;
+
+  // The old handlers read this to decide what to accept, and handleDrop still
+  // refuses a quick-access drag, so it has to be set exactly as before.
+  dragContext = candidate.kind;
+  isDragging = true;
+
+  const rect = candidate.el.getBoundingClientRect();
+  bmzDrag.grabX = candidate.startX - rect.left;
+  bmzDrag.grabY = candidate.startY - rect.top;
+
+  const ghost = candidate.el.cloneNode(true);
+  ghost.classList.add('bmz-drag-ghost');
+  /* [ZeroLabs] 2026-09-22 9:22 PM - added: the clone must not animate its own position */
+  // .bookmark-item has transition: all 0.3s (sidepanel.html:1002), which the
+  // clone inherits, so every transform update eased over 300ms and the ghost
+  // lagged and wallowed behind the cursor instead of tracking it.
+  ghost.style.transition = 'none';
+  ghost.style.animation = 'none';
+  ghost.style.willChange = 'transform';
+  ghost.style.position = 'fixed';
+  ghost.style.left = '0';
+  ghost.style.top = '0';
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.margin = '0';
+  ghost.style.pointerEvents = 'none';
+  ghost.style.opacity = '0.9';
+  ghost.style.zIndex = '10050';
+  ghost.style.borderRadius = '8px';
+  ghost.style.boxShadow = '0 10px 28px rgba(0, 0, 0, 0.5)';
+  ghost.style.background = 'var(--md-sys-color-surface-variant, #2a2a2a)';
+  document.body.appendChild(ghost);
+  bmzDrag.ghost = ghost;
+
+  candidate.el.style.opacity = '0.4';
+  document.body.style.userSelect = 'none';
+  // The whole panel keeps the move cursor, because we draw it now
+  document.body.style.cursor = 'grabbing';
+
+  bmzMoveGhost(clientX, clientY);
+}
+
+function bmzMoveGhost(clientX, clientY) {
+  if (!bmzDrag.ghost) return;
+  const x = clientX - bmzDrag.grabX;
+  const y = clientY - bmzDrag.grabY;
+  bmzDrag.ghost.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+function bmzUpdateDrag(clientX, clientY) {
+  bmzMoveGhost(clientX, clientY);
+  bmzDrag.target = bmzResolveDropTarget(clientX, clientY);
+  bmzPaintDropTarget(bmzDrag.target);
+  updateDragScrollFromPointer(clientX, clientY);
+}
+
+async function bmzFinishDrag() {
+  const target = bmzDrag.target;
+  const kind = bmzDrag.kind;
+  const payload = bmzDrag.payload;
+
+  bmzEndDrag();
+  if (!target || !payload) return;
+
+  try {
+    if (kind === 'quick-access') {
+      if (target.id && target.id !== payload) {
+        await reorderQuickAccess(payload, target.id, target.mode === 'qa-before');
+      }
+      return;
+    }
+
+    if (target.mode === 'pin') {
+      const item = findBookmarkById(bookmarkTree, payload);
+      if (item && item.url) await pinBookmark(item);
+      return;
+    }
+
+    if (target.mode === 'root') {
+      await handleDropToRoot(payload);
+      return;
+    }
+
+    await handleDrop(payload, target.id, target.el, {
+      dropBefore: target.mode === 'before',
+      dropAfter: target.mode === 'after',
+      dropInto: target.mode === 'into'
+    });
+  } catch (error) {
+    console.error('[BMZDrag] Drop failed:', error);
+  }
+}
+
+function bmzEndDrag() {
+  if (bmzDrag.sourceEl) bmzDrag.sourceEl.style.opacity = '1';
+  if (bmzDrag.ghost) bmzDrag.ghost.remove();
+
+  bmzClearDropIndicators();
+  stopDragScroll();
+
+  document.body.style.userSelect = '';
+  document.body.style.cursor = '';
+
+  dragContext = null;
+  isDragging = false;
+
+  bmzDrag.candidate = null;
+  bmzDrag.active = false;
+  bmzDrag.kind = null;
+  bmzDrag.payload = null;
+  bmzDrag.sourceEl = null;
+  bmzDrag.ghost = null;
+  bmzDrag.target = null;
+}
+
+// A press on a row is only a CANDIDATE. It becomes a drag after the pointer
+// has moved far enough, so an ordinary click still opens the bookmark.
+document.addEventListener('pointerdown', (e) => {
+  // A drag that ended without a click must not swallow a later real one
+  bmzSuppressNextClick = false;
+
+  if (bmzDrag.active) return;
+  if (e.pointerType === 'touch') return;   // touch lands with the website port
+  if (e.button !== 0) return;
+
+  const el = e.target instanceof Element ? e.target : null;
+  if (!el) return;
+  if (el.closest('.bookmark-menu-btn, .folder-menu-btn, .folder-select-all-btn, .item-checkbox, input, button, a')) return;
+
+  const qaRow = el.closest('.bookmark-item[data-pin-key]');
+  if (qaRow) {
+    bmzDrag.candidate = {
+      el: qaRow, kind: 'quick-access', payload: qaRow.dataset.pinKey,
+      startX: e.clientX, startY: e.clientY
+    };
+    return;
+  }
+
+  // A Recently Opened row is a mirror with no pin key, and is not draggable
+  if (el.closest('.bookmark-item-mirror')) return;
+
+  const header = el.closest('.folder-header');
+  if (header) {
+    const folderDiv = header.closest('.folder-item');
+    if (!folderDiv) return;
+    bmzDrag.candidate = {
+      el: folderDiv, kind: 'tree-folder', payload: folderDiv.dataset.id,
+      startX: e.clientX, startY: e.clientY
+    };
+    return;
+  }
+
+  const row = el.closest('.bookmark-item');
+  if (row) {
+    bmzDrag.candidate = {
+      el: row, kind: 'tree', payload: row.dataset.id,
+      startX: e.clientX, startY: e.clientY
+    };
+  }
+}, true);
+
+document.addEventListener('pointermove', (e) => {
+  if (bmzDrag.active) {
+    e.preventDefault();
+    bmzUpdateDrag(e.clientX, e.clientY);
+    return;
+  }
+
+  const candidate = bmzDrag.candidate;
+  if (!candidate) return;
+
+  const dx = e.clientX - candidate.startX;
+  const dy = e.clientY - candidate.startY;
+  if (Math.sqrt(dx * dx + dy * dy) < BMZ_DRAG_THRESHOLD_PX) return;
+
+  bmzBeginDrag(e.clientX, e.clientY);
+  bmzUpdateDrag(e.clientX, e.clientY);
+});
+
+/* [ZeroLabs] 2026-09-22 9:27 PM - added: a drag must not end in a click */
+// Releasing the pointer over a row fires a click there, which opened the
+// bookmark that had just been dropped. The click that follows a drag is
+// swallowed once, in the capture phase, before any row handler sees it.
+let bmzSuppressNextClick = false;
+
+document.addEventListener('pointerup', () => {
+  if (bmzDrag.active) {
+    bmzSuppressNextClick = true;
+    bmzFinishDrag();
+    return;
+  }
+  bmzDrag.candidate = null;
+});
+
+document.addEventListener('click', (e) => {
+  if (!bmzSuppressNextClick) return;
+  bmzSuppressNextClick = false;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+
+document.addEventListener('pointercancel', () => {
+  if (bmzDrag.active) bmzEndDrag();
+  bmzDrag.candidate = null;
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && bmzDrag.active) bmzEndDrag();
+});
+
+/* [ZeroLabs] 2026-09-22 9:14 PM - added: the wheel, which is the point of all this */
+// A pointer drag is not a native drag, so the wheel arrives normally and the
+// list scrolls while an item is in hand.
+const BMZ_DRAG_WHEEL_MULTIPLIER = 1;
+
+document.addEventListener('wheel', (e) => {
+  if (!bmzDrag.active) return;
+  e.preventDefault();
+  bookmarkList.scrollTo({
+    top: bookmarkList.scrollTop + e.deltaY * BMZ_DRAG_WHEEL_MULTIPLIER,
+    behavior: 'instant'
+  });
+  bmzUpdateDrag(e.clientX, e.clientY);
+}, { passive: false });
 
 function handleDragOver(e, targetElement) {
   // No-op: drop-before/after/into is handled inline in folder/bookmark dragover listeners.
@@ -7791,8 +8438,13 @@ async function recordLocalDeletion(node) {
     const deleted = new Set(stored.snippet_local_deleted || []);
     const created = new Set(stored.snippet_local_created || []);
     urls.forEach(url => { deleted.add(url); created.delete(url); });
+    /* [ZeroLabs] 2026-09-23 1:00 AM - removed: the 2000 entry cap (see also: background.js) */
+    // This one is the likeliest of all three to hit it: deleting a folder walks
+    // its whole subtree in one go. An eviction would drop the record that says
+    // this device did the deleting, and the next sync would put those bookmarks
+    // straight back.
     await safeStorage.set({
-      snippet_local_deleted: Array.from(deleted).slice(-2000),
+      snippet_local_deleted: Array.from(deleted),
       snippet_local_created: Array.from(created)
     });
   } catch (error) {
@@ -7816,33 +8468,41 @@ async function recordLocalDeletion(node) {
 //
 // Top level on purpose: showHeldPushDialog lives inside setupEventListeners in
 // this file, and inner scope can reach out to here but not the other way round.
+/* [ZeroLabs] 2026-09-22 6:54 PM - edited: returns what it removed instead of logging it */
+// Its one caller now gathers the whole approved sync into a single changelog
+// entry, so the folders this takes belong in that entry rather than in one
+// 'delete' entry each. The array is ordered deepest first, the order the chain
+// is walked; a restore has to recreate them in reverse.
 async function pruneEmptyFolderChain(startId) {
   const rootFolderIds = ['toolbar_____', 'menu________', 'unfiled_____', 'mobile______', 'root________'];
+  const pruned = [];
   let id = startId;
 
   // The chain is walked upward, so a bad parentId must not spin forever
   for (let guard = 0; id && guard < 50; guard++) {
-    if (rootFolderIds.includes(id)) return;
+    if (rootFolderIds.includes(id)) return pruned;
 
     let node;
     try {
       [node] = await browser.bookmarks.get(id);
     } catch (error) {
-      return; // Already gone
+      return pruned; // Already gone
     }
-    if (!node || node.url) return;
-    if (!node.parentId || rootFolderIds.includes(node.id)) return;
+    if (!node || node.url) return pruned;
+    if (!node.parentId || rootFolderIds.includes(node.id)) return pruned;
 
     const children = await browser.bookmarks.getChildren(id);
-    if (children.length > 0) return;
+    if (children.length > 0) return pruned;
 
     const fullData = JSON.parse(JSON.stringify(node));
     // Safe as a plain remove rather than removeTree: it has just been proven empty
     await browser.bookmarks.remove(id);
-    await addChangelogEntry('delete', 'folder', node.title || 'Unnamed Folder', null, { fullData });
+    pruned.push({ title: node.title || 'Unnamed Folder', fullData });
 
     id = node.parentId;
   }
+
+  return pruned;
 }
 
 async function deleteFolder(id) {
@@ -8838,6 +9498,174 @@ function buildFolderList(nodes, indent = 0) {
 }
 
 // Populate folder dropdown
+/* [ZeroLabs] 2026-09-23 12:43 AM - added: the move dialog's folder tree */
+// populateFolderDropdown flattens the whole hierarchy into one list and fakes
+// the structure by padding titles with spaces. Turn the alphabetical sort on
+// and that flat array is reordered across every depth at once, so a subfolder
+// can sit above its own parent while still carrying indentation that no longer
+// means anything.
+//
+// This renders the real tree instead: collapsed by default, one row per folder,
+// the twisty as its own hit area so opening a folder never selects it. The
+// hidden select still holds the value, so every caller that reads
+// moveToFolder.value is untouched.
+const moveFolderTree = { expanded: new Set() };
+
+/* [ZeroLabs] 2026-09-23 12:52 AM - edited: one picker for every dialog */
+// The panel is passed in rather than looked up, so the move dialog, the add
+// forms and anything else built later all share this and cannot drift into
+// different folder pickers again. The expanded state is deliberately shared:
+// opening a branch in one dialog leaves it open in the next.
+function renderFolderTree(selectElement, panel, options = {}) {
+  if (!panel || !selectElement) return;
+
+  /* [ZeroLabs] 2026-09-23 1:12 AM - removed: the alphabetical sort option */
+  // The tree shows the real hierarchy in the real order, so re-sorting it was
+  // the flat list's crutch and is gone from every picker.
+  const excluded = options.excluded || new Set();
+  panel.innerHTML = '';
+
+  const twistySvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>';
+
+  const addRows = (nodes, depth) => {
+    if (!Array.isArray(nodes)) return;
+
+    const folders = nodes.filter(node => node.children && !excluded.has(node.id));
+
+    folders.forEach(folder => {
+      const hasChildFolders = (folder.children || []).some(
+        child => child.children && !excluded.has(child.id)
+      );
+      const isExpanded = moveFolderTree.expanded.has(folder.id);
+
+      const row = document.createElement('div');
+      row.className = 'folder-tree-row';
+      row.dataset.folderId = folder.id;
+      row.setAttribute('role', 'treeitem');
+      row.style.paddingLeft = `${6 + depth * 14}px`;
+      if (folder.id === selectElement.value) row.classList.add('selected');
+
+      const twisty = document.createElement('span');
+      twisty.className = `folder-tree-twisty${hasChildFolders ? '' : ' leaf'}${isExpanded ? ' expanded' : ''}`;
+      twisty.innerHTML = twistySvg;
+      if (hasChildFolders) {
+        twisty.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (isExpanded) {
+            moveFolderTree.expanded.delete(folder.id);
+          } else {
+            moveFolderTree.expanded.add(folder.id);
+          }
+          renderFolderTree(selectElement, panel, options);
+        });
+      }
+
+      /* [ZeroLabs] 2026-09-23 3:10 PM - added: the sidebar's folder icon, with its count */
+      // The same outline and the same number the sidebar draws, so a folder
+      // looks like itself wherever it appears. countBookmarks is the sidebar's
+      // own counter, so the two can never disagree: it counts bookmarks all the
+      // way down, subfolders included. The icon is smaller here because these
+      // rows are compact, and .folder-tree-icon scales the digits to match.
+      const icon = document.createElement('span');
+      icon.className = 'folder-tree-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      const folderCount = countBookmarks(folder);
+      icon.innerHTML = `
+        <svg class="folder-icon-outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 7C3 5.89543 3.89543 5 5 5H9L11 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z"/>
+        </svg>
+        <span class="folder-count" data-digits="${folderCount.toString().length}">${folderCount}</span>
+      `;
+
+      const name = document.createElement('span');
+      name.className = 'folder-tree-name';
+      name.textContent = folder.title || 'Unnamed Folder';
+
+      row.appendChild(twisty);
+      row.appendChild(icon);
+      row.appendChild(name);
+      row.addEventListener('click', () => {
+        selectElement.value = folder.id;
+        panel.querySelectorAll('.folder-tree-row').forEach(other => {
+          other.classList.toggle('selected', other.dataset.folderId === folder.id);
+        });
+      });
+
+      panel.appendChild(row);
+
+      if (isExpanded) addRows(folder.children, depth + 1);
+    });
+  };
+
+  // bookmarkTree is the array of root containers, which are folders themselves
+  addRows(bookmarkTree, 0);
+}
+
+/* [ZeroLabs] 2026-09-23 1:02 AM - added: a folder tree for callers with no dialog of their own */
+// Bulk move asked for a NUMBER typed into a prompt, against a list of every
+// folder at every depth. This gives it, and anything else built later, the same
+// tree the real dialogs use. Resolves to a folder id, or null if cancelled.
+function pickFolderWithTree({ heading, excluded = new Set(), initialId = '' } = {}) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10001; display: flex; align-items: center; justify-content: center;';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'bmz-dialog';
+    dialog.style.cssText = 'background: var(--md-sys-color-surface, #1e1e1e); padding: 20px; border-radius: 12px; max-width: 460px; width: 90%; color: var(--md-sys-color-on-surface, #e0e0e0);';
+
+    dialog.innerHTML = `
+      <h2 style="margin: 0 0 14px 0; font-size: 17px;">${escapeHtml(heading || 'Choose a folder')}</h2>
+      <select id="bmzPickFolderValue" style="display: none;" aria-hidden="true"></select>
+      <div id="bmzPickFolderTree" class="folder-tree-picker" role="tree" aria-label="Destination folder"></div>
+      <div style="display: flex; gap: 10px; margin-top: 16px;">
+        <button id="bmzPickFolderCancel" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">Cancel</button>
+        <button id="bmzPickFolderConfirm" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px; font-weight: 600;">Move here</button>
+      </div>
+    `;
+
+    modal.appendChild(dialog);
+    document.body.appendChild(modal);
+
+    const valueHolder = dialog.querySelector('#bmzPickFolderValue');
+    const treePanel = dialog.querySelector('#bmzPickFolderTree');
+
+    valueHolder.value = initialId || '';
+    renderFolderTree(valueHolder, treePanel, { excluded });
+
+    const close = (result) => {
+      modal.remove();
+      resolve(result);
+    };
+
+    dialog.querySelector('#bmzPickFolderCancel').addEventListener('click', () => close(null));
+    dialog.querySelector('#bmzPickFolderConfirm').addEventListener('click', () => {
+      if (!valueHolder.value) {
+        showToast('Choose a destination folder first.');
+        return;
+      }
+      close(valueHolder.value);
+    });
+  });
+}
+
+// Open every ancestor of a folder so it is on screen when the dialog opens
+async function expandMoveTreeTo(folderId) {
+  let current = folderId;
+
+  for (let guard = 0; current && guard < 200; guard++) {
+    let node;
+    try {
+      [node] = await browser.bookmarks.get(current);
+    } catch (error) {
+      return;
+    }
+    if (!node || !node.parentId) return;
+    moveFolderTree.expanded.add(node.parentId);
+    current = node.parentId;
+  }
+}
+
 function populateFolderDropdown(selectElement, sortAlphabetically = false) {
   let folders = buildFolderList(bookmarkTree);
 
@@ -8884,35 +9712,27 @@ async function openAddBookmarkModal() {
     urlInput.value = '';
   }
 
-  // Load sort preference and populate dropdown
-  const sortCheckbox = document.getElementById('sortBookmarkFoldersAlpha');
-  const sortPref = localStorage.getItem('sortFoldersAlphabetically') === 'true';
-  sortCheckbox.checked = sortPref;
-  populateFolderDropdown(folderSelect, sortPref);
-
-  // Set default folder - prefer last used, then Bookmarks Menu, then first available
+  /* [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // Same default as before, last used folder first, then the Bookmarks Menu.
+  // It is now resolved against the real tree rather than against a list of
+  // option elements, and the path to it is opened so it is visible.
+  const treePanel = document.getElementById('newBookmarkFolderTree');
   const lastUsedFolder = localStorage.getItem('lastBookmarkFolder');
-  if (lastUsedFolder && folderSelect.querySelector(`option[value="${lastUsedFolder}"]`)) {
-    folderSelect.value = lastUsedFolder;
+  let defaultFolderId = '';
+
+  if (lastUsedFolder && findBookmarkById(bookmarkTree, lastUsedFolder)) {
+    defaultFolderId = lastUsedFolder;
   } else {
-    // Find Bookmarks Menu folder (usually has 'menu' in the ID)
-    const menuOption = Array.from(folderSelect.options).find(opt =>
-      opt.value.includes('menu') || opt.textContent.toLowerCase().includes('bookmarks menu')
+    const allFolders = buildFolderList(bookmarkTree);
+    const menuFolder = allFolders.find(folder =>
+      folder.id.includes('menu') || folder.title.toLowerCase().includes('bookmarks menu')
     );
-    if (menuOption) {
-      folderSelect.value = menuOption.value;
-    } else if (folderSelect.options.length > 1) {
-      // Fallback to first non-root option
-      folderSelect.selectedIndex = 1;
-    }
+    defaultFolderId = (menuFolder && menuFolder.id) || (allFolders[0] && allFolders[0].id) || '';
   }
 
-  // Add event listener for sort checkbox
-  sortCheckbox.addEventListener('change', (e) => {
-    const sortAlpha = e.target.checked;
-    localStorage.setItem('sortFoldersAlphabetically', sortAlpha);
-    populateFolderDropdown(folderSelect, sortAlpha);
-  });
+  folderSelect.value = defaultFolderId;
+  if (defaultFolderId) await expandMoveTreeTo(defaultFolderId);
+  renderFolderTree(folderSelect, treePanel);
 
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
@@ -9092,42 +9912,34 @@ async function saveNewBookmark() {
 }
 
 // Open add folder modal
-function openAddFolderModal() {
+/* [ZeroLabs] 2026-09-23 1:30 AM - edited: async, because the tree opens the path first */
+async function openAddFolderModal() {
   const modal = document.getElementById('addFolderModal');
   const nameInput = document.getElementById('newFolderName');
   const parentSelect = document.getElementById('newFolderParent');
 
   nameInput.value = '';
 
-  // Load sort preference and populate dropdown
-  const sortCheckbox = document.getElementById('sortFolderParentsAlpha');
-  const sortPref = localStorage.getItem('sortFoldersAlphabetically') === 'true';
-  sortCheckbox.checked = sortPref;
-  populateFolderDropdown(parentSelect, sortPref);
-
-  // Set default folder - prefer last used, then Bookmarks Menu, then first available
+  /* [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // Same default as before, last used parent first, then the Bookmarks Menu,
+  // resolved against the real tree and with the path to it opened.
+  const treePanel = document.getElementById('newFolderParentTree');
   const lastUsedParent = localStorage.getItem('lastFolderParent');
-  if (lastUsedParent && parentSelect.querySelector(`option[value="${lastUsedParent}"]`)) {
-    parentSelect.value = lastUsedParent;
+  let defaultParentId = '';
+
+  if (lastUsedParent && findBookmarkById(bookmarkTree, lastUsedParent)) {
+    defaultParentId = lastUsedParent;
   } else {
-    // Find Bookmarks Menu folder (usually has 'menu' in the ID)
-    const menuOption = Array.from(parentSelect.options).find(opt =>
-      opt.value.includes('menu') || opt.textContent.toLowerCase().includes('bookmarks menu')
+    const allFolders = buildFolderList(bookmarkTree);
+    const menuFolder = allFolders.find(folder =>
+      folder.id.includes('menu') || folder.title.toLowerCase().includes('bookmarks menu')
     );
-    if (menuOption) {
-      parentSelect.value = menuOption.value;
-    } else if (parentSelect.options.length > 1) {
-      // Fallback to first non-root option
-      parentSelect.selectedIndex = 1;
-    }
+    defaultParentId = (menuFolder && menuFolder.id) || (allFolders[0] && allFolders[0].id) || '';
   }
 
-  // Add event listener for sort checkbox
-  sortCheckbox.addEventListener('change', (e) => {
-    const sortAlpha = e.target.checked;
-    localStorage.setItem('sortFoldersAlphabetically', sortAlpha);
-    populateFolderDropdown(parentSelect, sortAlpha);
-  });
+  parentSelect.value = defaultParentId;
+  if (defaultParentId) await expandMoveTreeTo(defaultParentId);
+  renderFolderTree(parentSelect, treePanel);
 
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
@@ -9201,89 +10013,37 @@ async function openMoveToModal(item, isFolder) {
   const modal = document.getElementById('moveToModal');
   const itemNameDisplay = document.getElementById('moveToItemName');
   const folderSelect = document.getElementById('moveToFolder');
-  const sortCheckbox = document.getElementById('sortMoveToFoldersAlpha');
 
   // Show item name
   const itemLabel = isFolder ? `\uD83D\uDCC1 ${item.title || 'Unnamed Folder'}` : (item.title || 'Unnamed Bookmark');
   itemNameDisplay.textContent = itemLabel;
 
-  // Load sort preference and populate dropdown
-  const sortPref = localStorage.getItem('sortFoldersAlphabetically') === 'true';
-  sortCheckbox.checked = sortPref;
-  populateFolderDropdown(folderSelect, sortPref);
-
-  // Remove the "Root" option — Firefox doesn't allow items at the actual root level
-  const rootOption = folderSelect.querySelector('option[value=""]');
-  if (rootOption) rootOption.remove();
-
-  // If moving a folder, remove itself and all its descendants from the dropdown
+  /* [ZeroLabs] 2026-09-23 1:30 AM - edited: build the tree, not the flat list (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // The three rules the old dropdown enforced all survive, and they are now
+  // stated once instead of being repeated in the sort handler: no Root, a
+  // folder can never be moved inside itself, and the current parent starts
+  // selected. The tree simply does not render an excluded folder at all, so
+  // there is nothing to strip out afterwards.
+  const excluded = new Set();
   if (isFolder) {
     try {
-      const subtree = await browser.bookmarks.getSubTree(item.id);
-      const descendantIds = new Set();
-      const collectIds = (nodes) => {
-        for (const node of nodes) {
-          descendantIds.add(node.id);
-          if (node.children) collectIds(node.children);
-        }
+      const [subtree] = await browser.bookmarks.getSubTree(item.id);
+      const collectIds = (node) => {
+        if (!node) return;
+        excluded.add(node.id);
+        (node.children || []).forEach(collectIds);
       };
       collectIds(subtree);
-
-      Array.from(folderSelect.options).forEach(option => {
-        if (descendantIds.has(option.value)) {
-          option.remove();
-        }
-      });
     } catch (error) {
-      console.error('Error filtering descendant folders:', error);
+      console.error('Error collecting descendant folders:', error);
     }
   }
 
-  // Pre-select the item's current parent folder
-  if (item.parentId && folderSelect.querySelector(`option[value="${item.parentId}"]`)) {
-    folderSelect.value = item.parentId;
-  } else if (folderSelect.options.length > 0) {
-    folderSelect.selectedIndex = 0;
-  }
-
-  // Sort checkbox handler
-  const sortHandler = (e) => {
-    const sortAlpha = e.target.checked;
-    localStorage.setItem('sortFoldersAlphabetically', sortAlpha);
-    populateFolderDropdown(folderSelect, sortAlpha);
-    const rootOpt = folderSelect.querySelector('option[value=""]');
-    if (rootOpt) rootOpt.remove();
-
-    if (isFolder) {
-      try {
-        browser.bookmarks.getSubTree(item.id).then(subtree => {
-          const descendantIds = new Set();
-          const collectIds = (nodes) => {
-            for (const node of nodes) {
-              descendantIds.add(node.id);
-              if (node.children) collectIds(node.children);
-            }
-          };
-          collectIds(subtree);
-          Array.from(folderSelect.options).forEach(option => {
-            if (descendantIds.has(option.value)) {
-              option.remove();
-            }
-          });
-        });
-      } catch (error) {
-        console.error('Error filtering descendant folders on sort:', error);
-      }
-    }
-
-    if (item.parentId && folderSelect.querySelector(`option[value="${item.parentId}"]`)) {
-      folderSelect.value = item.parentId;
-    }
-  };
-
-  sortCheckbox.removeEventListener('change', sortCheckbox._moveToHandler);
-  sortCheckbox._moveToHandler = sortHandler;
-  sortCheckbox.addEventListener('change', sortHandler);
+  // Start on the item's current parent, with the path to it already open
+  const treePanel = document.getElementById('moveToFolderTree');
+  folderSelect.value = item.parentId || '';
+  if (item.parentId) await expandMoveTreeTo(item.parentId);
+  renderFolderTree(folderSelect, treePanel, { excluded });
 
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
@@ -9962,6 +10722,8 @@ async function openChangelogModal() {
       else if (entry.type === 'move') iconColor = '#3b82f6';
       else if (entry.type === 'undo') iconColor = '#8b5cf6';
       else if (entry.type === 'pre-sync-snapshot') iconColor = '#f59e0b';
+      /* [ZeroLabs] 2026-09-22 6:54 PM - added: a whole approved sync is one event */
+      else if (entry.type === 'sync-apply') iconColor = '#f59e0b';
       /* [ZeroLabs] 2026-09-08 7:40 AM - added: errors are recorded here too */
       else if (entry.type === 'error') iconColor = '#ef4444';
       /* [ZeroLabs] 2026-09-13 - added: published notices are recorded here too */
@@ -9984,13 +10746,18 @@ async function openChangelogModal() {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z"/></svg>`;
       } else if (entry.type === 'pre-sync-snapshot') {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/></svg>`;
+      /* [ZeroLabs] 2026-09-22 6:54 PM - added: the approved-sync event */
+      } else if (entry.type === 'sync-apply') {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M19.35,10.04C18.67,6.59 15.64,4 12,4C9.11,4 6.6,5.64 5.35,8.04C2.34,8.36 0,10.91 0,14A6,6 0 0,0 6,20H19A5,5 0 0,0 24,15C24,12.36 21.95,10.22 19.35,10.04M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z"/></svg>`;
       } else {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg>`;
       }
 
       // SVG icons for item types (skip for sync snapshots)
       let itemIcon = '';
-      if (entry.type !== 'pre-sync-snapshot' && entry.type !== 'error' && entry.type !== 'notice') {
+      /* [ZeroLabs] 2026-09-22 6:54 PM - edited: a sync event is not one item */
+      if (entry.type !== 'pre-sync-snapshot' && entry.type !== 'error' &&
+          entry.type !== 'notice' && entry.type !== 'sync-apply' && entry.itemType !== 'sync') {
         if (entry.itemType === 'folder') {
           itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-primary);"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg>`;
         } else {
@@ -10017,11 +10784,27 @@ async function openChangelogModal() {
           detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">${safe(entry.details.context || 'Error')}</div>${where}`;
         } else if (entry.type === 'pre-sync-snapshot') {
           detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">⚠️ Replaced all local bookmarks with remote data</div>`;
+        /* [ZeroLabs] 2026-09-22 6:54 PM - added: what the approved sync actually did */
+        } else if (entry.type === 'sync-apply') {
+          const count = (list) => (list || []).length;
+          const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+          const parts = [];
+          if (count(entry.details.removed) > 0) parts.push(`${plural(count(entry.details.removed), 'bookmark', 'bookmarks')} removed from this device`);
+          if (count(entry.details.renamed) > 0) parts.push(`${plural(count(entry.details.renamed), 'bookmark', 'bookmarks')} renamed`);
+          if (count(entry.details.moved) > 0) parts.push(`${plural(count(entry.details.moved), 'bookmark', 'bookmarks')} moved`);
+          if (count(entry.details.prunedFolders) > 0) parts.push(`${plural(count(entry.details.prunedFolders), 'empty folder', 'empty folders')} removed`);
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">${parts.join(' · ')}</div>`;
         } else if (entry.type === 'undo') {
           if (entry.details.undoType === 'move') {
             detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Restored to: ${entry.details.restoredToFolder}</div>`;
           } else if (entry.details.undoType === 'update') {
             detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Reverted title from: "${entry.details.previousTitle}"</div>`;
+          /* [ZeroLabs] 2026-09-22 6:54 PM - added: the undo of a whole approved sync */
+          } else if (entry.details.undoType === 'sync-apply') {
+            const c = entry.details.counts || {};
+            const reversed = (c.removed || 0) + (c.renamed || 0) + (c.moved || 0) + (c.prunedFolders || 0);
+            const failedNote = entry.details.failed > 0 ? `, ${entry.details.failed} could not be reversed` : '';
+            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Reversed an approved sync of ${reversed} change${reversed === 1 ? '' : 's'}${failedNote}</div>`;
           } else {
             detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Undid ${entry.details.undoType} operation</div>`;
           }
@@ -10044,6 +10827,13 @@ async function openChangelogModal() {
         restoreButtonHtml = `
           <button class="changelog-restore-btn" data-entry-id="${entry.id}" title="Restore pre-sync bookmarks" style="margin-left: auto; padding: 6px 12px; border: 1px solid ${iconColor}; border-radius: 6px; background: ${iconColor}; color: #000; cursor: pointer; font-size: 12px; font-weight: 600;">
             Restore Pre-Sync Bookmarks
+          </button>
+        `;
+      /* [ZeroLabs] 2026-09-22 6:54 PM - added: undo the approved sync as one action */
+      } else if (entry.type === 'sync-apply') {
+        restoreButtonHtml = `
+          <button class="changelog-restore-btn" data-entry-id="${entry.id}" title="Undo every change this sync applied" style="margin-left: auto; padding: 6px 12px; border: 1px solid ${iconColor}; border-radius: 6px; background: ${iconColor}; color: #000; cursor: pointer; font-size: 12px; font-weight: 600;">
+            Undo These Changes
           </button>
         `;
       } else if ((entry.type === 'delete' || entry.type === 'move' || entry.type === 'update') && entry.type !== 'undo') {
@@ -10244,6 +11034,143 @@ async function restoreChangelogEntry(entryId) {
         showToast(`Failed to restore snapshot: ${error.message}`, 'error');
         return;
       }
+    }
+
+    /* [ZeroLabs] 2026-09-22 6:54 PM - added: undo a whole approved sync at once */
+    // An approved sync is one event, so it undoes as one event. The order is
+    // deliberate: folders the prune took come back first, outermost before
+    // innermost, because the bookmarks below them need somewhere to land. The
+    // ids in the entry are the ids those folders had before they were removed,
+    // so idMap translates each one to the id it has now.
+    if (entry.type === 'sync-apply') {
+      const d = entry.details || {};
+      const removed = d.removed || [];
+      const renamed = d.renamed || [];
+      const moved = d.moved || [];
+      const prunedFolders = d.prunedFolders || [];
+      const total = removed.length + renamed.length + moved.length + prunedFolders.length;
+
+      if (total === 0) {
+        alert('This event recorded no changes, so there is nothing to undo.');
+        return;
+      }
+
+      const lines = [];
+      if (removed.length > 0) lines.push(`Put back ${removed.length} removed bookmark${removed.length === 1 ? '' : 's'}`);
+      if (renamed.length > 0) lines.push(`Revert ${renamed.length} name${renamed.length === 1 ? '' : 's'}`);
+      if (moved.length > 0) lines.push(`Move ${moved.length} bookmark${moved.length === 1 ? '' : 's'} back`);
+      if (prunedFolders.length > 0) lines.push(`Recreate ${prunedFolders.length} removed folder${prunedFolders.length === 1 ? '' : 's'}`);
+
+      const confirmed = confirm(`Undo this approved sync?\n\n${lines.join('\n')}\n\nThis changes this device now. The next sync decides what reaches your cloud bookmarks.`);
+      if (!confirmed) return;
+
+      const button = document.querySelector(`.changelog-restore-btn[data-entry-id="${entry.id}"]`);
+      const buttonLabel = button ? button.textContent : '';
+      let stepsDone = 0;
+      const step = () => {
+        stepsDone++;
+        if (button) button.textContent = `Undoing ${stepsDone} of ${total}`;
+      };
+      if (button) {
+        button.disabled = true;
+        button.textContent = `Undoing 0 of ${total}`;
+      }
+
+      const idMap = new Map();
+      let failed = 0;
+
+      for (const folder of prunedFolders.slice().reverse()) {
+        const data = folder.fullData || {};
+        const parentId = idMap.get(data.parentId) || data.parentId;
+        try {
+          const siblings = await browser.bookmarks.getChildren(parentId);
+          const index = Math.min(
+            typeof data.index === 'number' ? data.index : siblings.length,
+            siblings.length
+          );
+          // Proven empty when it was pruned, so a plain create rebuilds it fully
+          const created = await browser.bookmarks.create({ title: data.title, parentId, index });
+          if (data.id) idMap.set(data.id, created.id);
+        } catch (error) {
+          console.warn('[Changelog Restore] Could not recreate folder:', data.title, error.message);
+          failed++;
+        }
+        step();
+      }
+
+      for (const item of renamed) {
+        try {
+          const matches = await browser.bookmarks.search({ url: item.url });
+          const node = matches && matches[0];
+          if (node && item.oldTitle) {
+            await browser.bookmarks.update(node.id, { title: item.oldTitle });
+          } else {
+            failed++;
+          }
+        } catch (error) {
+          console.warn('[Changelog Restore] Could not revert name:', item.url, error.message);
+          failed++;
+        }
+        step();
+      }
+
+      for (const item of moved) {
+        try {
+          const matches = await browser.bookmarks.search({ url: item.url });
+          const node = matches && matches[0];
+          const parentId = idMap.get(item.fromParentId) || item.fromParentId;
+          if (node && parentId) {
+            await browser.bookmarks.move(node.id, { parentId });
+          } else {
+            failed++;
+          }
+        } catch (error) {
+          console.warn('[Changelog Restore] Could not move back:', item.url, error.message);
+          failed++;
+        }
+        step();
+      }
+
+      for (const item of removed) {
+        const data = item.fullData || {};
+        try {
+          await restoreDeletedItem('bookmark', {
+            ...data,
+            parentId: idMap.get(data.parentId) || data.parentId
+          });
+        } catch (error) {
+          console.warn('[Changelog Restore] Could not put back:', item.url, error.message);
+          failed++;
+        }
+        step();
+      }
+
+      if (button) {
+        button.disabled = false;
+        button.textContent = buttonLabel;
+      }
+
+      await addChangelogEntry('undo', 'sync', 'Undid an approved sync', null, {
+        undoType: 'sync-apply',
+        counts: {
+          removed: removed.length,
+          renamed: renamed.length,
+          moved: moved.length,
+          prunedFolders: prunedFolders.length
+        },
+        failed
+      });
+
+      await loadBookmarks();
+      renderBookmarks();
+
+      alert(failed > 0
+        ? `Undo finished. ${total - failed} of ${total} changes were reversed. ${failed} could not be, most likely because the bookmark or folder no longer exists.`
+        : `Undo finished. All ${total} changes were reversed.`);
+
+      closeChangelogModal();
+      setTimeout(() => openChangelogModal(), 100);
+      return;
     }
 
     // Only allow restoring certain operation types
@@ -10720,38 +11647,59 @@ async function bulkMoveItems() {
     return;
   }
 
-  // Get current bookmark tree
-  const tree = await browser.bookmarks.getTree();
-  const allBookmarks = tree[0].children || [];
+  /* [ZeroLabs] 2026-09-23 1:30 AM - edited: the folder tree, not a typed number (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // This asked the user to read a numbered list of every folder at every depth
+  // and type an index. It now opens the same tree the other dialogs use.
+  //
+  // A selected folder and everything inside it is excluded, so a folder cannot
+  // be moved into itself or into one of its own descendants.
+  const excluded = new Set();
+  for (const id of selectedItems) {
+    try {
+      const [node] = await browser.bookmarks.getSubTree(id);
+      const collectIds = (current) => {
+        if (!current || !current.children) return;
+        excluded.add(current.id);
+        current.children.forEach(collectIds);
+      };
+      collectIds(node);
+    } catch (error) {
+      console.warn('[BulkMove] Could not read subtree:', id, error.message);
+    }
+  }
 
-  // Get all folders for selection
-  const folders = getAllFolders(allBookmarks);
-
-  // Create folder selection prompt
-  let folderList = 'Select destination folder by number:\n\n';
-  folders.forEach((folder, index) => {
-    const indent = '  '.repeat(folder.depth || 0);
-    folderList += `${index + 1}. ${indent}${folder.title || 'Unnamed Folder'}\n`;
+  const count = selectedItems.size;
+  const destinationId = await pickFolderWithTree({
+    heading: `Move ${count} item${count === 1 ? '' : 's'} to`,
+    excluded
   });
+  if (!destinationId) return;
 
-  const selection = prompt(folderList + '\nEnter folder number:');
-  if (!selection) return;
-
-  const folderIndex = parseInt(selection) - 1;
-  if (isNaN(folderIndex) || folderIndex < 0 || folderIndex >= folders.length) {
-    alert('Invalid folder selection.');
-    return;
-  }
-
-  const destinationFolder = folders[folderIndex];
-
-  if (!confirm(`Move ${selectedItems.size} item(s) to "${destinationFolder.title}"?`)) {
-    return;
-  }
+  const destinationNode = findBookmarkById(bookmarkTree, destinationId);
+  const destinationFolder = {
+    id: destinationId,
+    title: (destinationNode && destinationNode.title) || 'Unnamed Folder'
+  };
 
   try {
+    /* [ZeroLabs] 2026-09-22 7:41 PM - added: drop selections contained by another selection */
+    // Same rule bulkDeleteItems already applies, and the move needs it more. A
+    // folder and a bookmark inside it can both be ticked, which the new
+    // select-all-in-folder button makes ordinary. Moving both would put the
+    // subfolder in the destination AND lift its bookmarks out of it, flattening
+    // the structure the user was moving.
+    const covered = new Set();
+    for (const id of selectedItems) {
+      try {
+        const [n] = await browser.bookmarks.getSubTree(id);
+        const walkCovered = (node) => (node.children || []).forEach(c => { covered.add(c.id); walkCovered(c); });
+        if (n) walkCovered(n);
+      } catch (error) { /* already gone; the loop below skips it */ }
+    }
+    const topLevelIds = Array.from(selectedItems).filter(id => !covered.has(id));
+
     // Move each selected item
-    for (const itemId of selectedItems) {
+    for (const itemId of topLevelIds) {
       // Get item details before moving
       const items = await browser.bookmarks.get(itemId);
       const item = items[0];
@@ -14424,9 +15372,47 @@ function setupEventListeners() {
       snippet_overwrite_held_items: []
     });
 
+    /* [ZeroLabs] 2026-09-22 6:54 PM - added: the apply runs in view, not behind a closed modal */
+    // The dialog used to close on click and the work ran with no indicator at
+    // all. An approved folder rename can carry thousands of bookmarks, and each
+    // one is a search, an update, a move and a storage write. The dialog stays
+    // open and becomes the progress surface, which also stops a second click
+    // starting the same work twice.
+    const startApplyProgress = () => {
+      dialog.innerHTML = `
+        <h2 style="margin: 0 0 16px 0; font-size: 18px; color: #ff9800; text-align: center;">Applying sync changes</h2>
+        <p id="heldApplyCount" style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600;"></p>
+        <p id="heldApplyPhase" style="margin: 0 0 16px 0; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #aaa);"></p>
+        <div style="height: 8px; border-radius: 999px; background: var(--md-sys-color-surface-variant, #2a2a2a); overflow: hidden;">
+          <div id="heldApplyBar" style="width: 0%; height: 100%; background: #f59e0b; transition: width 0.15s linear;"></div>
+        </div>
+      `;
+      const countLine = dialog.querySelector('#heldApplyCount');
+      const phaseLine = dialog.querySelector('#heldApplyPhase');
+      const bar = dialog.querySelector('#heldApplyBar');
+
+      return (done, total, phase) => {
+        countLine.textContent = total > 0 ? `${done} of ${total}` : 'Finishing';
+        phaseLine.textContent = phase;
+        bar.style.width = total > 0 ? `${Math.round((done / total) * 100)}%` : '100%';
+      };
+    };
+
     dialog.querySelector('#heldPushConfirm').addEventListener('click', async () => {
-      modal.remove();
       await clearHold();
+
+      const totalOps = fromDevice.length + overwrites.length;
+      const setProgress = startApplyProgress();
+      let done = 0;
+      setProgress(0, totalOps, 'Preparing the approved changes.');
+
+      /* [ZeroLabs] 2026-09-22 6:54 PM - added: one changelog entry for the whole apply */
+      // This used to write up to two entries per bookmark. MAX_CHANGELOG_ENTRIES
+      // is 1000, so approving a large sync rolled the entire event log off the
+      // end and took the fullData snapshots that make earlier deletions
+      // restorable with it. One entry now holds every operation and is
+      // restorable as a unit.
+      const syncOps = { removed: [], renamed: [], moved: [], prunedFolders: [] };
 
       /* [ZeroLabs] 2026-08-27 11:36 AM - added: apply the device-side removals too */
       // Deleting these locally is what makes the push carry the other device's
@@ -14442,11 +15428,14 @@ function setupEventListeners() {
               const fullData = JSON.parse(JSON.stringify(node));
               if (node.parentId) vacated.add(node.parentId);
               await browser.bookmarks.remove(node.id);
-              await addChangelogEntry('delete', 'bookmark', node.title || 'Untitled', node.url || null, { fullData });
+              /* [ZeroLabs] 2026-09-22 6:54 PM - edited: collected, not written per bookmark */
+              syncOps.removed.push({ title: node.title || 'Untitled', url: node.url || null, fullData });
             }
           } catch (error) {
             console.warn('[CloudSync] Could not remove locally:', item.url, error.message);
           }
+          done++;
+          setProgress(done, totalOps, 'Removing bookmarks from this device.');
         }
         await loadBookmarks();
         renderBookmarks();
@@ -14470,10 +15459,8 @@ function setupEventListeners() {
             const oldTitle = node.title;
             if (item.remoteTitle && node.title !== item.remoteTitle) {
               await browser.bookmarks.update(node.id, { title: item.remoteTitle });
-              await addChangelogEntry('update', 'bookmark', item.remoteTitle, item.url || null, {
-                oldTitle,
-                newTitle: item.remoteTitle
-              });
+              /* [ZeroLabs] 2026-09-22 6:54 PM - edited: collected, not written per bookmark */
+              syncOps.renamed.push({ url: item.url || null, oldTitle, newTitle: item.remoteTitle });
             }
 
             if (item.localPath !== item.remotePath && Array.isArray(item.remoteSegments)) {
@@ -14482,16 +15469,28 @@ function setupEventListeners() {
                 const parentId = await resolveOrCreateFolderUnder(rootId, item.remoteSegments);
                 // An approved move empties a folder just as a removal does
                 if (node.parentId && node.parentId !== parentId) vacated.add(node.parentId);
+                /* [ZeroLabs] 2026-09-22 6:54 PM - edited: record the parent id, not only the path */
+                // The move restore used to resolve a path string back to a
+                // folder. A bookmark title holding a slash makes that string
+                // ambiguous, while the id is exact for as long as the folder
+                // exists. The path is kept as the fallback and as what the user
+                // reads.
+                const fromParentId = node.parentId || null;
                 await browser.bookmarks.move(node.id, { parentId });
-                await addChangelogEntry('move', 'bookmark', item.remoteTitle || oldTitle, item.url || null, {
+                syncOps.moved.push({
+                  url: item.url || null,
+                  title: item.remoteTitle || oldTitle,
                   fromFolder: item.localPath,
-                  toFolder: item.remotePath
+                  toFolder: item.remotePath,
+                  fromParentId
                 });
               }
             }
           } catch (error) {
             console.warn('[CloudSync] Could not apply change to:', item.url, error.message);
           }
+          done++;
+          setProgress(done, totalOps, 'Renaming and moving bookmarks to match your cloud bookmarks.');
         }
         await loadBookmarks();
         renderBookmarks();
@@ -14501,17 +15500,37 @@ function setupEventListeners() {
       // Deferred to here rather than done inline, because a folder emptied by a
       // removal can be refilled by a move later in the same resolution.
       if (vacated.size > 0) {
+        setProgress(totalOps, totalOps, 'Removing folders left empty.');
         for (const parentId of vacated) {
-          await pruneEmptyFolderChain(parentId);
+          /* [ZeroLabs] 2026-09-22 6:54 PM - edited: the prune hands its folders back */
+          const pruned = await pruneEmptyFolderChain(parentId);
+          syncOps.prunedFolders.push(...pruned);
         }
         await loadBookmarks();
         renderBookmarks();
       }
 
-      await syncToSnippet(true);
-      await setSnippetNeedsReconcile(false);
-      /* [ZeroLabs] 2026-08-27 2:41 PM - edited: one result, not the push's pair */
-      showToast('Sync approved and applied.');
+      /* [ZeroLabs] 2026-09-22 6:54 PM - added: the whole apply is one event */
+      const appliedCount = syncOps.removed.length + syncOps.renamed.length +
+        syncOps.moved.length + syncOps.prunedFolders.length;
+      if (appliedCount > 0) {
+        await addChangelogEntry('sync-apply', 'sync', 'Approved sync changes', null, syncOps);
+      }
+
+      /* [ZeroLabs] 2026-09-22 6:54 PM - edited: the modal closes when the work ends */
+      // It used to close on the click. Now that it carries the progress, a throw
+      // would leave it on screen for ever, so both outcomes close it.
+      try {
+        setProgress(totalOps, totalOps, 'Saving to your cloud bookmarks.');
+        await syncToSnippet(true);
+        await setSnippetNeedsReconcile(false);
+        modal.remove();
+        /* [ZeroLabs] 2026-08-27 2:41 PM - edited: one result, not the push's pair */
+        showToast('Sync approved and applied.');
+      } catch (error) {
+        modal.remove();
+        showToast(`Sync failed: ${error.message}`, 'error');
+      }
     });
     dialog.querySelector('#heldPushLater').addEventListener('click', () => modal.remove());
   }
@@ -14608,10 +15627,13 @@ function setupEventListeners() {
       // Safe additions still land - they are never what the deferral is about.
       await bringSidesTogether(toAdd, true, false);
 
+      /* [ZeroLabs] 2026-09-22 6:54 PM - edited: store every item, cap only the display (see also: background.js) */
+      // The dialog renders 50 rows and an "and N more" line, so cutting the
+      // stored list at 200 only made the counts wrong and, on the approve path,
+      // dropped the work itself.
       const strip = (items) => items
         .filter(item => item.url)
-        .map(item => ({ url: item.url, title: item.title, path: item.path }))
-        .slice(0, 200);
+        .map(item => ({ url: item.url, title: item.title, path: item.path }));
 
       await safeStorage.set({
         snippet_push_held: true,
@@ -14620,10 +15642,10 @@ function setupEventListeners() {
         snippet_overwrite_held_items: [],
         /* [ZeroLabs] 2026-08-27 - added: report the safe additions too */
         snippet_added_here_items: toAdd.filter(i => i.url)
-          .map(i => ({ url: i.url, title: i.title, path: i.path })).slice(0, 200),
+          .map(i => ({ url: i.url, title: i.title, path: i.path })),
         snippet_pending_push_items: diff.removed
           .filter(item => item.url && createdHere.has(item.url))
-          .map(i => ({ url: i.url, title: i.title, path: i.path })).slice(0, 200)
+          .map(i => ({ url: i.url, title: i.title, path: i.path }))
       });
       await setSnippetNeedsReconcile(true);
       return { changed: true, deferred: true, consent: true, diff, remoteData };
@@ -14677,13 +15699,14 @@ function setupEventListeners() {
         snippet_push_held: true,
         snippet_push_held_items: [],
         snippet_pull_held_items: [],
-        snippet_overwrite_held_items: overwritesOnDevice.slice(0, 200),
+        /* [ZeroLabs] 2026-09-22 6:54 PM - edited: store every item, cap only the display */
+        snippet_overwrite_held_items: overwritesOnDevice,
         /* [ZeroLabs] 2026-08-27 - added: report the safe additions too */
         snippet_added_here_items: toAdd.filter(i => i.url)
-          .map(i => ({ url: i.url, title: i.title, path: i.path })).slice(0, 200),
+          .map(i => ({ url: i.url, title: i.title, path: i.path })),
         snippet_pending_push_items: diff.removed
           .filter(item => item.url && createdHere.has(item.url))
-          .map(i => ({ url: i.url, title: i.title, path: i.path })).slice(0, 200)
+          .map(i => ({ url: i.url, title: i.title, path: i.path }))
       });
       /* [ZeroLabs] 2026-08-27 - added: additions must not wait on a rename */
       // Without this, approving the rename pushed a tree that had never received
@@ -14737,7 +15760,9 @@ function setupEventListeners() {
       <label style="display: block; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #aaa); margin-bottom: 6px;">
         Save them to this folder instead:
       </label>
-      <select id="unplaceableFolder" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline, #444); background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface, #e0e0e0); font-size: 14px; margin-bottom: 12px;"></select>
+      <!-- [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list -->
+      <select id="unplaceableFolder" style="display: none;" aria-hidden="true"></select>
+      <div id="unplaceableFolderTree" class="folder-tree-picker" role="tree" aria-label="Destination folder" style="margin-bottom: 12px;"></div>
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <button id="unplaceableSave" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px; font-weight: 500;">
           Save them there and sync
@@ -14751,11 +15776,12 @@ function setupEventListeners() {
     modal.appendChild(dialog);
     document.body.appendChild(modal);
 
+    /* [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree */
+    // The tree never offers Root, so the option that used to be stripped out
+    // afterwards does not exist in the first place.
     const folderSelect = dialog.querySelector('#unplaceableFolder');
-    populateFolderDropdown(folderSelect, false);
-    // "Root" is not a real parent in Firefox's bookmark tree, so it is not offered
-    const rootOption = folderSelect.querySelector('option[value=""]');
-    if (rootOption) rootOption.remove();
+    const unplaceableTree = dialog.querySelector('#unplaceableFolderTree');
+    renderFolderTree(folderSelect, unplaceableTree);
 
     dialog.querySelector('#unplaceableSave').addEventListener('click', async () => {
       const parentId = folderSelect.value;
@@ -17439,14 +18465,137 @@ function setupEventListeners() {
   console.log('[Bookmark Sync] ✓ Real-time bidirectional sync enabled');
 
   // Multi-select toggle button
+  // Matches the bmzBulkBarOut animation in sidebar.html, so the bar retracts
+  // while the boxes are sliding away
+  const BULK_BAR_EXIT_MS = 220;
+
+  // .content carries padding: 6px, and the headroom is added on top of it
+  const LIST_BASE_PADDING_PX = 6;
+  let bulkBarHeadroom = 0;
+
+  function setBulkActionsBarVisible(visible) {
+    const bar = document.getElementById('bulkActionsBar');
+    if (!bar) return;
+
+    /* [ZeroLabs] 2026-09-22 11:30 PM - edited: flush against the GUI, out of the list's way */
+    // Both halves at once. It is pinned to the BOTTOM EDGE OF THE GUI above it,
+    // so it continues that stack with no gap and reads as part of it. Pinning
+    // to the list's top edge instead left the list's own 6px of padding showing
+    // above the bar, which is the gap that made it look like a separate island.
+    //
+    // It is out of the flow, so the list keeps its size and position and no row
+    // moves. The bar covers the first row or so while it is open.
+    if (bar.nextElementSibling !== bookmarkList) {
+      bookmarkList.before(bar);
+    }
+
+    if (!visible) {
+      /* [ZeroLabs] 2026-09-23 12:24 AM - edited: let it retract before it disappears */
+      // It slides back up under the GUI, and only then is it hidden and its
+      // inline styles cleared. Hiding first would delete it mid-travel.
+      if (bar.classList.contains('hidden')) return;
+
+      /* [ZeroLabs] 2026-09-23 12:34 AM - added: give the headroom back the same way */
+      // Taken away and the scroll pulled back by the same amount, so again
+      // nothing on screen moves.
+      if (bulkBarHeadroom > 0) {
+        bookmarkList.style.paddingTop = '';
+        bookmarkList.scrollTo({
+          top: Math.max(0, bookmarkList.scrollTop - bulkBarHeadroom),
+          behavior: 'instant'
+        });
+        bulkBarHeadroom = 0;
+      }
+
+      bar.classList.remove('bmz-bar-in');
+      bar.classList.add('bmz-bar-out');
+
+      setTimeout(() => {
+        bar.classList.add('hidden');
+        bar.classList.remove('bmz-bar-out');
+        bar.style.position = '';
+        bar.style.left = '';
+        bar.style.right = '';
+        bar.style.top = '';
+        bar.style.bottom = '';
+        bar.style.zIndex = '';
+        bar.style.background = '';
+        bar.style.borderRadius = '';
+        bar.style.boxShadow = '';
+      }, BULK_BAR_EXIT_MS);
+      return;
+    }
+
+    // The nearest thing above it that is actually on screen. The filter and
+    // display bars collapse to nothing when closed, so they have to be skipped.
+    let anchorBottom = bookmarkList.getBoundingClientRect().top;
+    let previous = bar.previousElementSibling;
+    while (previous) {
+      const rect = previous.getBoundingClientRect();
+      if (rect.height > 0) {
+        anchorBottom = rect.bottom;
+        break;
+      }
+      previous = previous.previousElementSibling;
+    }
+
+    /* [ZeroLabs] 2026-09-23 12:16 AM - edited: back to the top, which read better */
+    // Hangs from the bottom edge of the GUI above it, wears the theme surface,
+    // rounds its bottom corners and throws its shadow down over the list. Out
+    // of the flow, so the list keeps its size and no bookmark moves.
+    bar.style.position = 'fixed';
+    bar.style.left = '0';
+    bar.style.right = '0';
+    bar.style.top = `${Math.round(anchorBottom)}px`;
+    bar.style.bottom = 'auto';
+    bar.style.zIndex = '40';
+    bar.style.background = 'var(--md-sys-color-surface)';
+    bar.style.borderRadius = '0 0 14px 14px';
+    bar.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.35)';
+
+    /* [ZeroLabs] 2026-09-23 12:24 AM - added: play the slide every time it opens */
+    // The class is removed first, so re-opening restarts the animation instead
+    // of finding it already applied and doing nothing.
+    bar.classList.remove('bmz-bar-out', 'bmz-bar-in');
+    bar.classList.remove('hidden');
+    void bar.offsetWidth;
+    bar.classList.add('bmz-bar-in');
+
+    /* [ZeroLabs] 2026-09-23 12:34 AM - added: headroom above the first bookmark */
+    // The bar floats over the top of the list, so the first item would sit
+    // under it with no way to reach it. The list gains padding at the top equal
+    // to the bar's height, which makes that headroom exist at the very top of
+    // the scroll.
+    //
+    // The scroll is advanced by the same amount in the same breath, so what is
+    // on screen does not move. The headroom is only found by scrolling up to
+    // it, which is the point.
+    const headroom = Math.round(bar.getBoundingClientRect().height);
+    if (headroom > 0) {
+      bulkBarHeadroom = headroom;
+      bookmarkList.style.paddingTop = `${LIST_BASE_PADDING_PX + headroom}px`;
+      bookmarkList.scrollTo({
+        top: bookmarkList.scrollTop + headroom,
+        behavior: 'instant'
+      });
+    }
+  }
+
+  // Matches the bmzCheckboxOut animation in sidebar.html
+  const CHECKBOX_EXIT_MS = 220;
+
   const multiSelectToggle = document.getElementById('multiSelectToggle');
   multiSelectToggle.addEventListener('click', () => {
     multiSelectMode = !multiSelectMode;
 
     // Toggle button appearance and ARIA state
     if (multiSelectMode) {
-      multiSelectToggle.style.background = 'var(--md-sys-color-primary)';
-      multiSelectToggle.style.color = 'var(--md-sys-color-on-primary)';
+      /* [ZeroLabs] 2026-09-23 3:10 PM - edited: red, because this button is the only way out */
+      // The lit-up primary colour read as decoration. This button is the ONLY
+      // way to leave multi-select, so it wears the same red as Delete while the
+      // mode is on, which reads as a state to be ended.
+      multiSelectToggle.style.background = 'var(--md-sys-color-error)';
+      multiSelectToggle.style.color = '#ffffff';
       multiSelectToggle.setAttribute('aria-pressed', 'true');
     } else {
       multiSelectToggle.style.background = '';
@@ -17456,11 +18605,25 @@ function setupEventListeners() {
     }
 
     // Show/hide bulk actions bar
-    const bulkActionsBar = document.getElementById('bulkActionsBar');
-    bulkActionsBar.classList.toggle('hidden', !multiSelectMode);
+    setBulkActionsBarVisible(multiSelectMode);
 
-    // Re-render to show/hide checkboxes
-    renderBookmarks();
+    /* [ZeroLabs] 2026-09-22 11:18 PM - edited: let the boxes leave before the rows lose them */
+    // Turning the mode off re-renders the rows without their checkboxes, which
+    // would delete them mid-frame and there would be nothing to animate. The
+    // boxes are tagged, they slide out to the left, and the re-render happens
+    // when they are gone. Turning the mode on needs none of this: the checkbox
+    // animates itself in as the row that holds it is created.
+    const leaving = multiSelectMode
+      ? []
+      : Array.from(bookmarkList.querySelectorAll('.item-checkbox'));
+
+    if (leaving.length === 0) {
+      renderBookmarks();
+      return;
+    }
+
+    leaving.forEach(box => box.classList.add('item-checkbox-leaving'));
+    setTimeout(() => renderBookmarks(), CHECKBOX_EXIT_MS);
   });
 
   // Long-press to enter multi-select mode
@@ -17470,23 +18633,46 @@ function setupEventListeners() {
   const LONG_PRESS_MS = 750;
   const LONG_PRESS_DRIFT_PX = 8;
 
+  /* [ZeroLabs] 2026-09-22 7:17 PM - added: which input raised the gesture (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js, Bookmark-Manager-Zero-Website/js/sidebar-adapted.js) */
+  // A pen counts as touch, by decision: it is held against the screen the same
+  // way. Capture phase, so nothing that stops propagation can hide it.
+  let lastPointerType = 'mouse';
+  document.addEventListener('pointerdown', (e) => {
+    lastPointerType = e.pointerType || 'mouse';
+  }, true);
+  window.isTouchPointer = () => lastPointerType === 'touch' || lastPointerType === 'pen';
+
+  /* [ZeroLabs] 2026-09-22 7:17 PM - edited: select first, render second */
+  // The checkbox is drawn from selectedItems, so adding to it after the render
+  // left the pressed item unticked while the count said one. The tick was being
+  // set on the element captured before the render, which the rebuild had
+  // already detached. When multi-select is already on there is no render, so
+  // that path still ticks the live checkbox itself.
   function enterMultiSelectFromLongPress(itemEl) {
+    const container = itemEl.closest('.bookmark-item, .folder-item');
+    const id = container && container.dataset.id;
+    if (id) selectedItems.add(id);
+
     if (!multiSelectMode) {
       multiSelectMode = true;
-      multiSelectToggle.style.background = 'var(--md-sys-color-primary)';
-      multiSelectToggle.style.color = 'var(--md-sys-color-on-primary)';
+      /* [ZeroLabs] 2026-09-23 3:10 PM - edited: same red as the toggle handler uses */
+      multiSelectToggle.style.background = 'var(--md-sys-color-error)';
+      multiSelectToggle.style.color = '#ffffff';
       multiSelectToggle.setAttribute('aria-pressed', 'true');
-      document.getElementById('bulkActionsBar').classList.remove('hidden');
+      setBulkActionsBarVisible(true);
       renderBookmarks();
-    }
-    const container = itemEl.closest('.bookmark-item, .folder-item');
-    if (container && container.dataset.id) {
-      selectedItems.add(container.dataset.id);
+    } else if (container) {
       const checkbox = container.querySelector('.item-checkbox');
       if (checkbox) checkbox.checked = true;
-      updateSelectedCount();
     }
+
+    if (id) updateSelectedCount();
   }
+
+  /* [ZeroLabs] 2026-09-22 7:17 PM - added: the row handlers reach this through window */
+  // The row renderers are OUTSIDE setupEventListeners, so a direct call from
+  // them would be a ReferenceError. Same scope trap as showHeldPushDialog.
+  window.enterMultiSelectFromLongPress = enterMultiSelectFromLongPress;
 
   bookmarkList.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
