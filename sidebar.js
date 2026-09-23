@@ -5159,7 +5159,10 @@ async function loadBookmarks() {
 
     // Firefox bookmark tree structure: [root] where root.children contains the bookmark folders
     if (firefoxTree && firefoxTree[0] && firefoxTree[0].children) {
-      bookmarkTree = firefoxTree[0].children;
+      /* [ZeroLabs] 2026-09-24 6:30 AM - edited: the fullest root folder is shown first */
+      // Display only. The root folders are shown most bookmarks first, and
+      // everything inside them keeps its own order.
+      bookmarkTree = sortRootsByBookmarkCount(firefoxTree[0].children);
       console.log('[loadBookmarks] Loaded native Firefox bookmarks:', bookmarkTree.length, 'root folders');
     } else {
       // Fallback to empty tree
@@ -10249,6 +10252,21 @@ function countBookmarks(folder) {
   }, 0);
 }
 
+/* [ZeroLabs] 2026-09-24 6:30 AM - added: order the root folders by how full they are */
+// Returns a NEW array of the root folders, most bookmarks first, counting
+// everything inside their subfolders. Equal counts keep the browser's own
+// order. Only the order of the roots changes; their contents are untouched.
+function sortRootsByBookmarkCount(roots) {
+  return roots
+    .map((node, index) => ({ node, index, count: countBookmarks(node) }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.index - b.index;
+    })
+    .map(entry => entry.node);
+}
+
+
 // Get all folders recursively (unified implementation)
 function getAllFolders(nodes, depth = 0, folders = []) {
   nodes.forEach(node => {
@@ -14302,8 +14320,7 @@ function setupEventListeners() {
     // merge can never publish a new order. Items only this device holds keep
     // their places.
     try {
-      const freshTree = await browser.bookmarks.getTree();
-      const moved = await applySnippetOrder(remoteAsFirefox[0], freshTree[0]);
+      const moved = await applySnippetOrder(remoteData);
       if (moved > 0) console.log(`[Setup] Put ${moved} merged item(s) into the cloud's order`);
     } catch (error) {
       console.warn('[Setup] Could not apply the cloud order after merging:', error.message);
@@ -16145,12 +16162,23 @@ function setupEventListeners() {
     return moves;
   }
 
+  /* [ZeroLabs] 2026-09-24 6:55 AM - fixed: start inside each root, not above them (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // This walked the Firefox-shaped copy of the cloud from ITS top node, so the
+  // first thing it did was try to put Firefox's four root folders into the
+  // copy's order (toolbar, menu, other, mobile) against Firefox's own (menu,
+  // toolbar, other, mobile). Firefox refuses to move a root folder, so that
+  // threw, and the sync button and the merge never ordered anything. It also
+  // matched the roots by display title, which differs in another language.
+  //
+  // Now each root of the cloud file is mapped to its Firefox root by key with
+  // firefoxRootForSnippetKey, the way the background script already does it.
+  // The root folders themselves are never moved.
   /**
-   * Walk the snippet's tree and put every folder that differs into its order.
+   * Walk the cloud file and put every Firefox folder that differs into its order.
    *
    * @returns {Promise<number>} how many items moved in total
    */
-  async function applySnippetOrder(remoteRootNode, localRootNode) {
+  async function applySnippetOrder(remoteData) {
     let moved = 0;
 
     const walk = async (remoteNode, localNode) => {
@@ -16179,7 +16207,14 @@ function setupEventListeners() {
       }
     };
 
-    await walk(remoteRootNode, localRootNode);
+    const remoteRoots = (remoteData && remoteData.roots) || {};
+    for (const key of Object.keys(remoteRoots)) {
+      const localId = firefoxRootForSnippetKey(key);
+      if (!localId) continue;
+      const [localNode] = await browser.bookmarks.getSubTree(localId);
+      await walk(remoteRoots[key], localNode);
+    }
+
     return moved;
   }
 
@@ -16273,7 +16308,7 @@ function setupEventListeners() {
           publishOrder = true;
           console.log('[CloudSync] This device reordered, publishing its order');
         } else {
-          const moved = await applySnippetOrder(remoteAsFirefox[0], localTree[0]);
+          const moved = await applySnippetOrder(remoteData);
           if (moved > 0) {
             console.log(`[CloudSync] Took the cloud order for ${moved} item(s)`);
             await loadBookmarks();
