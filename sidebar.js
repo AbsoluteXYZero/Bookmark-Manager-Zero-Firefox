@@ -14371,6 +14371,48 @@ function setupEventListeners() {
     return parsed;
   }
 
+  /* [ZeroLabs] 2026-09-24 3:00 AM - added: are the two sides already the same */
+  // When this device and the repository hold exactly the same bookmarks, the
+  // three-way question has no answer worth asking: merging, keeping the cloud and
+  // keeping this device all end in the same place. So the connect skips it.
+  //
+  // "The same" means every bookmark matches on URL, title and folder, with the
+  // same number of copies of each. Titles are compared trimmed, as everywhere
+  // else in sync, because a browser keeps a trailing space an HTML round trip
+  // drops. Order inside a folder is NOT compared: it syncs separately, and the
+  // repository's order is taken on the next sync.
+  function snippetsMatch(localData, remoteData) {
+    const countEntries = (data) => {
+      const counts = new Map();
+      const walk = (node, rootKey, segments) => {
+        if (!node) return;
+        if (node.url) {
+          const key = [rootKey, segments.join('/'), String(node.title || '').trim(), node.url].join('\u0000');
+          counts.set(key, (counts.get(key) || 0) + 1);
+          return;
+        }
+        (node.children || []).forEach(child => {
+          const nextSegments = child.url
+            ? segments
+            : segments.concat(String(child.title || child.name || '').trim());
+          walk(child, rootKey, nextSegments);
+        });
+      };
+      Object.keys((data && data.roots) || {}).forEach(rootKey => {
+        walk(data.roots[rootKey], rootKey, []);
+      });
+      return counts;
+    };
+
+    const local = countEntries(localData);
+    const remote = countEntries(remoteData);
+    if (local.size !== remote.size) return false;
+    for (const [key, count] of local) {
+      if (remote.get(key) !== count) return false;
+    }
+    return true;
+  }
+
   /* [ZeroLabs] 2026-09-23 11:55 PM - added: connect, keeping the cloud's bookmarks */
   // applyRemoteChangesToFirefox asks twice, saves a restorable snapshot to the
   // Event Log, and only then replaces. It runs BEFORE the repository is adopted,
@@ -15064,6 +15106,9 @@ function setupEventListeners() {
           //
           // The right answer is almost always the join option, so it is named.
           // One extra read on a path taken once is worth not overwriting a library.
+          /* [ZeroLabs] 2026-09-24 3:00 AM - added: set below when both sides already match */
+          let joinInstead = false;
+
           /* [ZeroLabs] 2026-09-23 11:55 PM - edited: a repository with bookmarks gets a real choice */
           // This probe used to run only for the empty-repository option, and its
           // one answer to "that repository already has bookmarks" was a confirm
@@ -15095,10 +15140,21 @@ function setupEventListeners() {
               // genuinely want bookmarks living beside other files.
               if (alreadyHasBookmarks) {
                 const remoteData = await readProjectBookmarks(ref);
-                button.disabled = false;
-                button.textContent = original;
-                renderExistingRepoChoice(ref, remoteData);
-                return;
+
+                /* [ZeroLabs] 2026-09-24 3:00 AM - added: nothing to choose when both sides match */
+                // Identical bookmarks on both sides make all three answers the
+                // same, so connect straight away with the merge, which writes
+                // nothing new to either side.
+                const localAsSnippet = await firefoxBookmarksToSnippetFormat(await browser.bookmarks.getTree());
+                if (snippetsMatch(localAsSnippet, remoteData)) {
+                  console.log('[Setup] This device and the repository already match, connecting without asking');
+                  joinInstead = true;
+                } else {
+                  button.disabled = false;
+                  button.textContent = original;
+                  renderExistingRepoChoice(ref, remoteData);
+                  return;
+                }
               } else if (mode !== 'join' && otherContent.length > 0) {
                 // Naming a couple of them is what makes the repository recognisable.
                 // A README on its own never reaches here: BMZ creates repositories
@@ -15126,7 +15182,7 @@ function setupEventListeners() {
           // the user pressing Cancel on a warning.
           const endProgress = beginSetupProgress();
           try {
-            if (mode === 'join') {
+            if (mode === 'join' || joinInstead) {
               await joinProjectStore(ref);
             } else {
               await useProjectStore(ref);
