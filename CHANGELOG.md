@@ -15,12 +15,20 @@
 - **The folder tree shows each folder's icon and its bookmark count** - A folder picker listed bare names. Every folder now carries the same icon the sidebar draws, with the same number inside it, counting everything in that folder including its subfolders.
 - **The multi-select button turns red while multi-select is on** - It lit up in the theme colour, which read as decoration rather than as a state. That button is the only way to leave the mode, so it now wears the same red as Delete until you press it again.
 - **Announcements are published instead of built in** - The "What's New as of Aug 27" card is gone. Update messages now arrive as a message from BMZ, which means a new one no longer has to wait for a new release, and it is kept in the Event Log so a message you missed is still there.
+- **Folder order now syncs** - Rearranging bookmarks or folders stayed on the device you did it on. The order inside each folder now travels too, and the device that changed it last decides it for everyone.
+- **Connecting to a repository that already has bookmarks asks what to keep** - It used to merge, or hide the option to overwrite the cloud behind a warning. Now you choose between merging both, replacing this device's bookmarks with the cloud's, and replacing the cloud's with this device's, each shown with its real bookmark counts. When both sides already hold the same bookmarks, it connects without asking.
+- **Connecting shows what it is doing** - The button used to say only "Connecting..." while thousands of bookmarks were being brought across. Each step is now named, and the long ones count as they go.
+- **The fullest root folder is shown first** - The top-level folders are listed by how many bookmarks each holds, most first. Everything inside them keeps its own order, and nothing that is saved or synced changes.
+- **Update messages arrive as one** - The newest message is shown, with every earlier one behind a collapsed row you can open, instead of one message after another. They can hold bullet lists, and a message about a release only appears once your copy of BMZ runs that release.
 
 **Bug Fixes:**
 - **Large changes are no longer partly dropped** - Anything needing approval was cut to the first 200 items. Renaming a folder holding more than that moved 200 bookmarks, left the rest behind, and then pushed the leftovers back under the old name, splitting the folder across both names on every device.
 - **Renaming a folder now reaches your other devices** - A folder rename was never recorded as a change made by this device, so the next sync read it as something another device had done and offered to undo it. The rename never travelled.
 - **Moving a selection no longer flattens a folder** - Selecting a folder together with bookmarks inside it and moving them put the folder in the destination and lifted its contents out of it. Anything already inside something else in the selection is now left alone and travels with its folder.
 - **Deleting or moving thousands of items no longer loses track of who did it** - The record of this device's own changes was capped, and a big folder could overflow it. Once an entry was pushed out, the next sync treated your own deletion as someone else's addition and put it back.
+- **A merge no longer scrambles the order of your folders** - Bringing cloud bookmarks into a device created them in the wrong sequence, so folders could end up below loose bookmarks, and the merge then wrote that order back to the cloud. New items now go exactly where the cloud has them.
+- **A renamed folder keeps its place on your other devices** - It used to move to the bottom of its parent everywhere except the device where it was renamed.
+- **Connecting a device no longer creates duplicate bookmarks** - A bookmark held on both sides with a small difference, such as a trailing space, a renamed title or another folder, was copied in a second time.
 
 ---
 

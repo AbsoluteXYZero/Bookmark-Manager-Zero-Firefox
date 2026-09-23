@@ -16387,6 +16387,24 @@ function setupEventListeners() {
     /* [ZeroLabs] 2026-09-23 10:50 PM - edited: one filter, shared with the join (see safeAdditionsFromDiff) */
     const toAdd = safeAdditionsFromDiff(diff, deletedHere);
 
+    /* [ZeroLabs] 2026-09-24 7:20 AM - added: new cloud items go where the cloud has them (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+    // bringSidesTogether adds every created item at the end of its folder. The
+    // order step at the top of this function ran before these items existed,
+    // so it could not place them, and the push that follows would publish them
+    // at the bottom. Every other device then took that order - the same fault
+    // as the merge, on the sync button's path. Called after each creation
+    // below, before anything is pushed. Skipped when this device reordered
+    // something itself, because then its own order is the newer one.
+    const placeCreatedInCloudOrder = async () => {
+      if (publishOrder || toAdd.length === 0) return;
+      try {
+        const moved = await applySnippetOrder(remoteData);
+        if (moved > 0) console.log(`[CloudSync] Put ${moved} new item(s) into the cloud's order`);
+      } catch (error) {
+        console.warn('[CloudSync] Could not place new items in the cloud order:', error.message);
+      }
+    };
+
     /* [ZeroLabs] 2026-08-27 - edited: removals use the consent dialog, like everywhere else */
     // This used to hand the raw diff back, and the caller showed the diff dialog:
     // "2 item(s) only in the cloud", with a Merge button. That is the same fact
@@ -16397,6 +16415,7 @@ function setupEventListeners() {
     if (removesFromSnippet.length > 0 || removesFromDevice.length > 0) {
       // Safe additions still land - they are never what the deferral is about.
       await bringSidesTogether(toAdd, true, false);
+      await placeCreatedInCloudOrder();
 
       /* [ZeroLabs] 2026-09-22 6:54 PM - edited: store every item, cap only the display (see also: background.js) */
       // The dialog renders 50 rows and an "and N more" line, so cutting the
@@ -16484,12 +16503,18 @@ function setupEventListeners() {
       // the snippet's new bookmarks, deleting them from the snippet. Created but
       // deliberately not pushed - the rename is still unresolved.
       await bringSidesTogether(toAdd, true, false);
+      await placeCreatedInCloudOrder();
 
       await setSnippetNeedsReconcile(true);
       return { changed: true, deferred: true, consent: true, diff, remoteData };
     }
 
-    await bringSidesTogether(toAdd, true);
+    /* [ZeroLabs] 2026-09-24 7:20 AM - edited: create, place, then push */
+    // bringSidesTogether used to push itself. It now only creates, so the new
+    // items can be put into the cloud order before this device publishes.
+    await bringSidesTogether(toAdd, true, false);
+    await placeCreatedInCloudOrder();
+    await syncToSnippet(true);
 
     return {
       changed: true,
@@ -17186,7 +17211,20 @@ function setupEventListeners() {
       // different title or folder, so merging created a second copy of each.
       const stored = await safeStorage.get('snippet_local_deleted');
       const deletedHere = new Set(stored.snippet_local_deleted || []);
-      await bringSidesTogether(safeAdditionsFromDiff(diff, deletedHere));
+
+      /* [ZeroLabs] 2026-09-24 8:05 AM - fixed: create, place in the cloud's order, then push */
+      // bringSidesTogether used to push straight after creating, and it adds
+      // every created item at the end of its folder, so this button published
+      // that order to every device - the same fault as the merge and the sync
+      // button. It now only creates; the new items are put where the cloud has
+      // them; then this device pushes.
+      await bringSidesTogether(safeAdditionsFromDiff(diff, deletedHere), false, false);
+      try {
+        await applySnippetOrder(remoteSnippetData);
+      } catch (error) {
+        console.warn('[CloudSync] Could not place merged items in the cloud order:', error.message);
+      }
+      await syncToSnippet(true);
       });
     }
 
