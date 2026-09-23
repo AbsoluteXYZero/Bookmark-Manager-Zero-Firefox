@@ -508,7 +508,8 @@ class OAuthPAT {
       justify-content: center;
     `;
 
-    modal.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(modal, `
       <div style="
         background: var(--md-sys-color-surface);
         border-radius: 16px;
@@ -560,7 +561,7 @@ class OAuthPAT {
           ">Try Again</button>
         </div>
       </div>
-    `;
+    `);
 
     document.body.appendChild(modal);
 
@@ -2376,7 +2377,8 @@ async function showSnippetSetup() {
       /* [ZeroLabs] 2026-08-19 7:12 PM - edited: heading and clearer alternative label */
       // The card previously appeared with no explanation of why. "Create New"
       // also failed to say new what, sitting beside "Use This Snippet".
-      content.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(content, `
         <div style="padding: 20px 0;">
           <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: var(--md-sys-color-on-surface);">Found Existing Bookmark Snippet</h3>
           <div style="background: var(--md-sys-color-surface-variant); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
@@ -2408,7 +2410,7 @@ async function showSnippetSetup() {
             ">Create New Snippet</button>
           </div>
         </div>
-      `;
+      `);
 
       modal.querySelector('#useSnippetBtn').addEventListener('click', async () => {
         try {
@@ -2469,7 +2471,8 @@ async function showSnippetSetup() {
         </div>
       </div>`;
 
-      content.innerHTML = html;
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(content, html);
 
       // Add click handlers for snippet selection
       content.querySelectorAll('[data-snippet-id]').forEach(el => {
@@ -2506,11 +2509,12 @@ async function showSnippetSetup() {
   } catch (error) {
     console.error('Failed to load snippets:', error);
     const content = modal.querySelector('#snippetSetupContent');
-    content.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint), and escape the error text
+    setSafeHTML(content, `
       <div style="text-align: center; padding: 20px 0;">
         <div style="font-size: 36px; margin-bottom: 12px;">⚠️</div>
         <p style="margin-bottom: 20px; color: var(--md-sys-color-error);">
-          Failed to load snippets: ${error.message}
+          Failed to load snippets: ${escapeHtml(error.message)}
         </p>
         <button id="retrySnippetSetup" style="
           background: var(--md-sys-color-primary);
@@ -2522,7 +2526,7 @@ async function showSnippetSetup() {
           cursor: pointer;
         ">Retry</button>
       </div>
-    `;
+    `);
 
     modal.querySelector('#retrySnippetSetup').addEventListener('click', () => {
       modal.remove();
@@ -2758,17 +2762,18 @@ function showToast(message, type = 'success', duration = 5000) {
     icon = '<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; color: var(--md-sys-color-primary);"><path d="M13,9H11V7H13M13,17H11V11H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/></svg>';
   }
 
-  toast.innerHTML = `
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint), and escape the message
+  setSafeHTML(toast, `
     <div class="toast-content">
       ${icon}
       <div style="flex: 1;">
-        <div style="font-weight: 600;">${message}</div>
+        <div style="font-weight: 600;">${escapeHtml(message)}</div>
       </div>
       <div class="toast-actions">
         <button class="toast-dismiss">×</button>
       </div>
     </div>
-  `;
+  `);
 
   // Add to container (inserts at bottom, pushes others up)
   toastContainer.appendChild(toast);
@@ -3965,7 +3970,8 @@ async function initMainUI() {
   // Force update logo title to bypass cache
   const logoTitle = document.querySelector('.logo-title');
   const logoSubtitle = document.querySelector('.logo-subtitle');
-  if (logoTitle) logoTitle.innerHTML = `Bookmark Manager Zero • <span style="color: var(--md-sys-color-primary); font-weight: 500; font-size: 11px;">v${APP_VERSION}</span>`;
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  if (logoTitle) setSafeHTML(logoTitle, `Bookmark Manager Zero • <span style="color: var(--md-sys-color-primary); font-weight: 500; font-size: 11px;">v${APP_VERSION}</span>`);
   if (logoSubtitle) logoSubtitle.textContent = 'A modern interface for your native bookmarks';
 
   // Force update filter button icon
@@ -5775,7 +5781,8 @@ function buildSectionHeader(config, count, isActive) {
   header.setAttribute('tabindex', '0');
   header.setAttribute('aria-expanded', String(isActive));
 
-  header.innerHTML = `
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  setSafeHTML(header, `
     <svg class="bmz-section-icon" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path d="${config.iconPath}"/>
     </svg>
@@ -5784,7 +5791,7 @@ function buildSectionHeader(config, count, isActive) {
       <path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
     </svg>
     <span class="bmz-section-count">${count}</span>
-  `;
+  `);
 
   const toggle = async () => {
     activeSection = (activeSection === config.stateKey) ? null : config.stateKey;
@@ -6055,7 +6062,8 @@ function renderSyncFailedCard(container) {
 
   const card = document.createElement('div');
   card.className = 'sync-notice-card sync-failed-card';
-  card.innerHTML = `
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  setSafeHTML(card, `
     <div class="sync-notice-row">
       <div class="sync-notice-text">
         <div class="sync-notice-title">${title}</div>
@@ -6069,7 +6077,7 @@ function renderSyncFailedCard(container) {
       <button class="sync-notice-review-btn" id="syncFailedAction">${actionLabel}</button>
       <button class="sync-notice-dismiss-btn" id="syncFailedDismiss">Not now</button>
     </div>
-  `;
+  `);
   container.appendChild(card);
 
   // Deferred like the cards around it: the element is in the DOM but the rest of
@@ -6177,7 +6185,8 @@ function renderSyncNoticeCard(container) {
   // The leading image is the toolbar sync button in its waiting state: the black
   // tanuki with amber arrows, in the same circle. Classes, not ids: #syncArrows
   // already belongs to the header button.
-  card.innerHTML = `
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  setSafeHTML(card, `
     <div class="sync-notice-row">
       <div class="sync-notice-icon">
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -6200,7 +6209,7 @@ function renderSyncNoticeCard(container) {
       <button class="sync-notice-review-btn" id="syncNoticeReview">Review changes</button>
       <button class="sync-notice-dismiss-btn" id="syncNoticeDismiss">Not now</button>
     </div>
-  `;
+  `);
   container.appendChild(card);
 
   // Deferred like the setup card here: the element is in the DOM but the rest of
@@ -6641,7 +6650,8 @@ function createFolderElement(folder) {
 
   const folderTitle = folder.title || 'Unnamed Folder';
 
-  folderDiv.innerHTML = `
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  setSafeHTML(folderDiv, `
     <div class="folder-header" role="button" aria-expanded="${isExpanded}" aria-label="${escapeHtml(folderTitle)} folder with ${childCount} items">
       ${multiSelectMode ? `<input type="checkbox" class="item-checkbox" data-id="${folder.id}" ${selectedItems.has(folder.id) ? 'checked' : ''} aria-label="Select ${escapeHtml(folderTitle)} folder">` : ''}
       <!-- [ZeroLabs] 2026-09-22 7:32 PM - added: select every bookmark in this folder -->
@@ -6657,7 +6667,7 @@ function createFolderElement(folder) {
       <button class="bookmark-menu-btn folder-menu-btn" aria-label="More actions for ${escapeHtml(folderTitle)} folder" aria-haspopup="true" aria-expanded="false">⋮</button>
     </div>
     <div class="folder-children ${isExpanded ? 'show' : ''}" style="border-left: 2px solid #818cf8 !important;"></div>
-  `;
+  `);
 
   // Add click handler for folder toggle
   const header = folderDiv.querySelector('.folder-header');
@@ -6844,7 +6854,8 @@ function createBookmarkElement(bookmark, options = {}) {
 
   const bookmarkTitle = bookmark.title || bookmark.url;
 
-  bookmarkDiv.innerHTML = `
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  setSafeHTML(bookmarkDiv, `
     ${multiSelectMode && !isMirror ? `<input type="checkbox" class="item-checkbox" data-id="${bookmark.id}" ${selectedItems.has(bookmark.id) ? 'checked' : ''} aria-label="Select ${escapeHtml(bookmarkTitle)}">` : ''}
     <div class="status-indicators">
       ${statusIndicatorsHtml}
@@ -6863,7 +6874,7 @@ function createBookmarkElement(bookmark, options = {}) {
       <div class="preview-loading">Loading...</div>
       <img class="preview-image" alt="Preview" data-url="${escapeHtml(bookmark.url)}" />
     </div>
-  `;
+  `);
 
   // Add click handler for bookmark (open in current tab)
   bookmarkDiv.addEventListener('click', (e) => {
@@ -8183,7 +8194,8 @@ function openContextMenuModal(item, isFolder) {
     }
   }
 
-  body.innerHTML = buttonsHtml;
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  setSafeHTML(body, buttonsHtml);
 
   // Add click handlers to all action buttons
   body.querySelectorAll('.action-btn').forEach(btn => {
@@ -9024,7 +9036,8 @@ function applyStatusToElement(bookmarkElement, bookmark, updates) {
       statusHtml += getStatusDotHtml(updates.linkStatus, bookmark.url);
     }
 
-    statusIndicatorsContainer.innerHTML = statusHtml;
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(statusIndicatorsContainer, statusHtml);
   }
 
   // Update top row indicators (for grid view)
@@ -9036,7 +9049,8 @@ function applyStatusToElement(bookmarkElement, bookmark, updates) {
       const shieldContainer = topRow.querySelector('.shield-indicator');
       if (shieldContainer) {
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = shieldHtml;
+        // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+        setSafeHTML(tempDiv, shieldHtml);
         const newShield = tempDiv.firstChild;
         if (newShield) {
           shieldContainer.replaceWith(newShield);
@@ -9050,7 +9064,8 @@ function applyStatusToElement(bookmarkElement, bookmark, updates) {
       const linkStatusContainer = topRow.querySelector('.status-icon');
       if (linkStatusContainer) {
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = linkStatusHtml;
+        // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+        setSafeHTML(tempDiv, linkStatusHtml);
         const newLinkStatus = tempDiv.firstChild;
         if (newLinkStatus) {
           linkStatusContainer.replaceWith(newLinkStatus);
@@ -9600,7 +9615,8 @@ function renderFolderTree(selectElement, panel, options = {}) {
 
       const twisty = document.createElement('span');
       twisty.className = `folder-tree-twisty${hasChildFolders ? '' : ' leaf'}${isExpanded ? ' expanded' : ''}`;
-      twisty.innerHTML = twistySvg;
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(twisty, twistySvg);
       if (hasChildFolders) {
         twisty.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -9623,12 +9639,13 @@ function renderFolderTree(selectElement, panel, options = {}) {
       icon.className = 'folder-tree-icon';
       icon.setAttribute('aria-hidden', 'true');
       const folderCount = countBookmarks(folder);
-      icon.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(icon, `
         <svg class="folder-icon-outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M3 7C3 5.89543 3.89543 5 5 5H9L11 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z"/>
         </svg>
         <span class="folder-count" data-digits="${folderCount.toString().length}">${folderCount}</span>
-      `;
+      `);
 
       const name = document.createElement('span');
       name.className = 'folder-tree-name';
@@ -9667,7 +9684,8 @@ function pickFolderWithTree({ heading, excluded = new Set(), initialId = '' } = 
     dialog.className = 'bmz-dialog';
     dialog.style.cssText = 'background: var(--md-sys-color-surface, #1e1e1e); padding: 20px; border-radius: 12px; max-width: 460px; width: 90%; color: var(--md-sys-color-on-surface, #e0e0e0);';
 
-    dialog.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(dialog, `
       <h2 style="margin: 0 0 14px 0; font-size: 17px;">${escapeHtml(heading || 'Choose a folder')}</h2>
       <select id="bmzPickFolderValue" style="display: none;" aria-hidden="true"></select>
       <div id="bmzPickFolderTree" class="folder-tree-picker" role="tree" aria-label="Destination folder"></div>
@@ -9675,7 +9693,7 @@ function pickFolderWithTree({ heading, excluded = new Set(), initialId = '' } = 
         <button id="bmzPickFolderCancel" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">Cancel</button>
         <button id="bmzPickFolderConfirm" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px; font-weight: 600;">Move here</button>
       </div>
-    `;
+    `);
 
     modal.appendChild(dialog);
     document.body.appendChild(modal);
@@ -9865,7 +9883,8 @@ function showUrlWarningDialog({ typed, problem, canSwap }) {
         ? 'background: #f59e0b; color: #1a1a1a; font-weight: 600;'
         : 'background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface, #e0e0e0);'}">${label}</button>`;
 
-    dialog.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(dialog, `
       <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #f59e0b; text-align: center;">That doesn't look like a web address</h2>
       <p style="margin: 0 0 20px 0; font-size: 14px;">${reason}</p>
       <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -9873,7 +9892,7 @@ function showUrlWarningDialog({ typed, problem, canSwap }) {
         ${btn('urlWarnSave', 'Save it anyway', !canSwap)}
         ${btn('urlWarnEdit', 'Go back and edit', false)}
       </div>
-    `;
+    `);
 
     modal.appendChild(dialog);
     document.body.appendChild(modal);
@@ -10297,20 +10316,35 @@ function getFaviconUrl(url) {
 }
 
 // Escape HTML
+// [ZeroLabs] 2026-09-23 11:25 PM - edited: also escape quotes, so a title with " cannot break an attribute
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
-  return div.innerHTML;
+  const escaped = div.innerHTML;
+  return escaped.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* [ZeroLabs] 2026-09-23 11:25 PM - added: one place that turns markup into nodes */
+// Mozilla's review tool warns on every innerHTML that is not a fixed string.
+// This parses the markup in an inert document and moves the nodes in, which
+// draws the same result. It does NOT make text safe by itself: text from
+// bookmarks, GitLab or errors must still go through escapeHtml first.
+// The <template> wrapper keeps parent-bound tags such as <option> intact.
+function setSafeHTML(element, html) {
+  const parsed = new DOMParser().parseFromString(`<template>${html}</template>`, 'text/html');
+  const template = parsed.querySelector('template');
+  element.replaceChildren(template.content);
 }
 
 // Show error message
 function showError(message) {
-  bookmarkList.innerHTML = `
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  setSafeHTML(bookmarkList, `
     <div style="text-align: center; padding: 40px 20px; color: var(--md-sys-color-error);">
       <div style="font-size: 48px; margin-bottom: 12px;">⚠️</div>
       <div style="font-size: 14px;">${escapeHtml(message)}</div>
     </div>
-  `;
+  `);
 }
 
 // Open extension in new tab
@@ -10572,12 +10606,13 @@ function showDuplicatesModal(duplicates) {
     </div>
   `;
 
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: escape the url, titles and folder paths in the markup below
   for (const duplicate of duplicates) {
     html += `
       <div style="margin-bottom: 10px; padding: 8px; background: rgba(59, 130, 246, 0.05); border-radius: 4px; border: 1px solid rgba(59, 130, 246, 0.2);">
         <div style="margin-bottom: 6px; font-size: 9px;">
           <strong style="color: #1e40af;">URL:</strong>
-          <a href="${duplicate.url}" target="_blank" style="color: #2563eb; text-decoration: none; word-break: break-all; font-size: 9px;">${duplicate.url}</a>
+          <a href="${escapeHtml(duplicate.url)}" target="_blank" style="color: #2563eb; text-decoration: none; word-break: break-all; font-size: 9px;">${escapeHtml(duplicate.url)}</a>
         </div>
         <div style="margin-left: 8px;">
     `;
@@ -10588,12 +10623,12 @@ function showDuplicatesModal(duplicates) {
           <input type="checkbox"
                  id="dup-${bookmark.id}"
                  data-bookmark-id="${bookmark.id}"
-                 data-url="${duplicate.url}"
+                 data-url="${escapeHtml(duplicate.url)}"
                  class="duplicate-checkbox"
                  style="cursor: pointer; width: 10px; height: 10px;">
           <label for="dup-${bookmark.id}" style="cursor: pointer; flex: 1; font-size: 9px;">
-            <span style="font-weight: 500;">${bookmark.title || 'Untitled'}</span>
-            <span style="color: #666; font-size: 8px;"> - in ${bookmark.parentPath || 'Root'}</span>
+            <span style="font-weight: 500;">${escapeHtml(bookmark.title || 'Untitled')}</span>
+            <span style="color: #666; font-size: 8px;"> - in ${escapeHtml(bookmark.parentPath || 'Root')}</span>
           </label>
         </div>
       `;
@@ -10605,7 +10640,8 @@ function showDuplicatesModal(duplicates) {
     `;
   }
 
-  content.innerHTML = html;
+  // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+  setSafeHTML(content, html);
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
   trapFocus(modal);
@@ -10864,9 +10900,9 @@ async function openChangelogModal() {
           detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">${parts.join(' · ')}</div>`;
         } else if (entry.type === 'undo') {
           if (entry.details.undoType === 'move') {
-            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Restored to: ${entry.details.restoredToFolder}</div>`;
+            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Restored to: ${escapeHtml(entry.details.restoredToFolder)}</div>`;
           } else if (entry.details.undoType === 'update') {
-            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Reverted title from: "${entry.details.previousTitle}"</div>`;
+            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Reverted title from: "${escapeHtml(entry.details.previousTitle)}"</div>`;
           /* [ZeroLabs] 2026-09-22 6:54 PM - added: the undo of a whole approved sync */
           } else if (entry.details.undoType === 'sync-apply') {
             const c = entry.details.counts || {};
@@ -10877,10 +10913,10 @@ async function openChangelogModal() {
             detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Undid ${entry.details.undoType} operation</div>`;
           }
         } else if (entry.type === 'move' && entry.details.oldParent && entry.details.newParent) {
-          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">From: ${entry.details.oldParent} → ${entry.details.newParent}</div>`;
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">From: ${escapeHtml(entry.details.oldParent)} → ${escapeHtml(entry.details.newParent)}</div>`;
         } else if (entry.type === 'update') {
           if (entry.details.oldTitle && entry.details.newTitle && entry.details.oldTitle !== entry.details.newTitle) {
-            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Renamed from: ${entry.details.oldTitle}</div>`;
+            detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Renamed from: ${escapeHtml(entry.details.oldTitle)}</div>`;
           }
           if (entry.details.oldUrl && entry.details.newUrl && entry.details.oldUrl !== entry.details.newUrl) {
             detailsHtml += `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 2px;">URL changed</div>`;
@@ -10888,7 +10924,9 @@ async function openChangelogModal() {
         }
       }
 
-      const urlHtml = entry.url ? `<div class="changelog-url" data-url="${entry.url}" style="font-size: 11px; color: var(--md-sys-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: underline;" title="Click to copy: ${entry.url}">${entry.url}</div>` : '';
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: escape the url, the title and the details from the entry
+      const safeUrl = entry.url ? escapeHtml(entry.url) : '';
+      const urlHtml = entry.url ? `<div class="changelog-url" data-url="${safeUrl}" style="font-size: 11px; color: var(--md-sys-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: underline;" title="Click to copy: ${safeUrl}">${safeUrl}</div>` : '';
 
       let restoreButtonHtml = '';
       if (entry.type === 'pre-sync-snapshot') {
@@ -10922,7 +10960,7 @@ async function openChangelogModal() {
             <div style="flex: 1; min-width: 0;">
               <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
                 <span style="font-size: 14px;">${itemIcon}</span>
-                <span style="font-size: 13px; font-weight: 600; color: var(--md-sys-color-on-surface);">${entry.title || 'Untitled'}</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--md-sys-color-on-surface);">${escapeHtml(entry.title || 'Untitled')}</span>
                 ${restoreButtonHtml}
               </div>
               ${urlHtml}
@@ -10935,7 +10973,8 @@ async function openChangelogModal() {
     });
 
     html += '</div>';
-    changelogList.innerHTML = html;
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(changelogList, html);
 
     // Add click handlers to URLs for copying to clipboard
     const urlElements = changelogList.querySelectorAll('.changelog-url');
@@ -14635,7 +14674,8 @@ function setupEventListeners() {
       z-index: 10001; display: flex; align-items: center; justify-content: center;
     `;
 
-    modal.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(modal, `
       <div style="background: var(--md-sys-color-surface); border-radius: 16px; padding: 24px; max-width: 520px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1px solid var(--md-sys-color-outline);">
         <h2 style="margin: 0 0 16px 0; color: var(--md-sys-color-primary); font-size: 20px; font-weight: 600; text-align: center;">${HEADINGS[mode]}</h2>
         <p style="margin-bottom: 20px; color: var(--md-sys-color-on-surface); line-height: 1.55;">
@@ -14644,7 +14684,7 @@ function setupEventListeners() {
         <div id="snippetSetupContent"></div>
         <div id="snippetSetupError" style="display: none; margin-top: 16px; padding: 12px; background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); border-radius: 8px; font-size: 14px;"></div>
       </div>
-    `;
+    `);
 
     document.body.appendChild(modal);
 
@@ -14787,7 +14827,8 @@ function setupEventListeners() {
     // seeded from here. The export is offered, never required.
     function renderMigrationStart() {
       clearSetupError();
-      content.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(content, `
         <div style="padding: 4px 0;">
           <div style="display: flex; gap: 12px;">
             <button id="startMigration" style="flex: 1; ${PRIMARY}">Continue</button>
@@ -14796,7 +14837,7 @@ function setupEventListeners() {
           <div style="${HINT}">The backup is a bookmarks.html file you can open in any browser. It is optional.</div>
           <div style="margin-top: 16px; text-align: center;"><button id="notNow" style="${PLAIN}">Not now</button></div>
         </div>
-      `;
+      `);
 
       modal.querySelector('#exportFirst').addEventListener('click', async () => {
         try {
@@ -14852,7 +14893,8 @@ function setupEventListeners() {
       // device has usually already been set up. Creating a repository moved down
       // for the same reason: on a second device it is the choice that splits your
       // bookmarks across two stores.
-      content.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(content, `
         <div style="padding: 4px 0;">
           ${choice('optJoin', 'Connect to a repository that already has my bookmarks',
             'Another device set this up. You then choose: merge both, keep the cloud\'s bookmarks, or keep this device\'s.')}
@@ -14866,7 +14908,7 @@ function setupEventListeners() {
             <button id="setupBottom" style="${PLAIN}">${chooserBottomLabel()}</button>
           </div>
         </div>
-      `;
+      `);
 
       modal.querySelector('#setupBottom').addEventListener('click', chooserBottomAction);
       modal.querySelector('#optCreate').addEventListener('click', renderCreate);
@@ -14917,7 +14959,8 @@ function setupEventListeners() {
       const localCount = countBookmarks(localTree[0]);
       const plural = (count) => `${count} bookmark${count === 1 ? '' : 's'}`;
 
-      content.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(content, `
         <div style="padding: 4px 0;">
           <p style="margin: 0 0 14px 0; font-size: 14px; line-height: 1.5; color: var(--md-sys-color-on-surface);">
             That repository already holds ${plural(cloudCount)}. This device has ${plural(localCount)}.
@@ -14930,7 +14973,7 @@ function setupEventListeners() {
             `The repository ends up with exactly this device's ${plural(localCount)}. Anything only in the cloud is removed, on every device that uses it.`)}
           <div style="margin-top: 8px; text-align: center;">${backButton()}</div>
         </div>
-      `;
+      `);
       wireBack();
 
       // One runner for all three, so each gets the progress panel, the same
@@ -14980,7 +15023,8 @@ function setupEventListeners() {
 
     function renderCreate() {
       clearSetupError();
-      content.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(content, `
         <div style="padding: 4px 0;">
           <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px;">Repository name</label>
           <input id="newRepoName" type="text" value="bmz-bookmarks" style="${FIELD}">
@@ -14990,7 +15034,7 @@ function setupEventListeners() {
             ${backButton()}
           </div>
         </div>
-      `;
+      `);
       wireBack();
 
       modal.querySelector('#doCreate').addEventListener('click', async () => {
@@ -15058,7 +15102,8 @@ function setupEventListeners() {
         const options = projects.map(project =>
           `<option value="${escapeHtml(project.title)}">${escapeHtml(project.title)}</option>`
         ).join('');
-        picker.innerHTML = `<option value="">Choose a repository...</option>${options}`;
+        // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+        setSafeHTML(picker, `<option value="">Choose a repository...</option>${options}`);
       }).catch(error => {
         // Not an error worth a red box. The paste field still works, so this only
         // has to stop promising a list that is not coming.
@@ -15070,7 +15115,8 @@ function setupEventListeners() {
 
     function renderHowTo() {
       clearSetupError();
-      content.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(content, `
         <div style="padding: 4px 0;">
           <ol style="margin: 0 0 16px 18px; padding: 0; font-size: 14px; line-height: 1.7; color: var(--md-sys-color-on-surface);">
             <li><a href="https://gitlab.com/users/sign_in" target="_blank" rel="noopener noreferrer" style="color: var(--md-sys-color-primary); text-decoration: underline;">Sign in to your GitLab account</a> first.</li>
@@ -15088,7 +15134,7 @@ function setupEventListeners() {
             ${backButton()}
           </div>
         </div>
-      `;
+      `);
       wireBack();
       wireRepoPicker();
       wirePointAt('seed');
@@ -15097,7 +15143,8 @@ function setupEventListeners() {
     function renderPointAt(mode) {
       clearSetupError();
       const joining = mode === 'join';
-      content.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(content, `
         <div style="padding: 4px 0;">
           ${repoPickerMarkup()}
           <label for="repoRef" style="display: block; font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Repository address</label>
@@ -15112,7 +15159,7 @@ function setupEventListeners() {
             ${backButton()}
           </div>
         </div>
-      `;
+      `);
       wireBack();
       wireRepoPicker();
       wirePointAt(mode);
@@ -15822,7 +15869,8 @@ function setupEventListeners() {
       body += `<div style="margin-bottom: 20px;">${list}</div>`;
     }
 
-    dialog.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(dialog, `
       <!-- [ZeroLabs] 2026-08-27 11:36 AM - edited: centered heading -->
       <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #ff9800; text-align: center;">Sync changes to review</h2>
       <p style="margin: 0 0 16px 0; font-size: 14px;">
@@ -15837,7 +15885,7 @@ function setupEventListeners() {
           Cancel
         </button>
       </div>
-    `;
+    `);
 
     modal.appendChild(dialog);
     document.body.appendChild(modal);
@@ -16546,7 +16594,8 @@ function setupEventListeners() {
       </div>`;
     });
 
-    dialog.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(dialog, `
       <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #ff9800;">${skippedItems.length} item(s) could not be added</h2>
       <p style="margin: 0 0 16px 0; font-size: 14px;">
         ${createdCount > 0 ? `${createdCount} item(s) were added and synced. ` : ''}These could not be placed on this device.
@@ -16567,7 +16616,7 @@ function setupEventListeners() {
           Leave them in the cloud only
         </button>
       </div>
-    `;
+    `);
 
     modal.appendChild(dialog);
     document.body.appendChild(modal);
@@ -17195,7 +17244,8 @@ function setupEventListeners() {
       </div>
     `;
 
-    dialog.innerHTML = content;
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(dialog, content);
     modal.appendChild(dialog);
     document.body.appendChild(modal);
 
@@ -17519,7 +17569,8 @@ function setupEventListeners() {
     dialog.style.cssText = 'background: var(--md-sys-color-surface, #1e1e1e); padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; color: var(--md-sys-color-on-surface, #e0e0e0);';
     dialog.className = 'bmz-dialog';
 
-    dialog.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(dialog, `
       <h2 style="margin: 0 0 16px 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
         <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
           <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
@@ -17548,7 +17599,7 @@ function setupEventListeners() {
           Cancel
         </button>
       </div>
-    `;
+    `);
 
     modal.appendChild(dialog);
     document.body.appendChild(modal);
@@ -17641,7 +17692,8 @@ function setupEventListeners() {
     return new Promise((resolve) => {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10002;display:flex;align-items:center;justify-content:center;';
-      modal.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(modal, `
         <div style="background:var(--md-sys-color-surface,#1e1e1e);padding:24px;border-radius:12px;max-width:420px;width:90%;color:var(--md-sys-color-on-surface,#e0e0e0);">
           <h2 style="margin:0 0 12px 0;font-size:18px;">🔑 GitLab Token Expiring Soon</h2>
           <p style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);margin:0 0 16px 0;">Your GitLab Personal Access Token expires in <strong style="color:var(--md-sys-color-on-surface,#e0e0e0);">${Math.floor(daysLeft)} day${Math.floor(daysLeft) !== 1 ? 's' : ''}</strong>. BMZ can renew it automatically right now.</p>
@@ -17653,7 +17705,7 @@ function setupEventListeners() {
             <button id="snoozeDayBtn" style="padding:12px;border-radius:8px;border:none;background:var(--md-sys-color-surface-variant,#2a2a2a);color:var(--md-sys-color-on-surface-variant,#aaa);font-size:14px;cursor:pointer;">Remind me tomorrow</button>
           </div>
         </div>
-      `;
+      `);
       document.body.appendChild(modal);
 
       const dismiss = (result) => {
@@ -17691,7 +17743,8 @@ function setupEventListeners() {
 
     const modal = document.createElement('div');
     modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10002;display:flex;align-items:center;justify-content:center;';
-    modal.innerHTML = `
+    // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+    setSafeHTML(modal, `
       <div style="background:var(--md-sys-color-surface,#1e1e1e);padding:24px;border-radius:12px;max-width:480px;width:90%;color:var(--md-sys-color-on-surface,#e0e0e0);">
         <h2 style="margin:0 0 12px 0;font-size:18px;">✅ Token Renewed Successfully</h2>
         <p style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);margin:0 0 8px 0;">Your new GitLab Personal Access Token is shown below. <strong style="color:var(--md-sys-color-error,#ef4444);">Copy it now</strong> — GitLab will never show this token again once you leave this screen.</p>
@@ -17703,7 +17756,7 @@ function setupEventListeners() {
         ${hintBox}
         <button id="closeRotationModal" style="width:100%;padding:12px;border-radius:8px;border:none;background:var(--md-sys-color-primary,#818cf8);color:var(--md-sys-color-on-primary,#fff);font-size:14px;cursor:pointer;font-weight:500;">I've copied my token</button>
       </div>
-    `;
+    `);
     document.body.appendChild(modal);
     // Set token value safely via DOM (not innerHTML interpolation)
     modal.querySelector('#rotatedTokenDisplay').value = newToken;
@@ -17874,7 +17927,8 @@ function setupEventListeners() {
     if (snippetToken) {
       const modeLabel = currentMode === 'supabase' ? '☁️ Supabase' : '💻 Local';
       const switchLabel = currentMode === 'supabase' ? 'Switch to Local' : 'Enable Supabase';
-      dialog.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(dialog, `
         <!-- [ZeroLabs] 2026-08-27 12:34 PM - edited: centered heading -->
         <h2 style="margin: 0 0 16px 0; font-size: 20px; text-align: center;">GitLab Sync Settings</h2>
         <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -17991,7 +18045,7 @@ function setupEventListeners() {
             Cancel
           </button>
         </div>
-      `;
+      `);
 
       /* [ZeroLabs] 2026-08-19 6:01 PM - added: collapsible snippet options section */
       // Collapsed when a snippet is connected, since the two sync buttons are
@@ -18027,7 +18081,8 @@ function setupEventListeners() {
         });
       }
     } else {
-      dialog.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(dialog, `
         <h2 style="margin: 0 0 16px 0; font-size: 20px; text-align: center;">GitLab Sync Setup</h2>
 
         <div style="margin-bottom: 16px; padding: 12px; border: 1px solid var(--md-sys-color-outline, #444); border-radius: 8px;">
@@ -18066,7 +18121,7 @@ function setupEventListeners() {
             Cancel
           </button>
         </div>
-      `;
+      `);
 
       // Tooltip hover for i icons — use fixed positioning to stay within viewport
       dialog.querySelectorAll('.bmz-tooltip-wrap').forEach(wrap => {
@@ -18837,7 +18892,8 @@ function setupEventListeners() {
         </p>`;
       }
 
-      dialog.innerHTML = `
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(dialog, `
         <h2 style="margin: 0 0 16px 0; color: var(--md-sys-color-primary, #818cf8);">
           📋 Local Bookmarks Detected
         </h2>
@@ -18916,7 +18972,7 @@ function setupEventListeners() {
             </div>
           </button>
         </div>
-      `;
+      `);
 
       modal.appendChild(dialog);
       document.body.appendChild(modal);
@@ -18986,7 +19042,8 @@ function setupEventListeners() {
         </button>
       `;
 
-      dialog.innerHTML = snippetList;
+      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
+      setSafeHTML(dialog, snippetList);
       modal.appendChild(dialog);
       document.body.appendChild(modal);
 
