@@ -2379,6 +2379,178 @@ function collectSnippetEntries(snippetData) {
   return keyByUrlCopy(list);
 }
 
+/* [ZeroLabs] 2026-09-23 8:30 PM - added: a reorder is a change worth pushing (see also: Bookmark-Manager-Zero-Chrome/background.js, Bookmark-Manager-Zero-Website/js/storage/sync-manager.js) */
+// onMoved schedules a push, but the push then compared only titles, roots and
+// paths. A reorder changes none of those, so the worker logged "Already in sync"
+// and never published it. The panel's order sync had nothing to read back.
+//
+// This compares each folder's child ORDER between this device and the snippet.
+// Both sides are already in snippet format here, where Chrome's "Bookmarks Menu"
+// and "Mobile Bookmarks" have been promoted to roots, so the two are directly
+// comparable. Items only one side has are ignored, because they cannot tell
+// anything about order.
+//
+// A difference alone does not say WHICH side is newer. runSnippetPush runs from
+// the five minute poll as well as from the push alarm, so the caller decides by
+// `snippet_push_pending`: publish this order when a local change is waiting,
+// take the cloud order when it is not.
+function snippetOrderKeys(children) {
+  const seen = new Map();
+  return (children || []).map(child => {
+    const title = String(child.title || child.name || '').trim();
+    const base = child.url ? `b:${child.url}` : `f:${title}`;
+    const count = seen.get(base) || 0;
+    seen.set(base, count + 1);
+    return count === 0 ? base : `${base}\u0000#${count}`;
+  });
+}
+
+function folderOrderDiffers(localChildren, remoteChildren) {
+  const remoteKeys = snippetOrderKeys(remoteChildren);
+  const localKeys = snippetOrderKeys(localChildren);
+
+  // Only the items both sides hold can disagree about order
+  const inRemote = new Set(remoteKeys);
+  const inLocal = new Set(localKeys);
+  const localShared = localKeys.filter(key => inRemote.has(key));
+  const remoteShared = remoteKeys.filter(key => inLocal.has(key));
+
+  if (localShared.length !== remoteShared.length) return false;
+  return localShared.some((key, index) => key !== remoteShared[index]);
+}
+
+function snippetOrderDiffers(localData, remoteData) {
+  const walk = (localNode, remoteNode) => {
+    if (!localNode || !remoteNode) return false;
+    const localChildren = localNode.children || [];
+    const remoteChildren = remoteNode.children || [];
+    if (localChildren.length === 0 || remoteChildren.length === 0) return false;
+
+    if (folderOrderDiffers(localChildren, remoteChildren)) return true;
+
+    const remoteFolders = new Map();
+    remoteChildren.forEach(child => {
+      if (child.url) return;
+      const title = String(child.title || child.name || '').trim();
+      if (!remoteFolders.has(title)) remoteFolders.set(title, child);
+    });
+
+    return localChildren.some(child => {
+      if (child.url) return false;
+      const match = remoteFolders.get(String(child.title || child.name || '').trim());
+      return match ? walk(child, match) : false;
+    });
+  };
+
+  const localRoots = (localData && localData.roots) || {};
+  const remoteRoots = (remoteData && remoteData.roots) || {};
+  return Object.keys(localRoots).some(key => walk(localRoots[key], remoteRoots[key]));
+}
+
+/* [ZeroLabs] 2026-09-23 9:05 PM - added: the worker takes another device's order itself */
+// The five minute poll runs runSnippetPush too, not only the push alarm. So
+// without this, a device that had NOT reordered would find the order different,
+// read it as its own reorder, and push its OLD order back over the newer one
+// within five minutes. The worker must take the cloud order in that case, and it
+// is the right place for it anyway: the panel only reconciles when asked.
+//
+// Items the snippet does not have never move, and the matched items are dealt
+// back into the slots that remain.
+
+/**
+ * Put one Firefox folder's children into the order the snippet holds.
+ *
+ * @returns {Promise<number>} how many items moved
+ */
+async function applyWorkerFolderOrder(parentId, remoteChildren) {
+  const localChildren = await browser.bookmarks.getChildren(parentId);
+  if (localChildren.length < 2) return 0;
+
+  const desired = snippetOrderKeys(remoteChildren);
+  const localKeys = snippetOrderKeys(localChildren);
+
+  const rank = new Map();
+  desired.forEach((key, index) => {
+    if (!rank.has(key)) rank.set(key, index);
+  });
+
+  const matched = [];
+  localChildren.forEach((child, index) => {
+    if (rank.has(localKeys[index])) {
+      matched.push({ id: child.id, index, rankValue: rank.get(localKeys[index]) });
+    }
+  });
+  if (matched.length < 2) return 0;
+
+  // Build the exact list first, then realize it from the front. Every slot
+  // before the current one is settled, so each item wanted here is always LATER
+  // in the list, and the browser's remove-then-insert needs no index correction.
+  const slots = matched.map(entry => entry.index);
+  const wanted = matched.slice().sort((a, b) => a.rankValue - b.rankValue);
+
+  const target = localChildren.map(child => child.id);
+  wanted.forEach((entry, position) => {
+    target[slots[position]] = entry.id;
+  });
+
+  const order = localChildren.map(child => child.id);
+  let moves = 0;
+
+  for (let index = 0; index < target.length; index++) {
+    if (order[index] === target[index]) continue;
+
+    const id = target[index];
+    const currentIndex = order.indexOf(id);
+    await browser.bookmarks.move(id, { index });
+
+    order.splice(currentIndex, 1);
+    order.splice(index, 0, id);
+    moves++;
+  }
+
+  return moves;
+}
+
+/**
+ * Walk the snippet and put every Firefox folder that differs into its order.
+ *
+ * @returns {Promise<number>} how many items moved in total
+ */
+async function applyRemoteOrderInWorker(remoteData) {
+  let moved = 0;
+
+  const walk = async (remoteNode, localId) => {
+    const remoteChildren = (remoteNode && remoteNode.children) || [];
+    if (remoteChildren.length === 0) return;
+
+    moved += await applyWorkerFolderOrder(localId, remoteChildren);
+
+    // Read the children after the moves, and descend by folder title
+    const localChildren = await browser.bookmarks.getChildren(localId);
+    const localFolders = new Map();
+    localChildren.forEach(child => {
+      if (child.url) return;
+      const title = String(child.title || '').trim();
+      if (!localFolders.has(title)) localFolders.set(title, child.id);
+    });
+
+    for (const child of remoteChildren) {
+      if (child.url) continue;
+      const childId = localFolders.get(String(child.title || child.name || '').trim());
+      if (childId) await walk(child, childId);
+    }
+  };
+
+  const remoteRoots = (remoteData && remoteData.roots) || {};
+  for (const key of Object.keys(remoteRoots)) {
+    // Firefox is the snippet's own layout, so every root maps straight across
+    const localId = firefoxRootForSnippetKey(key);
+    if (localId) await walk(remoteRoots[key], localId);
+  }
+
+  return moved;
+}
+
 /* [ZeroLabs] 2026-08-27 11:36 AM - added: let the background place bookmarks itself */
 // Until now only the sidebar could create bookmarks, which is why additions made
 // on another device never arrived unless you opened BMZ. Firefox has a real menu
@@ -2600,6 +2772,19 @@ async function runSnippetPush() {
     return;
   }
 
+  /* [ZeroLabs] 2026-09-23 11:55 PM - added: never run in the middle of a full replace */
+  // The sidebar is removing every bookmark and recreating the cloud's. A run now
+  // would see a half-built tree plus the removals just recorded, and offer to
+  // delete the "missing" bookmarks from the cloud. Wait and try again. A stamp
+  // older than ten minutes is from a sidebar closed mid-replace and is ignored.
+  const { bmz_bulk_replace_started: replaceStarted } =
+    await browser.storage.local.get('bmz_bulk_replace_started');
+  if (replaceStarted && Date.now() - replaceStarted < 10 * 60 * 1000) {
+    console.log('[CloudSync] A full replace is running in the sidebar, waiting');
+    browser.alarms.create(SNIPPET_PUSH_ALARM, { delayInMinutes: SNIPPET_PUSH_DELAY_MIN });
+    return;
+  }
+
   // Shared 60 second floor with the sidebar, both reading the same stored stamp
   const sinceLastSync = Date.now() - config.lastSync;
   if (config.lastSync && sinceLastSync < SNIPPET_MIN_SYNC_INTERVAL_MS) {
@@ -2609,6 +2794,14 @@ async function runSnippetPush() {
   }
 
   try {
+    /* [ZeroLabs] 2026-09-23 9:05 PM - added: who ran this, the push or the poll */
+    // Read before anything below clears it. True means a change made on this
+    // device is waiting to go up. False means only the five minute poll is
+    // asking whether anything came in. The order decision further down depends
+    // on which, because the poll must never publish this device's old order.
+    const pendingState = await browser.storage.local.get('snippet_push_pending');
+    const localChangePending = pendingState.snippet_push_pending === true;
+
     const remote = await readRemoteSnippetBookmarks(config);
     const remoteVersion = Number(remote?.version) || 0;
 
@@ -2784,7 +2977,40 @@ async function runSnippetPush() {
     // Outcome 2 and 3: push when this device has something the snippet lacks.
     // Adopting an edit brings this side to the snippet, so it needs no push
     // either; only changes made here do.
-    if (!hasLocalAdditions && addedLocally === 0 && !hasLocalEdits) {
+    /* [ZeroLabs] 2026-09-23 9:05 PM - edited: publish our order, or take theirs, never the wrong one */
+    // A different order means one of two things, and the pending flag says which:
+    //   - a change made here is waiting: this device reordered, so publish it.
+    //   - nothing is waiting: another device reordered and this is the poll, so
+    //     take the cloud order. Publishing here would push the OLD order back.
+    //
+    // A pending change is not enough on its own. Reorder on one device, then add
+    // a bookmark on another before its poll runs, and that second device has a
+    // change pending while still holding the OLD order. onMoved records every
+    // moved item in snippet_local_edited, so an empty record means this device
+    // did not move anything: take the cloud order first, and let the push that
+    // follows carry it along with the new bookmark.
+    const orderDiffers = snippetOrderDiffers(snippetData, remote);
+    const movedHere = editedHere.size > 0;
+    const hasLocalOrder = orderDiffers && localChangePending && movedHere;
+
+    if (hasLocalOrder) {
+      console.log('[CloudSync] This device reordered, publishing its order');
+    } else if (orderDiffers) {
+      try {
+        const moved = await applyRemoteOrderInWorker(remote);
+        if (moved > 0) {
+          console.log(`[CloudSync] Took the cloud order for ${moved} item(s)`);
+          // A push below would otherwise publish the tree read before the moves
+          tree = await browser.bookmarks.getTree();
+          snippetData = await snippetTreeToSnippetFormat(tree);
+        }
+      } catch (error) {
+        // Order is cosmetic. It must never stop a sync that moves real data.
+        console.warn('[CloudSync] Could not apply the cloud order:', error.message);
+      }
+    }
+
+    if (!hasLocalAdditions && addedLocally === 0 && !hasLocalEdits && !hasLocalOrder) {
       await browser.storage.local.set({
         snippet_local_version: remoteVersion,
         snippet_last_sync: Date.now(),

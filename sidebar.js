@@ -4242,6 +4242,44 @@ function showNoticeDialog(notice, earlier = []) {
   });
 }
 
+/* [ZeroLabs] 2026-09-24 1:35 AM - added: a notice body that copies up to 5.8 cannot see */
+// Every copy of BMZ up to and including 5.8 keeps a notice only when its
+// `text` is a string, and nothing older reads notices at all. So an entry
+// whose body is in `message` instead is skipped by those copies in silence,
+// with nothing to deploy to them. This copy reads `message` first and still
+// accepts `text`, so the entries written before this change keep working.
+//
+// Returns the notice with its body in `text`, which is what the dialog and
+// the Event Log read, or null when it has no body at all.
+function noticeWithBody(notice) {
+  if (!notice) return null;
+  if (typeof notice.message === 'string') return { ...notice, text: notice.message };
+  if (typeof notice.text === 'string') return notice;
+  return null;
+}
+
+/* [ZeroLabs] 2026-09-24 1:05 AM - added: does this copy run the version a notice is about */
+// Versions are compared number by number, so 5.10 is correctly newer than 5.9,
+// which a plain string comparison gets wrong. A missing part counts as 0, so
+// "5.9" and "5.9.0" are equal. An entry with no `version` is for everyone, and
+// so is every entry when this copy's own version cannot be read, which keeps
+// the behaviour from before this check existed.
+function noticeFitsVersion(notice, appVersion) {
+  if (!notice.version || !appVersion) return true;
+
+  const have = String(appVersion).split('.').map(part => parseInt(part, 10) || 0);
+  const need = String(notice.version).split('.').map(part => parseInt(part, 10) || 0);
+  const length = Math.max(have.length, need.length);
+
+  for (let index = 0; index < length; index++) {
+    const mine = have[index] || 0;
+    const wanted = need[index] || 0;
+    if (mine > wanted) return true;
+    if (mine < wanted) return false;
+  }
+  return true;
+}
+
 async function checkNotices() {
   let notices;
   try {
@@ -4256,21 +4294,38 @@ async function checkNotices() {
   const stored = await safeStorage.get('bmz_notices_seen_id');
   const seenId = Number(stored.bmz_notices_seen_id) || 0;
 
-  const unseen = notices
-    /* [ZeroLabs] 2026-09-13 - added: only notices addressed to this client */
-    // A website or Android fix is not news to an extension user, and a Web Store
-    // update is not news to the website. Each entry names its targets; one with
-    // no targets field goes to everyone.
-    .filter(notice => notice && Number(notice.id) > seenId && typeof notice.text === 'string')
+  /* [ZeroLabs] 2026-09-24 1:05 AM - edited: one list of what this client may show, used twice */
+  // The headline and the collapsed history used to repeat the same filters, and
+  // a filter added to one and not the other would let them disagree.
+  const forThisClient = notices
+    /* [ZeroLabs] 2026-09-24 1:35 AM - edited: read `message`, fall back to `text` */
+    .map(noticeWithBody)
+    .filter(notice => notice !== null)
     /* [ZeroLabs] 2026-09-13 - added: a draft stays in the file and goes nowhere */
     // JSON has no comments, and a stray // would invalidate the whole file and
     // silence every notice. This is how the template entry, and any notice
     // written ahead of time, sits in the file without being sent.
     .filter(notice => notice.draft !== true)
+    /* [ZeroLabs] 2026-09-13 - added: only notices addressed to this client */
+    // A website or Android fix is not news to an extension user, and a Web Store
+    // update is not news to the website. Each entry names its targets; one with
+    // no targets field goes to everyone.
     .filter(notice => {
       if (!Array.isArray(notice.targets)) return true;
       return notice.targets.includes('firefox');
     })
+    /* [ZeroLabs] 2026-09-24 1:05 AM - added: never announce a version this client does not run */
+    // The file is read by every installed copy the moment it is published,
+    // while a Web Store update reaches people over days. So "Version 5.9 is
+    // here" was shown to people still running 5.8. An entry with a `version`
+    // now waits until this copy runs that version or newer. It is not marked
+    // seen while it waits, so it appears the first time BMZ opens after the
+    // update. "Or newer", not "exactly": someone who skips a version still
+    // finds its notes in the history.
+    .filter(notice => noticeFitsVersion(notice, APP_VERSION));
+
+  const unseen = forThisClient
+    .filter(notice => Number(notice.id) > seenId)
     .sort((a, b) => Number(a.id) - Number(b.id));
 
   if (unseen.length === 0) return;
@@ -4286,13 +4341,8 @@ async function checkNotices() {
   // read back through what changed.
   const newest = unseen[unseen.length - 1];
 
-  const earlier = notices
-    .filter(item => item && typeof item.text === 'string' && item.draft !== true)
+  const earlier = forThisClient
     .filter(item => Number(item.id) < Number(newest.id))
-    .filter(item => {
-      if (!Array.isArray(item.targets)) return true;
-      return item.targets.includes('firefox');
-    })
     .sort((a, b) => Number(b.id) - Number(a.id));
 
   await showNoticeDialog(newest, earlier);
@@ -14108,7 +14158,9 @@ function setupEventListeners() {
   // Create a brand new private project and seed it from this device.
   async function createProjectStore(name = 'bmz-bookmarks', branch = 'main') {
     const store = projectStore(branch);
+    reportSetupProgress('Preparing this device\'s bookmarks');
     const files = await buildStoreSeedFiles([]);
+    reportSetupProgress('Creating the repository and uploading your bookmarks');
     const created = await store.create({ title: name, files });
     return await adoptProjectStore(created.id, branch, files.length > 1);
   }
@@ -14123,9 +14175,11 @@ function setupEventListeners() {
 
     // Which files are already there decides create against update, and getting
     // that wrong makes GitLab refuse the whole commit.
+    reportSetupProgress('Reading the repository');
     const existing = await store.listFiles(projectId);
     const files = await buildStoreSeedFiles(existing);
 
+    reportSetupProgress('Uploading this device\'s bookmarks to the repository');
     const response = await store.writeFiles(projectId, files);
     if (!response.ok) {
       const body = await response.text();
@@ -14175,12 +14229,44 @@ function setupEventListeners() {
   // Additions only, and deliberately not pushed: the old snippet is usually being
   // left because it has stopped accepting writes, so any attempt to push would
   // fail and take the migration down with it.
+  /* [ZeroLabs] 2026-09-23 10:50 PM - added: which cloud items are genuinely missing here (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // calculateBookmarkDiff keys a bookmark on its URL plus its full path, and the
+  // path includes the bookmark's own title. So a bookmark that exists on BOTH
+  // sides with any difference in title or folder - a trailing space, a rename, a
+  // different folder - appears in `added` AND in `removed`. Creating everything
+  // in `added` therefore creates a second copy of a bookmark this device already
+  // has.
+  //
+  // The reconcile filtered that out. The join, the migration pull and the diff
+  // dialog's merge did not, which is where the duplicates came from. All of them
+  // now call this, so they cannot drift apart again.
+  //
+  // A URL on both lists is an edit, not an addition. A URL this device deleted
+  // is not wanted back. A folder is created only when a wanted bookmark is going
+  // into it, because attribution is URL-based and a folder has no URL.
+  function safeAdditionsFromDiff(diff, deletedHere) {
+    const removedUrls = new Set(diff.removed.filter(item => item.url).map(item => item.url));
+
+    const wanted = (item) => item.url
+      && !deletedHere.has(item.url)
+      && !removedUrls.has(item.url);
+
+    return diff.added.filter(item => {
+      if (item.url) return wanted(item);
+      return diff.added.some(other => other.path && item.path
+        && other.path.startsWith(item.path + '/') && wanted(other));
+    });
+  }
+
   async function pullEverythingFromCurrentStore() {
     if (!snippetId) return { added: 0, deferred: false };
 
+    reportSetupProgress('Reading your cloud bookmarks');
     const remoteData = await readBookmarksFromSnippet(snippetId);
+    reportSetupProgress('Comparing this device with the cloud');
     const localTree = await browser.bookmarks.getTree();
     const remoteAsFirefox = snippetFormatToFirefoxBookmarks(remoteData);
+
     const diff = calculateBookmarkDiff(localTree[0], remoteAsFirefox[0]);
 
     /* [ZeroLabs] 2026-09-07 9:20 PM - added: report whether anything is still unresolved */
@@ -14190,9 +14276,23 @@ function setupEventListeners() {
 
     if (diff.added.length === 0) return { added: 0, deferred };
 
-    await bringSidesTogether(diff.added, true, false);
+    /* [ZeroLabs] 2026-09-23 10:50 PM - fixed: the join created duplicates */
+    // This handed the raw `diff.added` to bringSidesTogether, so every bookmark
+    // held on both sides under a different title or folder was created a second
+    // time. The same filter the reconcile uses now decides what is missing.
+    const stored = await safeStorage.get('snippet_local_deleted');
+    const deletedHere = new Set(stored.snippet_local_deleted || []);
+    const toAdd = safeAdditionsFromDiff(diff, deletedHere);
+
+    const skipped = diff.added.length - toAdd.length;
+    if (skipped > 0) {
+      console.log(`[Setup] ${skipped} cloud item(s) are already here under another title or folder, not copied again`);
+    }
+    if (toAdd.length === 0) return { added: 0, deferred };
+
+    await bringSidesTogether(toAdd, true, false);
     await loadBookmarks();
-    return { added: diff.added.length, deferred };
+    return { added: toAdd.length, deferred };
   }
 
   /* [ZeroLabs] 2026-09-07 9:20 PM - added: join a repository that already holds bookmarks */
@@ -14200,9 +14300,102 @@ function setupEventListeners() {
   // the bookmarks there belong to a device that set this up already, and writing
   // over them is how a second device would silently destroy the first one's data.
   // It only adopts the repository, then the caller runs the normal reconcile.
+  /* [ZeroLabs] 2026-09-23 11:55 PM - added: setup reports what it is doing (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // Connecting to a repository can take a long time: joining one that holds
+  // thousands of bookmarks creates every one of them on this device, one call at
+  // a time. The dialog showed only "Connecting..." on a disabled button for all
+  // of it, which reads as frozen.
+  //
+  // The setup dialog switches this reporter on when it starts a long action and
+  // off when it ends. The slow steps call reportSetupProgress wherever they run,
+  // including bringSidesTogether, which normal syncing also uses. With no
+  // reporter switched on the call does nothing, so an ordinary sync is unaffected.
+  //
+  // `var`, not `let`, on purpose. This sits partway through setupEventListeners,
+  // and bringSidesTogether can be reached before this line has run. A `let` read
+  // then throws a ReferenceError; a `var` reads as undefined, which is "off".
+  var setupProgressReporter = null;
+
+  function reportSetupProgress(phase, done = 0, total = 0) {
+    if (!setupProgressReporter) return;
+    try {
+      setupProgressReporter(phase, done, total);
+    } catch (error) {
+      // A progress display must never break the work it is describing
+      console.warn('[Setup] Progress display failed:', error);
+    }
+  }
+
+  /* [ZeroLabs] 2026-09-23 11:55 PM - added: the worker waits while a full replace runs */
+  // A full replace removes every bookmark, then recreates the cloud's one call
+  // at a time. If the background script ran in the middle it would see a
+  // half-built tree, and the removals just recorded, and offer to delete the
+  // "missing" bookmarks from the cloud. This stamp tells runSnippetPush to wait.
+  // It carries a time, so a sidebar closed mid-replace cannot block syncing for
+  // ever. Written with browser.storage.local directly, never safeStorage: in a
+  // private window safeStorage keeps it in memory, where the background script
+  // cannot see it.
+  const BULK_REPLACE_KEY = 'bmz_bulk_replace_started';
+
+  function countSnippetBookmarks(snippetData) {
+    let count = 0;
+    const walk = (node) => {
+      if (!node) return;
+      if (node.url) {
+        count++;
+        return;
+      }
+      (node.children || []).forEach(walk);
+    };
+    Object.values((snippetData && snippetData.roots) || {}).forEach(walk);
+    return count;
+  }
+
+  /* [ZeroLabs] 2026-09-23 11:55 PM - added: read a repository's bookmarks, and refuse a stranger's */
+  // The same checks joinProjectStore makes, so every option on the three-way
+  // screen starts from bookmarks that are known to be BMZ's own.
+  async function readProjectBookmarks(projectRef, branch = 'main') {
+    const store = projectStore(branch);
+    const projectId = encodeURIComponent(String(projectRef));
+    const content = await store.readFile(projectId, 'bookmarks.json');
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(content);
+    } catch (error) {
+      throw new Error('That repository has a bookmarks.json, but it is not readable as BMZ data. Pick a different repository.');
+    }
+    if (!parsed || !parsed.roots || typeof parsed.roots !== 'object') {
+      throw new Error('That repository has a bookmarks.json, but it was not written by BMZ. Pick a different repository.');
+    }
+    return parsed;
+  }
+
+  /* [ZeroLabs] 2026-09-23 11:55 PM - added: connect, keeping the cloud's bookmarks */
+  // applyRemoteChangesToFirefox asks twice, saves a restorable snapshot to the
+  // Event Log, and only then replaces. It runs BEFORE the repository is adopted,
+  // so pressing Cancel on either question leaves this device exactly as it was
+  // and not connected to anything new. Once the replace has happened both sides
+  // match, so the attribution records are cleared on adoption.
+  //
+  // @returns {Promise<boolean>} false when the user cancelled
+  async function replaceLocalFromProjectStore(projectRef, remoteData, branch = 'main') {
+    const replaced = await applyRemoteChangesToFirefox(remoteData);
+    if (!replaced) return false;
+
+    reportSetupProgress('Connecting this device to the repository');
+    const store = projectStore(branch);
+    const projectId = encodeURIComponent(String(projectRef));
+    const existing = await store.listFiles(projectId);
+    const version = Number(remoteData.version) || 0;
+    await adoptProjectStore(projectId, branch, existing.includes(META_FILE), version, true);
+    return true;
+  }
+
   async function joinProjectStore(projectRef, branch = 'main') {
     const store = projectStore(branch);
     const projectId = encodeURIComponent(String(projectRef));
+    reportSetupProgress('Reading the repository');
     const existing = await store.listFiles(projectId);
 
     if (!existing.includes('bookmarks.json')) {
@@ -14233,6 +14426,7 @@ function setupEventListeners() {
     // records, so its own bookmarks read as things another device deleted and it
     // offers to remove them. On a first connect there is no shared history and no
     // deletion can have happened, so claiming the local tree is the honest reading.
+    reportSetupProgress('Recording the bookmarks already on this device');
     await claimLocalBookmarksAsOurs();
 
     // Read, merge, then push what is only here. Adopting first is what points
@@ -14254,6 +14448,7 @@ function setupEventListeners() {
 
     // Local now holds both sides, so writing it back adds this device's extras
     // without removing anything that was already there.
+    reportSetupProgress('Uploading the merged bookmarks to the repository');
     const merged = await buildStoreSeedFiles(existing);
     const response = await store.writeFiles(projectId, merged);
     if (!response.ok) {
@@ -14379,6 +14574,79 @@ function setupEventListeners() {
     const content = modal.querySelector('#snippetSetupContent');
     const errorDiv = modal.querySelector('#snippetSetupError');
 
+    /* [ZeroLabs] 2026-09-23 11:55 PM - added: a progress panel for the slow actions */
+    // Shown under the dialog's content while a connect, a create or a migration
+    // runs, and fed by reportSetupProgress. A step with a count fills the bar. A
+    // step that is only waiting on GitLab shows a moving stripe instead, so the
+    // dialog never looks frozen.
+    //
+    // setupBusy also stops Escape and the backdrop from closing the dialog while
+    // the work runs. Closing would not stop it; it would only hide the progress
+    // of a merge that is still writing bookmarks.
+    let setupBusy = false;
+
+    const beginSetupProgress = () => {
+      setupBusy = true;
+      errorDiv.textContent = '';
+      errorDiv.style.display = 'none';
+
+      const panel = document.createElement('div');
+      panel.style.cssText = 'margin-top: 16px;';
+      panel.innerHTML = `
+        <p class="setup-progress-phase" style="margin: 0 0 8px 0; font-size: 13px; color: var(--md-sys-color-on-surface);"></p>
+        <div style="height: 8px; border-radius: 999px; background: var(--md-sys-color-surface-variant); overflow: hidden;">
+          <div class="setup-progress-bar" style="width: 40%; height: 100%; border-radius: 999px; background: var(--md-sys-color-primary);"></div>
+        </div>
+        <p class="setup-progress-count" style="margin: 6px 0 0 0; font-size: 12px; color: var(--md-sys-color-on-surface-variant); min-height: 1em;"></p>
+      `;
+      errorDiv.insertAdjacentElement('beforebegin', panel);
+
+      const phaseLine = panel.querySelector('.setup-progress-phase');
+      const bar = panel.querySelector('.setup-progress-bar');
+      const countLine = panel.querySelector('.setup-progress-count');
+
+      // The waiting stripe. The Web Animations API needs no stylesheet, which
+      // this dialog, built entirely in script, does not have.
+      let stripe = null;
+      const showWaiting = () => {
+        if (stripe) return;
+        bar.style.width = '40%';
+        stripe = bar.animate(
+          [{ transform: 'translateX(-100%)' }, { transform: 'translateX(250%)' }],
+          { duration: 1200, iterations: Infinity, easing: 'ease-in-out' }
+        );
+      };
+      const showCount = (done, total) => {
+        if (stripe) {
+          stripe.cancel();
+          stripe = null;
+        }
+        bar.style.transform = '';
+        bar.style.width = `${Math.round((done / total) * 100)}%`;
+        countLine.textContent = `${done} of ${total}`;
+      };
+
+      const reporter = (phase, done, total) => {
+        phaseLine.textContent = phase;
+        if (total > 0) {
+          showCount(done, total);
+        } else {
+          countLine.textContent = '';
+          showWaiting();
+        }
+      };
+
+      setupProgressReporter = reporter;
+      reporter('Starting', 0, 0);
+
+      return () => {
+        setupBusy = false;
+        if (stripe) stripe.cancel();
+        if (setupProgressReporter === reporter) setupProgressReporter = null;
+        panel.remove();
+      };
+    };
+
     /* [ZeroLabs] 2026-09-07 9:20 PM - added: a way out of every screen */
     // Escape, the backdrop, and a Close button on the chooser. Nothing here is so
     // important that it earns the right to trap someone in a dialog, including the
@@ -14390,12 +14658,15 @@ function setupEventListeners() {
     };
 
     function onEscape(event) {
+      /* [ZeroLabs] 2026-09-23 11:55 PM - edited: not while the work is running */
+      if (setupBusy) return;
       if (event.key === 'Escape') closeSetup();
     }
 
     document.addEventListener('keydown', onEscape);
 
     modal.addEventListener('click', (event) => {
+      if (setupBusy) return;
       if (event.target === modal) closeSetup();
     });
 
@@ -14466,8 +14737,11 @@ function setupEventListeners() {
         const button = modal.querySelector('#startMigration');
         button.disabled = true;
         button.textContent = 'Reading your cloud bookmarks...';
+        /* [ZeroLabs] 2026-09-23 11:55 PM - added: show the pull as it happens */
+        const endProgress = beginSetupProgress();
         try {
           const pulled = await pullEverythingFromCurrentStore();
+          endProgress();
           if (pulled.added > 0) {
             console.log(`[Setup] Brought ${pulled.added} item(s) off the old store before migrating`);
           }
@@ -14483,6 +14757,7 @@ function setupEventListeners() {
             showSetupError('Your snippet has changes still waiting for your approval. You can continue, but anything you have not approved will not come across.');
           }
         } catch (error) {
+          endProgress();
           console.error('[Setup] Could not read the old store:', error);
           showSetupError('Could not read your cloud bookmarks: ' + (error.message || '') + ' You can still continue, but anything only on the snippet would be left behind.');
           button.disabled = false;
@@ -14503,7 +14778,7 @@ function setupEventListeners() {
       content.innerHTML = `
         <div style="padding: 4px 0;">
           ${choice('optJoin', 'Connect to a repository that already has my bookmarks',
-            'Another device set this up. Nothing here is written over it. The two are merged instead.')}
+            'Another device set this up. You then choose: merge both, keep the cloud\'s bookmarks, or keep this device\'s.')}
           ${choice('optEmpty', 'Use an empty repository I already made',
             'You made one yourself and it has nothing in it yet. This device\'s bookmarks go into it.')}
           ${choice('optCreate', 'Create a repository for me',
@@ -14553,6 +14828,79 @@ function setupEventListeners() {
       modal.querySelector('#setupBack').addEventListener('click', renderChooser);
     }
 
+    /* [ZeroLabs] 2026-09-23 11:55 PM - added: the three answers for a repository that has bookmarks */
+    // Merge first, because it is the only one that loses nothing, and the two
+    // replaces spell out their numbers so the cost is visible before choosing.
+    // Each replace still asks once more before it acts.
+    async function renderExistingRepoChoice(ref, remoteData) {
+      clearSetupError();
+
+      const cloudCount = countSnippetBookmarks(remoteData);
+      const localTree = await browser.bookmarks.getTree();
+      const localCount = countBookmarks(localTree[0]);
+      const plural = (count) => `${count} bookmark${count === 1 ? '' : 's'}`;
+
+      content.innerHTML = `
+        <div style="padding: 4px 0;">
+          <p style="margin: 0 0 14px 0; font-size: 14px; line-height: 1.5; color: var(--md-sys-color-on-surface);">
+            That repository already holds ${plural(cloudCount)}. This device has ${plural(localCount)}.
+          </p>
+          ${choice('optMergeBoth', 'Merge both (recommended)',
+            'Keeps everything. Anything only in the cloud comes to this device, anything only here goes to the cloud, and nothing is removed from either.')}
+          ${choice('optCloudWins', 'Replace this device\'s bookmarks with the cloud',
+            `This device ends up with exactly the cloud's ${plural(cloudCount)}. Its own ${plural(localCount)} are removed. A snapshot is saved in the Event Log first, so this can be undone.`)}
+          ${choice('optDeviceWins', 'Replace the cloud with this device\'s bookmarks',
+            `The repository ends up with exactly this device's ${plural(localCount)}. Anything only in the cloud is removed, on every device that uses it.`)}
+          <div style="margin-top: 8px; text-align: center;">${backButton()}</div>
+        </div>
+      `;
+      wireBack();
+
+      // One runner for all three, so each gets the progress panel, the same
+      // error handling, and the same finish.
+      const run = async (work) => {
+        const buttons = content.querySelectorAll('button');
+        buttons.forEach(button => { button.disabled = true; });
+        const endProgress = beginSetupProgress();
+        try {
+          const finished = await work();
+          endProgress();
+          if (finished === false) {
+            // The user said no to a confirmation. Nothing changed; stay here.
+            buttons.forEach(button => { button.disabled = false; });
+            return;
+          }
+          await finishSetup();
+        } catch (error) {
+          endProgress();
+          console.error('[Setup] Could not connect to the repository:', error);
+          showSetupError(error.message || 'Could not connect to that repository.');
+          buttons.forEach(button => { button.disabled = false; });
+        }
+      };
+
+      modal.querySelector('#optMergeBoth').addEventListener('click', () => {
+        run(() => joinProjectStore(ref));
+      });
+
+      modal.querySelector('#optCloudWins').addEventListener('click', () => {
+        // applyRemoteChangesToFirefox asks twice itself before it removes anything
+        run(() => replaceLocalFromProjectStore(ref, remoteData));
+      });
+
+      modal.querySelector('#optDeviceWins').addEventListener('click', () => {
+        run(async () => {
+          const proceed = confirm(
+            `Replace the repository's ${plural(cloudCount)} with this device's ${plural(localCount)}?\n\n` +
+            'Anything only in the cloud is removed, on every device that uses this repository.'
+          );
+          if (!proceed) return false;
+          await useProjectStore(ref);
+          return true;
+        });
+      });
+    }
+
     function renderCreate() {
       clearSetupError();
       content.innerHTML = `
@@ -14577,10 +14925,14 @@ function setupEventListeners() {
         const button = modal.querySelector('#doCreate');
         button.disabled = true;
         button.textContent = 'Creating...';
+        /* [ZeroLabs] 2026-09-23 11:55 PM - added: show the create as it happens */
+        const endProgress = beginSetupProgress();
         try {
           await createProjectStore(name);
+          endProgress();
           await finishSetup();
         } catch (error) {
+          endProgress();
           console.error('[Setup] Could not create the repository:', error);
           showSetupError('Could not create it: ' + (error.message || ''));
           button.disabled = false;
@@ -14675,11 +15027,11 @@ function setupEventListeners() {
           <input id="repoRef" type="text" placeholder="https://gitlab.com/you/bmz-bookmarks" style="${FIELD}">
           <div style="${HINT}">
             ${joining
-              ? 'Its bookmarks are read first and merged with the ones on this device. Nothing is removed without asking you.'
-              : 'This device\'s bookmarks are written into it. Pick the other option if it already holds bookmarks.'}
+              ? 'Its bookmarks are read first. You then choose to merge both, keep the cloud\'s, or keep this device\'s.'
+              : 'This device\'s bookmarks are written into it. If it already holds bookmarks, you are asked what to do with them first.'}
           </div>
           <div style="display: flex; gap: 12px; margin-top: 20px;">
-            <button id="doPoint" style="flex: 1; ${PRIMARY}">${joining ? 'Connect and merge' : 'Start syncing'}</button>
+            <button id="doPoint" style="flex: 1; ${PRIMARY}">${joining ? 'Continue' : 'Start syncing'}</button>
             ${backButton()}
           </div>
         </div>
@@ -14712,13 +15064,23 @@ function setupEventListeners() {
           //
           // The right answer is almost always the join option, so it is named.
           // One extra read on a path taken once is worth not overwriting a library.
-          if (mode !== 'join') {
+          /* [ZeroLabs] 2026-09-23 11:55 PM - edited: a repository with bookmarks gets a real choice */
+          // This probe used to run only for the empty-repository option, and its
+          // one answer to "that repository already has bookmarks" was a confirm
+          // that REPLACED them. The join option skipped it and always merged. So
+          // there was no way to say "keep the cloud" and only a hidden way to say
+          // "keep this device".
+          //
+          // Now any repository that already holds BMZ bookmarks, whichever option
+          // led here, opens one screen with all three: merge both, replace this
+          // device with the cloud, or replace the cloud with this device.
+          {
             let entries = null;
             try {
               entries = await projectStore('main').listEntries(encodeURIComponent(ref));
             } catch (probeError) {
-              // Could not look. Let useProjectStore report the real problem rather
-              // than guessing at one here.
+              // Could not look. Let the connect below report the real problem
+              // rather than guessing at one here.
               console.warn('[Setup] Could not check the repository first:', probeError);
             }
 
@@ -14727,24 +15089,17 @@ function setupEventListeners() {
               const otherContent = BMZGitLabStore.contentEntries(entries);
 
               /* [ZeroLabs] 2026-09-08 12:40 AM - added: two different wrong repositories */
-              // Already holds bookmarks is the destructive one and keeps its own
-              // warning. Holds somebody's actual project is not destructive, but
-              // BMZ would commit into it on every sync from then on, which nobody
-              // asked for. Both are a confirmation rather than a refusal: a person
-              // may genuinely want bookmarks living beside other files.
+              // Holds somebody's actual project is not destructive, but BMZ would
+              // commit into it on every sync from then on, which nobody asked for.
+              // That stays a confirmation rather than a refusal: a person may
+              // genuinely want bookmarks living beside other files.
               if (alreadyHasBookmarks) {
-                const proceed = confirm(
-                  'That repository already contains bookmarks.\n\n' +
-                  'Continuing REPLACES them with this device\'s bookmarks, on every device using it.\n\n' +
-                  'If you meant to join it and keep both sides, press Cancel and choose ' +
-                  '"Connect to a repository that already has my bookmarks" instead.\n\nReplace them?'
-                );
-                if (!proceed) {
-                  button.disabled = false;
-                  button.textContent = original;
-                  return;
-                }
-              } else if (otherContent.length > 0) {
+                const remoteData = await readProjectBookmarks(ref);
+                button.disabled = false;
+                button.textContent = original;
+                renderExistingRepoChoice(ref, remoteData);
+                return;
+              } else if (mode !== 'join' && otherContent.length > 0) {
                 // Naming a couple of them is what makes the repository recognisable.
                 // A README on its own never reaches here: BMZ creates repositories
                 // with one, and the how-to screen tells people to keep it.
@@ -14766,10 +15121,18 @@ function setupEventListeners() {
             }
           }
 
-          if (mode === 'join') {
-            await joinProjectStore(ref);
-          } else {
-            await useProjectStore(ref);
+          /* [ZeroLabs] 2026-09-23 11:55 PM - added: show the connect as it happens */
+          // Started here, after the checks above, because those can still end in
+          // the user pressing Cancel on a warning.
+          const endProgress = beginSetupProgress();
+          try {
+            if (mode === 'join') {
+              await joinProjectStore(ref);
+            } else {
+              await useProjectStore(ref);
+            }
+          } finally {
+            endProgress();
           }
           await finishSetup();
         } catch (error) {
@@ -15143,16 +15506,53 @@ function setupEventListeners() {
     }
   }
 
-  async function resolveOrCreateFolderUnder(parentId, segments) {
+  /* [ZeroLabs] 2026-09-23 6:10 PM - edited: a renamed folder keeps its place */
+  // A folder rename cannot travel as a rename. The snippet has no folder objects
+  // at all - a folder exists only as segments on the bookmarks it holds - so the
+  // receiving device sees every bookmark in that folder move from one path to
+  // another. It then creates the new folder here and prunes the old one once it
+  // is empty.
+  //
+  // `browser.bookmarks.create` with no index APPENDS, so the renamed folder
+  // landed at the bottom of its parent on every other device while the original
+  // sat wherever the user had put it.
+  //
+  // `options.placeLike` is the folder the bookmarks are leaving. When it is a
+  // SIBLING of the folder being created, the new folder is created at its index
+  // instead of at the end. The browser inserts before it, and the old folder is
+  // pruned moments later, so the new one ends up in exactly the old one's slot.
+  //
+  // The sibling test is what keeps this narrow. A bookmark moved into a genuinely
+  // new folder somewhere else still appends, because the folder it came from is
+  // not a sibling of the new one.
+  async function resolveOrCreateFolderUnder(parentId, segments, options = {}) {
+    const placeLike = options.placeLike || null;
     let currentId = parentId;
-    for (const segment of segments) {
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
       const children = await browser.bookmarks.getChildren(currentId);
       let match = children.find(child => !child.url && child.title === segment);
+
       if (!match) {
-        match = await browser.bookmarks.create({ parentId: currentId, title: segment });
+        const details = { parentId: currentId, title: segment };
+
+        // Only the LAST segment is the folder the bookmarks are moving into.
+        // A missing parent above it is a folder nobody had, so it appends.
+        const isLastSegment = i === segments.length - 1;
+        if (isLastSegment
+            && placeLike
+            && placeLike.parentId === currentId
+            && typeof placeLike.index === 'number') {
+          details.index = placeLike.index;
+        }
+
+        match = await browser.bookmarks.create(details);
       }
+
       currentId = match.id;
     }
+
     return currentId;
   }
 
@@ -15466,7 +15866,24 @@ function setupEventListeners() {
             if (item.localPath !== item.remotePath && Array.isArray(item.remoteSegments)) {
               const rootId = firefoxRootForSnippetKey(item.remoteRootKey);
               if (rootId) {
-                const parentId = await resolveOrCreateFolderUnder(rootId, item.remoteSegments);
+                /* [ZeroLabs] 2026-09-23 6:10 PM - added: keep a renamed folder where it was */
+                // The folder this bookmark is leaving. When the move is a folder
+                // rename, that folder is about to be emptied and pruned, and the
+                // replacement should take its place rather than be appended.
+                let placeLike = null;
+                if (node.parentId) {
+                  const [oldParent] = await browser.bookmarks.get(node.parentId);
+                  if (oldParent && !oldParent.url) {
+                    placeLike = {
+                      id: oldParent.id,
+                      parentId: oldParent.parentId,
+                      index: oldParent.index
+                    };
+                  }
+                }
+
+                const parentId = await resolveOrCreateFolderUnder(
+                  rootId, item.remoteSegments, { placeLike });
                 // An approved move empties a folder just as a removal does
                 if (node.parentId && node.parentId !== parentId) vacated.add(node.parentId);
                 /* [ZeroLabs] 2026-09-22 6:54 PM - edited: record the parent id, not only the path */
@@ -15551,16 +15968,265 @@ function setupEventListeners() {
   // manual sync and an automatic one can never disagree about what is safe. The
   // difference is only what happens on a deferral: the background asks for
   // consent, while this returns the diff so the caller can offer every option.
+  /* [ZeroLabs] 2026-09-23 7:15 PM - added: the order of a folder's contents syncs now */
+  // Reordering was the one change that never travelled. The push already wrote it:
+  // the snippet is serialised from the live tree, so its order is this device's
+  // order, and onMoved already schedules a push. Nothing ever read it back, so
+  // every other device kept its own order for ever.
+  //
+  // The comparison is per FOLDER, not per bookmark. Order is a property of a
+  // folder's children list, so one drag is one difference, not one difference for
+  // every bookmark that shifted below it.
+  //
+  // Items that are NOT in the snippet never move. They keep the exact slots they
+  // hold, and the matched items are arranged among the slots that remain. That is
+  // what makes Chrome's `Bookmarks Menu` and `Mobile Bookmarks` folders safe: they
+  // live inside Other Bookmarks here and are promoted to roots of their own in the
+  // snippet, so they are never matched, and the device cannot fight itself over
+  // where they sit.
+  //
+  // There is no merge and no prompt. The last device to write the snippet decides
+  // the order, which is the model this project already uses everywhere else.
+
+  /**
+   * The key that identifies a child inside one folder.
+   * Two bookmarks can share a URL, so repeats are numbered.
+   */
+  function orderKeyFor(node, seen) {
+    const base = node.url
+      ? `b:${node.url}`
+      : `f:${normalizeBookmarkTitle(node.title || node.name || '')}`;
+
+    const count = seen.get(base) || 0;
+    seen.set(base, count + 1);
+    return count === 0 ? base : `${base}\u0000#${count}`;
+  }
+
+  function orderKeysOf(children) {
+    const seen = new Map();
+    return (children || []).map(child => orderKeyFor(child, seen));
+  }
+
+  /**
+   * Put one folder's children into the order the snippet holds.
+   *
+   * @returns {number} how many items had to move
+   */
+  async function applyFolderOrder(parentId, remoteChildren) {
+    const localChildren = await browser.bookmarks.getChildren(parentId);
+    if (localChildren.length < 2) return 0;
+
+    const desired = orderKeysOf(remoteChildren);
+    const localKeys = orderKeysOf(localChildren);
+
+    // Where each key sits in the snippet's list. A key the snippet does not have
+    // is left out, and the item that carries it never moves.
+    const rank = new Map();
+    desired.forEach((key, index) => {
+      if (!rank.has(key)) rank.set(key, index);
+    });
+
+    const matched = [];
+    localChildren.forEach((child, index) => {
+      if (rank.has(localKeys[index])) {
+        matched.push({ id: child.id, index, rankValue: rank.get(localKeys[index]) });
+      }
+    });
+    if (matched.length < 2) return 0;
+
+    // The slots the matched items hold now. The unmatched items own every other
+    // slot and keep it, so the matched items are dealt back into these.
+    const slots = matched.map(entry => entry.index);
+    const wanted = matched.slice().sort((a, b) => a.rankValue - b.rankValue);
+
+    // The exact list this folder should end up as, built before anything moves
+    const target = localChildren.map(child => child.id);
+    wanted.forEach((entry, position) => {
+      target[slots[position]] = entry.id;
+    });
+
+    const order = localChildren.map(child => child.id);
+    if (order.every((id, index) => id === target[index])) return 0;
+
+    let moves = 0;
+
+    for (let index = 0; index < target.length; index++) {
+      if (order[index] === target[index]) continue;
+
+      const id = target[index];
+      const currentIndex = order.indexOf(id);
+
+      // Every slot before this one already holds the right item, so the item
+      // wanted here is always LATER in the list. Chrome removes an item before it
+      // inserts it, and a removal after the target cannot shift the target, so the
+      // index needs no adjustment. A forward move would need one, and walking the
+      // list from the front means one never happens.
+      await browser.bookmarks.move(id, { index });
+
+      order.splice(currentIndex, 1);
+      order.splice(index, 0, id);
+      moves++;
+    }
+
+    return moves;
+  }
+
+  /**
+   * Walk the snippet's tree and put every folder that differs into its order.
+   *
+   * @returns {Promise<number>} how many items moved in total
+   */
+  async function applySnippetOrder(remoteRootNode, localRootNode) {
+    let moved = 0;
+
+    const walk = async (remoteNode, localNode) => {
+      if (!remoteNode || !localNode) return;
+      const remoteChildren = remoteNode.children || [];
+      const localChildren = localNode.children || [];
+      if (remoteChildren.length === 0 || localChildren.length === 0) return;
+
+      moved += await applyFolderOrder(localNode.id, remoteChildren);
+
+      // Descend by title, which is how folders are identified everywhere in sync
+      const remoteFolders = new Map();
+      remoteChildren.forEach(child => {
+        if (child.url) return;
+        const title = normalizeBookmarkTitle(child.title || child.name || '');
+        if (!remoteFolders.has(title)) remoteFolders.set(title, child);
+      });
+
+      for (const child of localChildren) {
+        if (child.url) continue;
+        const match = remoteFolders.get(normalizeBookmarkTitle(child.title || ''));
+        if (!match) continue;
+        // The children read above are stale after the moves, so read again
+        const [fresh] = await browser.bookmarks.getSubTree(child.id);
+        await walk(match, fresh);
+      }
+    };
+
+    await walk(remoteRootNode, localRootNode);
+    return moved;
+  }
+
+  /* [ZeroLabs] 2026-09-23 9:40 PM - added: the worker's order comparison, for the sync button (copied from: background.js) */
+  // The same three functions the background worker uses, so the sync button and
+  // the automatic sync can never judge an order differently. Both sides are in
+  // snippet format here, and items only one side holds are ignored.
+  function snippetOrderKeys(children) {
+    const seen = new Map();
+    return (children || []).map(child => {
+      const title = String(child.title || child.name || '').trim();
+      const base = child.url ? `b:${child.url}` : `f:${title}`;
+      const count = seen.get(base) || 0;
+      seen.set(base, count + 1);
+      return count === 0 ? base : `${base}\u0000#${count}`;
+    });
+  }
+
+  function folderOrderDiffers(localChildren, remoteChildren) {
+    const remoteKeys = snippetOrderKeys(remoteChildren);
+    const localKeys = snippetOrderKeys(localChildren);
+
+    // Only the items both sides hold can disagree about order
+    const inRemote = new Set(remoteKeys);
+    const inLocal = new Set(localKeys);
+    const localShared = localKeys.filter(key => inRemote.has(key));
+    const remoteShared = remoteKeys.filter(key => inLocal.has(key));
+
+    if (localShared.length !== remoteShared.length) return false;
+    return localShared.some((key, index) => key !== remoteShared[index]);
+  }
+
+  function snippetOrderDiffers(localData, remoteData) {
+    const walk = (localNode, remoteNode) => {
+      if (!localNode || !remoteNode) return false;
+      const localChildren = localNode.children || [];
+      const remoteChildren = remoteNode.children || [];
+      if (localChildren.length === 0 || remoteChildren.length === 0) return false;
+
+      if (folderOrderDiffers(localChildren, remoteChildren)) return true;
+
+      const remoteFolders = new Map();
+      remoteChildren.forEach(child => {
+        if (child.url) return;
+        const title = String(child.title || child.name || '').trim();
+        if (!remoteFolders.has(title)) remoteFolders.set(title, child);
+      });
+
+      return localChildren.some(child => {
+        if (child.url) return false;
+        const match = remoteFolders.get(String(child.title || child.name || '').trim());
+        return match ? walk(child, match) : false;
+      });
+    };
+
+    const localRoots = (localData && localData.roots) || {};
+    const remoteRoots = (remoteData && remoteData.roots) || {};
+    return Object.keys(localRoots).some(key => walk(localRoots[key], remoteRoots[key]));
+  }
+
   async function reconcileWithSnippet() {
     const remoteData = await readBookmarksFromSnippet(snippetId);
     const localTree = await browser.bookmarks.getTree();
     const remoteAsFirefox = snippetFormatToFirefoxBookmarks(remoteData);
+
+    /* [ZeroLabs] 2026-09-23 9:40 PM - edited: the sync button follows the worker's order rule exactly */
+    // A different order means one of two things:
+    //   - this device moved something and that change has not gone up yet
+    //     (`snippet_push_pending` AND a record in `snippet_local_edited`): its
+    //     order is the newer one, so the sync publishes it.
+    //   - otherwise another device reordered: take the cloud order FIRST, so any
+    //     push this sync makes carries it instead of this device's old order.
+    // A pending change alone is not enough. Adding a bookmark here after a
+    // reorder on another device leaves a change pending while this device still
+    // holds the old order.
+    //
+    // This runs before the content comparison below, and deliberately outside
+    // it: a reorder produces no added, removed or modified entries at all, so
+    // the early return for "no changes" would skip it. The same rule runs in
+    // background.js for the push alarm and the five minute poll, so a manual
+    // sync and an automatic one can never disagree.
+    let publishOrder = false;
+    try {
+      const orderState = await safeStorage.get(['snippet_push_pending', 'snippet_local_edited']);
+      const localChangePending = orderState.snippet_push_pending === true;
+      const movedHere = (orderState.snippet_local_edited || []).length > 0;
+
+      const localAsSnippet = await firefoxBookmarksToSnippetFormat(localTree);
+      if (snippetOrderDiffers(localAsSnippet, remoteData)) {
+        if (localChangePending && movedHere) {
+          publishOrder = true;
+          console.log('[CloudSync] This device reordered, publishing its order');
+        } else {
+          const moved = await applySnippetOrder(remoteAsFirefox[0], localTree[0]);
+          if (moved > 0) {
+            console.log(`[CloudSync] Took the cloud order for ${moved} item(s)`);
+            await loadBookmarks();
+            renderBookmarks();
+          }
+        }
+      }
+    } catch (error) {
+      // Order is cosmetic. It must never stop a sync that moves real data.
+      console.warn('[CloudSync] Could not compare the cloud order:', error.message);
+    }
+
     const diff = calculateBookmarkDiff(localTree[0], remoteAsFirefox[0]);
 
     const hasChanges = diff.added.length + diff.removed.length +
                        diff.moved.length + diff.modified.length > 0;
 
     if (!hasChanges) {
+      /* [ZeroLabs] 2026-09-23 9:40 PM - added: a reorder alone is still worth a push */
+      // Nothing was added, removed or renamed, but this device moved something.
+      // Without this the sync button said "already in sync" and left the
+      // reorder for the background push to carry up.
+      if (publishOrder) {
+        await syncToSnippet(true);
+        return { changed: true, deferred: false, addedLocally: 0, pushed: true };
+      }
+
       snippetLocalVersion = Number(remoteData?.version) || snippetLocalVersion;
       await safeStorage.set({ snippet_local_version: snippetLocalVersion });
       await setSnippetNeedsReconcile(false);
@@ -15609,12 +16275,8 @@ function setupEventListeners() {
     // one only when a bookmark is actually going into it. An empty folder made on
     // another device therefore does not travel, which is the same limitation that
     // already applies to renaming and moving one.
-    const wanted = (item) => item.url
-      && !deletedHere.has(item.url) && !removedUrls.has(item.url);
-    const toAdd = diff.added.filter(item => item.url
-      ? wanted(item)
-      : diff.added.some(other => other.path && item.path
-          && other.path.startsWith(item.path + '/') && wanted(other)));
+    /* [ZeroLabs] 2026-09-23 10:50 PM - edited: one filter, shared with the join (see safeAdditionsFromDiff) */
+    const toAdd = safeAdditionsFromDiff(diff, deletedHere);
 
     /* [ZeroLabs] 2026-08-27 - edited: removals use the consent dialog, like everywhere else */
     // This used to hand the raw diff back, and the caller showed the diff dialog:
@@ -15862,7 +16524,14 @@ function setupEventListeners() {
       // could act on. Each failure now carries the item and the reason.
       const skippedItems = [];
 
+      /* [ZeroLabs] 2026-09-23 11:55 PM - added: count the slow part out loud */
+      // This loop is what takes the time on a first connect: one browser call per
+      // bookmark. It does nothing unless the setup dialog is listening.
+      let processed = 0;
+
       for (const item of ordered) {
+        processed++;
+        reportSetupProgress('Adding bookmarks from the cloud to this device', processed, ordered.length);
         /* [ZeroLabs] 2026-08-29 - fixed: never split a path back apart on "/" */
         // This used to do `(item.path || '').split('/')`. Titles contain slashes
         // constantly - "simulot/immich-go: ...", "owner/repo: ..." - so a
@@ -16403,7 +17072,12 @@ function setupEventListeners() {
         modal.remove();
         /* [ZeroLabs] 2026-08-27 2:41 PM - added: this dialog has no ring to show progress */
       showToast('Merging...');
-      await bringSidesTogether(diff.added);
+      /* [ZeroLabs] 2026-09-23 10:50 PM - fixed: same duplicate fault as the join */
+      // The raw `diff.added` includes every bookmark held on both sides under a
+      // different title or folder, so merging created a second copy of each.
+      const stored = await safeStorage.get('snippet_local_deleted');
+      const deletedHere = new Set(stored.snippet_local_deleted || []);
+      await bringSidesTogether(safeAdditionsFromDiff(diff, deletedHere));
       });
     }
 
@@ -17751,7 +18425,10 @@ function setupEventListeners() {
     // Show double confirmation dialog
     return new Promise((resolve) => {
       const modal = document.createElement('div');
-      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+      /* [ZeroLabs] 2026-09-23 11:55 PM - edited: above the setup dialog */
+      // Was 10000, under the setup dialog's 10001, so opening it from setup put
+      // the warning behind the dialog that asked for it.
+      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10002; display: flex; align-items: center; justify-content: center;';
 
       const dialog = document.createElement('div');
       dialog.style.cssText = 'background: var(--md-sys-color-error-container, #3b1a1a); padding: 24px; border-radius: 12px; max-width: 500px; width: 90%; color: var(--md-sys-color-on-error-container, #f9dedc); border: 2px solid var(--md-sys-color-error, #f44336);';
@@ -17799,6 +18476,7 @@ function setupEventListeners() {
 
         try {
           showToast('Syncing from the cloud... This may take a moment.');
+          await browser.storage.local.set({ [BULK_REPLACE_KEY]: Date.now() });
 
           // Get current bookmark tree
           const currentTree = await browser.bookmarks.getTree();
@@ -17823,6 +18501,7 @@ function setupEventListeners() {
           const roots = currentTree[0].children;
 
           // Remove all existing bookmarks from each root folder
+          reportSetupProgress('Removing this device\'s current bookmarks');
           console.log('[SYNC] Deleting existing bookmarks...');
           for (const root of roots) {
             console.log(`[SYNC] Processing root: ${root.title} (${root.id}, type: ${root.type})`);
@@ -17846,6 +18525,9 @@ function setupEventListeners() {
           // Add new bookmarks from Snippet
           let createdCount = 0;
           let errorCount = 0;
+          /* [ZeroLabs] 2026-09-23 11:55 PM - added: count the recreate out loud */
+          const replaceTotal = countSnippetBookmarks(remoteSnippetData);
+          let replaceDone = 0;
           const createNodes = async (nodes, parentId, path = '') => {
             if (!nodes || !Array.isArray(nodes)) {
               console.warn('[createNodes] Invalid nodes array:', nodes);
@@ -17863,6 +18545,8 @@ function setupEventListeners() {
                     url: node.url
                   });
                   createdCount++;
+                  replaceDone++;
+                  reportSetupProgress('Copying the cloud\'s bookmarks to this device', replaceDone, replaceTotal);
                 } else if (node.children) {
                   // Create folder
                   console.log(`[createNodes] Creating folder: "${node.title}" at ${path}`);
@@ -17922,6 +18606,10 @@ function setupEventListeners() {
           await safeStorage.set({ snippet_local_version: snippetLocalVersion });
           /* [ZeroLabs] 2026-08-26 11:38 PM - added: clear reconcile flag after applying remote */
           await setSnippetNeedsReconcile(false);
+          /* [ZeroLabs] 2026-09-23 11:55 PM - added: the wipe and recreate are not your edits */
+          // Every removal and creation above was recorded as a change made here.
+          // Both sides now match exactly, so those records describe nothing.
+          await clearLocalBookmarkEvents();
 
           showToast('Bookmarks synced successfully!');
           resolve(true);
@@ -17933,6 +18621,8 @@ function setupEventListeners() {
           console.error('Failed to apply remote changes:', error);
           showToast(`Error: ${error.message}`, 'error');
           resolve(false);
+        } finally {
+          await browser.storage.local.remove(BULK_REPLACE_KEY).catch(() => {});
         }
       });
 
