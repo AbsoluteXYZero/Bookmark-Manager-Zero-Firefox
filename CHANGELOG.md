@@ -1,6 +1,17 @@
 ## Changelog
 
-### v5.9 (Current)
+### v6.0 (Current)
+
+**Changes:**
+- **Screens are built through one safe helper** - Every place that turned prepared markup into part of the panel now goes through one function, and all text from bookmarks, GitLab and error messages is escaped before it gets there. Mozilla's review tool flagged each of the old places; it now flags none of BMZ's own code.
+
+**Bug Fixes:**
+- **Choosing a folder works again** - Since 5.9, the folder you picked in a folder tree was lost before it was used. Adding a bookmark or a folder failed with a message that Firefox does not allow creating at the root level, and the move dialog and moving a selection could not use their destination either. Every folder picker now keeps the folder you choose. Thank you to everyone who reported it.
+- **"Add bookmark here" and "Add subfolder" start on that folder** - They opened the form on the last folder you used and only then switched, so the tree highlighted a different folder from the one that was used.
+- **Special pages can be bookmarked** - Adding a page such as about:debugging failed with "Failed to create bookmark". The duplicate check before the save used a search that Firefox refuses for those addresses. It now falls back to a search that accepts them, and the sync approval and undo steps use the same lookup.
+- **Titles with quotes or symbols display correctly** - A bookmark whose title or address held a quote, a `<` or an `&` could show broken text in the duplicates list and the changelog, and a quote in a title could break the markup around it.
+
+### v5.9
 
 **Changes:**
 - **Dragging bookmarks is now BMZ's own, and the scroll wheel works while you drag** - The browser's built-in drag would not let the wheel scroll the list, would not start from a touch at all, and drew its own "you cannot drop here" cursor over places where you plainly could. BMZ now handles the drag itself: the wheel scrolls the list with an item in hand, the item follows the pointer without lagging behind it, and Escape cancels a drag part way.
