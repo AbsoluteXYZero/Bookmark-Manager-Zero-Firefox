@@ -13478,7 +13478,8 @@ function setupEventListeners() {
 
         // Prompt user before rotating
         rotationPromptActive = true;
-        const choice = await showPreRotationPrompt(daysLeft);
+        /* [ZeroLabs] 2026-10-31 11:50 PM - edited: the prompt's warning depends on the storage mode */
+        const choice = await showPreRotationPrompt(daysLeft, await getTokenMode());
         // rotationPromptActive is cleared inside showPreRotationPrompt's dismiss()
         if (choice === 'snooze') {
           await safeStorage.set({ bmz_rotation_snooze: Date.now() });
@@ -17895,7 +17896,14 @@ function setupEventListeners() {
 
   // Prompt user before rotating — returns 'rotate' or 'snooze'
   // Backdrop click / ESC both count as snooze so the prompt doesn't re-appear every 10 minutes
-  function showPreRotationPrompt(daysLeft) {
+  /* [ZeroLabs] 2026-10-31 11:50 PM - edited: Supabase users are not told to enter the token by hand (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // The warning told every user to enter the new token on each device. In Supabase
+  // mode the other devices pick it up from Supabase, as the website's prompt
+  // already said.
+  function showPreRotationPrompt(daysLeft, mode = 'local') {
+    const warning = mode === 'supabase'
+      ? 'Renewing creates a <strong>new token</strong> and immediately invalidates the old one. This device uses Supabase token storage, so the new token is saved there and your other devices pick it up automatically.'
+      : 'Renewing creates a <strong>new token</strong> and immediately invalidates the old one. This device uses Local token storage, so if you use BMZ on other browsers, the website, or Android, you will need to enter the new token on each of them to keep syncing.';
     return new Promise((resolve) => {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10002;display:flex;align-items:center;justify-content:center;';
@@ -17905,7 +17913,7 @@ function setupEventListeners() {
           <h2 style="margin:0 0 12px 0;font-size:18px;">🔑 GitLab Token Expiring Soon</h2>
           <p style="font-size:13px;color:var(--md-sys-color-on-surface-variant,#aaa);margin:0 0 16px 0;">Your GitLab Personal Access Token expires in <strong style="color:var(--md-sys-color-on-surface,#e0e0e0);">${Math.floor(daysLeft)} day${Math.floor(daysLeft) !== 1 ? 's' : ''}</strong>. BMZ can renew it automatically right now.</p>
           <div style="padding:10px 12px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:8px;font-size:12px;color:var(--md-sys-color-on-surface-variant,#aaa);margin-bottom:16px;">
-            ⚠️ Renewing creates a <strong>new token</strong> and immediately invalidates the old one. If you use BMZ on other browsers, the website, or Android, you will need to enter the new token on each of those clients to maintain sync.
+            ⚠️ ${warning}
           </div>
           <div style="display:flex;flex-direction:column;gap:8px;">
             <button id="rotateNowBtn" style="padding:12px;border-radius:8px;border:none;background:var(--md-sys-color-primary,#818cf8);color:var(--md-sys-color-on-primary,#fff);font-size:14px;cursor:pointer;font-weight:500;">Renew Token Now</button>

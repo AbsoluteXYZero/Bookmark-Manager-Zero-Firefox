@@ -8,6 +8,7 @@
 
 **Bug Fixes:**
 - **A renewal no longer claims success it did not have** - If saving the new token to Supabase failed, the message still said your other devices would pick it up. And if this device's Supabase sign-in had expired, it showed the Local storage message. Both now show what really happened.
+- **The renewal prompt no longer tells Supabase users to enter the token by hand** - "GitLab Token Expiring Soon" told everyone to enter the new token on each of their devices. With Supabase token storage, your other devices pick it up automatically, and the prompt now says so.
 
 ### v6.1
 
