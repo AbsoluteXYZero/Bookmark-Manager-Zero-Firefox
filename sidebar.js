@@ -13410,11 +13410,12 @@ function setupEventListeners() {
       if (rotationPromptActive) return currentToken;
 
       try {
-        // Fast-path: skip API call if cached expiry shows > 30 days remaining
+        /* [ZeroLabs] 2026-10-31 10:41 PM - edited: rotate before GitLab's 60-day email (see also: sidepanel.js, supabase-manager.js, app.js) */
+        // Fast-path: skip API call if cached expiry shows > 65 days remaining
         const cached = await safeStorage.get('gitlab_token_expires');
         if (cached.gitlab_token_expires) {
           const cachedDaysLeft = (new Date(cached.gitlab_token_expires) - Date.now()) / (1000 * 60 * 60 * 24);
-          if (cachedDaysLeft > 30) return currentToken;
+          if (cachedDaysLeft > 65) return currentToken;
         }
 
         const res = await fetchGitLab('https://gitlab.com/api/v4/personal_access_tokens/self', {
@@ -13433,7 +13434,8 @@ function setupEventListeners() {
         await safeStorage.set({ gitlab_token_expires: info.expires_at });
 
         const daysLeft = (new Date(info.expires_at) - Date.now()) / (1000 * 60 * 60 * 24);
-        if (daysLeft > 30) return currentToken;
+        /* [ZeroLabs] 2026-10-31 10:41 PM - edited: rotation threshold 30 to 65 days */
+        if (daysLeft > 65) return currentToken;
 
         // Check 24-hour snooze
         const snoozeData = await safeStorage.get('bmz_rotation_snooze');
@@ -17548,7 +17550,7 @@ function setupEventListeners() {
       }
 
       try {
-        // Check and auto-rotate token if expiring within 30 days (both modes)
+        // Check and auto-rotate token if expiring within 65 days (both modes)
         const rotatedToken = await supabase.checkAndRotateIfNeeded(snippetToken);
         // Only update snippetToken after rotation check fully resolves to avoid
         // a race where syncFromSnippet uses the old (now dead) token mid-rotation
