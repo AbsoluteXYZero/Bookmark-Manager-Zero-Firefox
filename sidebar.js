@@ -21,7 +21,29 @@ const APP_VERSION = browser.runtime.getManifest().version;
 // repeating it lands the same result whether or not the first attempt arrived.
 const GITLAB_TIMEOUT_MS = 15000;
 
+/* [ZeroLabs] 2026-10-31 11:01 PM - added: a revoked token gets one retry with Supabase's copy (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js, Bookmark-Manager-Zero-Website/js/storage/snippet-adapter.js) */
+// A rotation on another device revokes this device's token at once. In Supabase
+// mode the new token is already in Supabase, so a 401 asks for it and repeats
+// the request one time. Only a request that carried this panel's own token is
+// retried: a token being tested in a setup dialog is never swapped for another.
+// The refresh lives inside setupEventListeners with the token state, so it is
+// reached through window.
 async function fetchGitLab(url, options = {}, timeoutMs = GITLAB_TIMEOUT_MS) {
+  const response = await fetchGitLabOnce(url, options, timeoutMs);
+  if (response.status !== 401) return response;
+
+  const sentAuth = options.headers && options.headers['Authorization'];
+  if (!sentAuth || !sentAuth.startsWith('Bearer ')) return response;
+
+  const staleToken = sentAuth.slice('Bearer '.length);
+  const freshToken = await window.refreshGitLabTokenFromSupabase?.(staleToken);
+  if (!freshToken) return response;
+
+  const retryHeaders = { ...options.headers, 'Authorization': `Bearer ${freshToken}` };
+  return await fetchGitLabOnce(url, { ...options, headers: retryHeaders }, timeoutMs);
+}
+
+async function fetchGitLabOnce(url, options = {}, timeoutMs = GITLAB_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -10869,6 +10891,8 @@ async function openChangelogModal() {
       else if (entry.type === 'error') iconColor = '#ef4444';
       /* [ZeroLabs] 2026-09-13 - added: published notices are recorded here too */
       else if (entry.type === 'notice') iconColor = '#3b82f6';
+      /* [ZeroLabs] 2026-10-31 11:33 PM - added: GitLab token events */
+      else if (entry.type === 'token') iconColor = '#06b6d4';
       else iconColor = '#f59e0b';
 
       // SVG icons for operation types
@@ -10885,6 +10909,9 @@ async function openChangelogModal() {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M21,19V20H3V19L5,17V11C5,7.9 7.03,5.17 10,4.29C10,4.19 10,4.1 10,4A2,2 0 0,1 12,2A2,2 0 0,1 14,4C14,4.1 14,4.19 14,4.29C16.97,5.17 19,7.9 19,11V17L21,19M14,21A2,2 0 0,1 12,23A2,2 0 0,1 10,21"/></svg>`;
       } else if (entry.type === 'error') {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z"/></svg>`;
+      /* [ZeroLabs] 2026-10-31 11:33 PM - added: a key for token events */
+      } else if (entry.type === 'token') {
+        icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M7,14A2,2 0 0,1 5,12A2,2 0 0,1 7,10A2,2 0 0,1 9,12A2,2 0 0,1 7,14M12.65,10C11.83,7.67 9.61,6 7,6A6,6 0 0,0 1,12A6,6 0 0,0 7,18C9.61,18 11.83,16.33 12.65,14H17V18H21V14H23V10H12.65Z"/></svg>`;
       } else if (entry.type === 'pre-sync-snapshot') {
         icon = `<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" style="color: ${iconColor};"><path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/></svg>`;
       /* [ZeroLabs] 2026-09-22 6:54 PM - added: the approved-sync event */
@@ -10897,8 +10924,10 @@ async function openChangelogModal() {
       // SVG icons for item types (skip for sync snapshots)
       let itemIcon = '';
       /* [ZeroLabs] 2026-09-22 6:54 PM - edited: a sync event is not one item */
+      /* [ZeroLabs] 2026-10-31 11:33 PM - edited: a token event is not an item either */
       if (entry.type !== 'pre-sync-snapshot' && entry.type !== 'error' &&
-          entry.type !== 'notice' && entry.type !== 'sync-apply' && entry.itemType !== 'sync') {
+          entry.type !== 'notice' && entry.type !== 'sync-apply' && entry.itemType !== 'sync' &&
+          entry.type !== 'token') {
         if (entry.itemType === 'folder') {
           itemIcon = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="color: var(--md-sys-color-primary);"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg>`;
         } else {
@@ -10910,6 +10939,9 @@ async function openChangelogModal() {
       if (entry.details) {
         if (entry.type === 'notice') {
           detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Announcement from BMZ</div>`;
+        /* [ZeroLabs] 2026-10-31 11:33 PM - added: what happened to the token, and why */
+        } else if (entry.type === 'token') {
+          detailsHtml = `<div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">${escapeHtml(entry.details.summary || '')}</div>`;
         } else if (entry.type === 'error') {
           /* [ZeroLabs] 2026-09-08 7:40 AM - added: the frame is the useful half */
           // The message says what broke; this says where.
@@ -13472,23 +13504,43 @@ function setupEventListeners() {
           } else {
             showToast(`Token renewal failed (${rotateRes.status}). Please try again later.`, 'error');
           }
+          /* [ZeroLabs] 2026-10-31 11:33 PM - added: a failed renewal goes in the Event Log */
+          await logTokenEvent('GitLab token renewal failed', describeRenewalFailure(rotateRes.status));
           return currentToken;
         }
 
         const rotated = await rotateRes.json();
         const mode = await getTokenMode();
 
-        if (mode === 'supabase' && this.isSignedIn) {
-          try {
-            const encrypted = await encryptForSupabase(rotated.token, this.session.user.id);
-            await this.saveGitLabToken(encrypted, rotated.expires_at);
-          } catch (e) { console.warn('[TokenRotation] Supabase save failed:', e); }
-          await storeSnippetToken(rotated.token, rotated.expires_at);
-          showPostRotationModal(rotated.token, 'supabase');
-        } else {
-          await storeSnippetToken(rotated.token, rotated.expires_at);
-          showPostRotationModal(rotated.token, 'local');
+        /* [ZeroLabs] 2026-10-31 11:33 PM - edited: three outcomes, each logged (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js, Bookmark-Manager-Zero-Website/js/core/app.js) */
+        // The rotation has already revoked the old token, so the new one is stored
+        // on this device first. Then the Supabase save, whose result decides what
+        // the modal says. Before this, a failed save still showed "your other
+        // devices will pick it up", and Supabase mode with an expired Supabase
+        // session showed the Local message.
+        await storeSnippetToken(rotated.token, rotated.expires_at);
+
+        let outcome = 'local';
+        let failureReason = '';
+        if (mode === 'supabase') {
+          if (!this.isSignedIn) {
+            outcome = 'supabase-failed';
+            failureReason = 'This device is not signed in to Supabase.';
+          } else {
+            try {
+              const encrypted = await encryptForSupabase(rotated.token, this.session.user.id);
+              await this.saveGitLabToken(encrypted, rotated.expires_at);
+              outcome = 'supabase';
+            } catch (e) {
+              console.warn('[TokenRotation] Supabase save failed:', e);
+              outcome = 'supabase-failed';
+              failureReason = `Saving to Supabase failed: ${e.message}`;
+            }
+          }
         }
+
+        await logTokenEvent('GitLab token renewed', describeRenewalOutcome(rotated.expires_at, outcome, failureReason));
+        showPostRotationModal(rotated.token, outcome, failureReason);
 
         await browser.storage.local.remove('bmz_rotation_snooze');
         console.log(`[TokenRotation] Rotated, new expiry: ${rotated.expires_at}`);
@@ -13599,7 +13651,12 @@ function setupEventListeners() {
           const row = await supabase.getGitLabToken();
           if (row?.token) {
             const decrypted = await decryptFromSupabase(row.token, supabase.session.user.id);
+            /* [ZeroLabs] 2026-10-31 11:33 PM - added: log when Supabase replaces this device's token */
+            const previous = snippetToken || await readLocalSnippetTokenQuietly();
             await storeSnippetToken(decrypted, row.expires_at);
+            if (previous && previous !== decrypted) {
+              await logTokenEvent('GitLab token updated from Supabase', 'Supabase held a different token than this device. Another device probably renewed it.');
+            }
             return snippetToken;
           }
         } catch (e) {
@@ -13619,6 +13676,59 @@ function setupEventListeners() {
     }
     return null;
   }
+
+  /* [ZeroLabs] 2026-10-31 11:01 PM - added: replace a revoked token with Supabase's copy (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js) */
+  // Called by fetchGitLab on a 401. Returns the token to retry with, or null when
+  // there is nothing better to try. Several requests can fail together after a
+  // rotation, so they share one Supabase read, and a request that was already in
+  // flight when the token changed is handed the new one without another read.
+  // Unlike loadSnippetToken, a failure here never clears the stored token.
+  // Defined here, beside snippetToken and supabase, and exported on window,
+  // because fetchGitLab is top level and cannot see inside setupEventListeners.
+  let tokenRefresh = null;
+  let lastReplacedToken = null;
+
+  async function refreshGitLabTokenFromSupabase(staleToken) {
+    if (tokenRefresh && tokenRefresh.staleToken === staleToken) {
+      return await tokenRefresh.promise;
+    }
+    if (staleToken === lastReplacedToken && snippetToken && snippetToken !== staleToken) {
+      return snippetToken;
+    }
+    if (staleToken !== snippetToken) return null;
+
+    const promise = readNewerTokenFromSupabase(staleToken);
+    tokenRefresh = { staleToken, promise };
+    try {
+      return await promise;
+    } finally {
+      tokenRefresh = null;
+    }
+  }
+
+  async function readNewerTokenFromSupabase(staleToken) {
+    if (await getTokenMode() !== 'supabase') return null;
+    if (!supabase.isSignedIn) return null;
+
+    try {
+      const row = await supabase.getGitLabToken();
+      if (!row?.token) return null;
+
+      const freshToken = await decryptFromSupabase(row.token, supabase.session.user.id);
+      if (!freshToken || freshToken === staleToken) return null;
+
+      lastReplacedToken = staleToken;
+      await storeSnippetToken(freshToken, row.expires_at);
+      console.log('[TokenRefresh] Supabase holds a newer GitLab token. Retrying with it.');
+      /* [ZeroLabs] 2026-10-31 11:33 PM - added: log the refresh */
+      await logTokenEvent('GitLab token updated from Supabase', 'GitLab refused this device\'s token, and Supabase held a newer one. Another device probably renewed it.');
+      return freshToken;
+    } catch (e) {
+      console.warn('[TokenRefresh] Could not read the token from Supabase:', e);
+      return null;
+    }
+  }
+  window.refreshGitLabTokenFromSupabase = refreshGitLabTokenFromSupabase;
 
   // Clear GitLab token
   async function clearSnippetToken() {
@@ -17672,7 +17782,8 @@ function setupEventListeners() {
       syncFailureDismissed = false;
       storeFullNoticeShown = false;
       await supabase.clearSession();
-      await setTokenMode('local');
+      /* [ZeroLabs] 2026-10-31 11:33 PM - edited: say why the mode changed */
+      await setTokenMode('local', 'Disconnected from GitLab sync');
       snippetId = null;
       snippetLocalVersion = 0;
       storeKind = null;
@@ -17695,8 +17806,61 @@ function setupEventListeners() {
     const r = await safeStorage.get('bmz_token_mode');
     return r.bmz_token_mode || 'local';
   }
-  async function setTokenMode(mode) {
+  /* [ZeroLabs] 2026-10-31 11:33 PM - edited: a mode change is logged with the reason (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js, Bookmark-Manager-Zero-Website/js/auth/supabase-manager.js) */
+  // A device that silently ended up on Local storage renewed the token and left
+  // Supabase holding a revoked one, and nothing recorded how it got there.
+  // Every caller now says why, and a real change writes an Event Log entry.
+  async function setTokenMode(mode, reason = '') {
+    const previous = await getTokenMode();
     await safeStorage.set({ bmz_token_mode: mode });
+    if (previous === mode) return;
+
+    const previousLabel = tokenModeLabel(previous);
+    const summary = reason ? `${reason} (was ${previousLabel}).` : `Was ${previousLabel}.`;
+    await logTokenEvent(`Token storage set to ${tokenModeLabel(mode)}`, summary);
+  }
+
+  function tokenModeLabel(mode) {
+    if (mode === 'supabase') return 'Supabase';
+    return 'Local';
+  }
+
+  /* [ZeroLabs] 2026-10-31 11:33 PM - added: token events in the Event Log */
+  // Renewals, refreshes, hand-entered tokens and storage mode changes. The token
+  // itself, or any part of it, is never written here. addChangelogEntry is top
+  // level, so it is reachable from here.
+  function logTokenEvent(title, summary) {
+    return addChangelogEntry('token', 'token', title, null, { summary });
+  }
+
+  function describeRenewalOutcome(expiresAt, outcome, failureReason) {
+    const expiry = expiresAt ? `New expiry ${expiresAt}.` : 'New token issued.';
+    if (outcome === 'supabase') {
+      return `${expiry} Saved to Supabase for your other devices.`;
+    }
+    if (outcome === 'supabase-failed') {
+      return `${expiry} Not saved to Supabase. ${failureReason} Your other devices still have the old token.`;
+    }
+    return `${expiry} Saved on this device only, because token storage here is Local.`;
+  }
+
+  function describeRenewalFailure(status) {
+    if (status === 403) return 'GitLab refused (403). The token needs the "api" scope.';
+    if (status === 429) return 'GitLab rate limit (429). It will be retried on the next sync.';
+    return `GitLab answered ${status}.`;
+  }
+
+  /* [ZeroLabs] 2026-10-31 11:33 PM - added: the stored token, only to compare against */
+  // Used to tell whether Supabase replaced it. A failure means "nothing to
+  // compare", never an error for the caller.
+  async function readLocalSnippetTokenQuietly() {
+    try {
+      const result = await safeStorage.get(['gitlab_token']);
+      if (!result.gitlab_token) return null;
+      return await decryptApiKey(result.gitlab_token);
+    } catch (e) {
+      return null;
+    }
   }
 
   // Encrypt token for Supabase using AES-GCM keyed on the user's Supabase UID
@@ -17767,16 +17931,30 @@ function setupEventListeners() {
   }
 
   // Show new token after rotation
-  function showPostRotationModal(newToken, mode = 'local') {
-    const isSupabase = mode === 'supabase';
-    const actionBox = isSupabase
-      ? `<div style="padding:12px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;font-size:12px;margin-bottom:12px;">
+  /* [ZeroLabs] 2026-10-31 11:33 PM - edited: three outcomes, and the red box names the cause (see also: Bookmark-Manager-Zero-Chrome/sidepanel.js, Bookmark-Manager-Zero-Website/js/core/app.js) */
+  // outcome is 'supabase' (saved there), 'local' (this device uses Local token
+  // storage) or 'supabase-failed' (Supabase mode, but the save did not happen).
+  // The red box used to say only "your old token is now invalid", which hid that
+  // this device was on Local storage and left Supabase with the revoked token.
+  function showPostRotationModal(newToken, outcome = 'local', failureReason = '') {
+    const isSupabase = outcome === 'supabase';
+    const redBox = 'padding:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.35);border-radius:8px;font-size:12px;margin-bottom:12px;';
+    let actionBox;
+    if (isSupabase) {
+      actionBox = `<div style="padding:12px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;font-size:12px;margin-bottom:12px;">
            ✅ <strong>Your other BMZ clients will pick up the new token automatically</strong> on their next sync — no action needed on other devices.
-         </div>`
-      : `<div style="padding:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.35);border-radius:8px;font-size:12px;margin-bottom:12px;">
-           🚨 <strong>Your old token is now invalid.</strong> If you use BMZ on other browsers, the website, or Android, open each one, go to the GitLab sync settings, and paste this new token. Until you do, sync will be broken on those clients.
          </div>`;
-    const hintBox = isSupabase
+    } else if (outcome === 'supabase-failed') {
+      actionBox = `<div style="${redBox}">
+           <strong>The new token did not reach Supabase.</strong> ${escapeHtml(failureReason)} Your other devices still have the old token, which no longer works. To upload this one, open the GitLab sync settings on this device, switch token storage to Local, then back to Supabase.
+         </div>`;
+    } else {
+      actionBox = `<div style="${redBox}">
+           <strong>This device uses Local token storage.</strong> The new token was saved on this device only, and your old token no longer works. Open BMZ on each of your other browsers, the website and Android, go to the GitLab sync settings, and paste this new token. Until you do, sync is broken on those devices.
+         </div>`;
+    }
+    // The "switch to Supabase" hint only makes sense on a Local device.
+    const hintBox = outcome !== 'local'
       ? `<div style="padding:10px 12px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;font-size:12px;color:var(--md-sys-color-on-surface-variant,#aaa);margin-bottom:16px;">
            💡 You can always retrieve your current token from <strong>Settings → Reveal GitLab Token</strong> in BMZ if you ever need it.
          </div>`
@@ -18209,7 +18387,8 @@ function setupEventListeners() {
             }
             const decrypted = await decryptFromSupabase(row.token, supabase.session.user.id);
             await storeSnippetToken(decrypted, row.expires_at);
-            await setTokenMode('supabase');
+            /* [ZeroLabs] 2026-10-31 11:33 PM - edited: say why the mode changed */
+            await setTokenMode('supabase', 'Token loaded from Supabase in the sync settings');
             modal.remove();
             showToast('Token loaded from Supabase');
             updateGitLabButtonIcon();
@@ -18436,7 +18615,8 @@ function setupEventListeners() {
           if (currentMode === 'supabase') {
             // Switch to local — remove Supabase row, clear session, set mode
             await supabase.deleteGitLabToken();
-            await setTokenMode('local');
+            /* [ZeroLabs] 2026-10-31 11:33 PM - edited: say why the mode changed */
+            await setTokenMode('local', 'Switched with the button in the sync settings');
             await supabase.clearSession();
             showToast('Switched to local token storage');
           } else {
@@ -18457,7 +18637,8 @@ function setupEventListeners() {
             try {
               const encrypted = await encryptForSupabase(snippetToken, supabase.session.user.id);
               await supabase.saveGitLabToken(encrypted, expiresAt);
-              await setTokenMode('supabase');
+              /* [ZeroLabs] 2026-10-31 11:33 PM - edited: say why the mode changed */
+              await setTokenMode('supabase', 'Switched with the button in the sync settings; this device\'s token was uploaded');
               showToast('Switched to Supabase token storage');
             } catch (e) {
               showToast('Failed to save to Supabase: ' + e.message, 'error');
@@ -18490,7 +18671,8 @@ function setupEventListeners() {
               if (row?.token) {
                 const decrypted = await decryptFromSupabase(row.token, supabase.session.user.id);
                 await storeSnippetToken(decrypted, row.expires_at);
-                await setTokenMode('supabase');
+                /* [ZeroLabs] 2026-10-31 11:33 PM - edited: say why the mode changed */
+                await setTokenMode('supabase', 'Token loaded from Supabase in the token form');
                 modal.remove();
                 showToast('Token loaded from Supabase');
                 updateGitLabButtonIcon();
@@ -18527,22 +18709,28 @@ function setupEventListeners() {
             if (infoRes.ok) { const info = await infoRes.json(); expiresAt = info.expires_at; }
           } catch (e) { console.warn('[TokenSave] Could not fetch expiry:', e); }
 
+          /* [ZeroLabs] 2026-10-31 11:33 PM - edited: reasons for the mode, and the entry itself is logged */
+          let savedToSupabase = false;
           if (selectedMode === 'supabase') {
             // Already signed in from above — encrypt and save to Supabase
             try {
               const encrypted = await encryptForSupabase(token, supabase.session.user.id);
               await supabase.saveGitLabToken(encrypted, expiresAt);
-              await setTokenMode('supabase');
+              savedToSupabase = true;
+              await setTokenMode('supabase', 'Token entered in the token form with Supabase chosen');
             } catch (e) {
               console.warn('[Supabase] Save failed:', e);
               showToast('Failed to save to Supabase — saving locally instead.', 'error');
-              await setTokenMode('local');
+              await setTokenMode('local', `Saving the entered token to Supabase failed: ${e.message}`);
             }
           } else {
-            await setTokenMode('local');
+            await setTokenMode('local', 'Local chosen in the token form');
           }
 
           await storeSnippetToken(token, expiresAt);
+          await logTokenEvent('GitLab token entered', savedToSupabase
+            ? 'Entered by hand. Saved to Supabase and on this device.'
+            : 'Entered by hand. Saved on this device only.');
           showToast(`Authenticated as ${user.username}`);
           updateGitLabButtonIcon();
           modal.remove();

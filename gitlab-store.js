@@ -103,7 +103,9 @@
 
         const rawUrl = `${API}/snippets/${id}/files/main/${filePath}/raw`;
         const rawResponse = await request(rawUrl, { headers: headers() });
-        if (!rawResponse.ok) return null;
+        /* [ZeroLabs] 2026-10-31 11:01 PM - edited: only a 404 means the file is absent */
+        if (rawResponse.status === 404) return null;
+        if (!rawResponse.ok) await failure(rawResponse, 'Read snippet file');
         return await rawResponse.text();
       },
 
@@ -214,7 +216,12 @@
       async readFile(id, filePath) {
         const url = `${API}/projects/${id}/repository/files/${encodePath(filePath)}/raw?ref=${encodeURIComponent(ref)}`;
         const response = await request(url, { headers: headers() });
-        if (!response.ok) return null;
+        /* [ZeroLabs] 2026-10-31 11:01 PM - edited: only a 404 means the file is absent */
+        // Every failure used to come back as null, so a revoked token (401) was
+        // reported as "does not contain bookmarks.json". Any other status throws
+        // with its real code.
+        if (response.status === 404) return null;
+        if (!response.ok) await failure(response, 'Read project file');
         return await response.text();
       },
 

@@ -1,6 +1,24 @@
 ## Changelog
 
-### v6.0 (Current)
+### v6.2 (Current)
+
+**Changes:**
+- **Token events are in the Event Log** - Renewing your GitLab token, a failed renewal, a token picked up from Supabase, a token you enter by hand, and every change of token storage between Local and Supabase now each leave an entry, with the reason. The token itself is never written there.
+- **The renewal message says why other devices need the new token** - When the new token stays on this device, the message now says whether that is because this device uses Local token storage or because the save to Supabase did not happen, and what to do about it.
+
+**Bug Fixes:**
+- **A renewal no longer claims success it did not have** - If saving the new token to Supabase failed, the message still said your other devices would pick it up. And if this device's Supabase sign-in had expired, it showed the Local storage message. Both now show what really happened.
+
+### v6.1
+
+**Changes:**
+- **Your GitLab token is renewed earlier** - BMZ now offers to renew your token when 65 days are left, not 30. The renewal now comes before GitLab's first "your token will expire" email, which GitLab sends at 60 days.
+
+**Bug Fixes:**
+- **A token renewed on another device is picked up at once** - Renewing the token on one device stops the old token working everywhere. In Supabase mode, the first time GitLab refuses the old token, BMZ now gets the new token from Supabase and repeats the request. Before, sync failed until you closed and reopened the sidebar.
+- **A refused token is reported as one** - When GitLab refused the token, sync said "Remote store does not contain bookmarks.json". It now shows the real error.
+
+### v6.0
 
 **Changes:**
 - **Screens are built through one safe helper** - Every place that turned prepared markup into part of the panel now goes through one function, and all text from bookmarks, GitLab and error messages is escaped before it gets there. Mozilla's review tool flagged each of the old places; it now flags none of BMZ's own code.
