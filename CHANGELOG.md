@@ -1,6 +1,23 @@
 ## Changelog
 
-### v6.2 (Current)
+### v6.4 (Current)
+
+**Changes:**
+- **Sort your bookmarks by title or date** - A new Sort chip in the Filter bar changes the order inside your folders. Each tap moves through A-Z, Z-A, Newest, Oldest, and off. Folders stay ahead of bookmarks. The sort is view only, so your real bookmark order does not change. While a sort is on, dropping an item onto another folder still moves it, and any drop that would change an item's position shows a message instead.
+- **Date sort shows the date on this device** - Dates show when a bookmark was added to this device, so synced or imported bookmarks may show that date, not the original date.
+- **Export is HTML only** - JSON export is gone. Export now asks you to confirm, and Cancel cancels it. The HTML file can be imported into any browser.
+
+**Bug Fixes:**
+- **A failed backup stops a replace** - If you choose to save a backup before replacing your bookmarks and the file cannot be created, the replace now stops.
+
+### v6.3
+
+**Changes:**
+- **Search and filter results open by themselves** - Folders that hold a match now open automatically, including child folders, so you see your hits without opening each folder. When you clear the search, your folders return to how you left them. Turn this off with the new Expand Results option in Display Options.
+- **Expand All and Collapse All button** - A new button to the right of Quick Access and Recent opens or closes every folder and child folder. During a search or filter, it acts on the results only. Expand All shows saved statuses and does not start a scan. Hide the button with the new Expand All option in Display Options.
+- **Quick Access and Recent counts line up** - The gap between each title and its count is now the same in both tabs.
+
+### v6.2
 
 **Changes:**
 - **Token events are in the Event Log** - Renewing your GitLab token, a failed renewal, a token picked up from Supabase, a token you enter by hand, and every change of token storage between Local and Supabase now each leave an entry, with the reason. The token itself is never written there.
