@@ -3396,16 +3396,17 @@ function toggleAllFolders() {
 function buildExpandAllButton() {
   const collapsing = areAllFoldersShownOpen();
   const label = collapsing ? 'Collapse All Folders' : 'Expand All Folders';
-  const unfoldLess = 'M16.59,5.41L15.17,4L12,7.17L8.83,4L7.41,5.41L12,10M7.41,18.59L8.83,20L12,16.83L15.17,20L16.58,18.59L12,14L7.41,18.59Z';
-  const unfoldMore = 'M12,18.17L8.83,15L7.41,16.41L12,21L16.59,16.41L15.17,15M12,5.83L15.17,9L16.58,7.59L12,3L7.41,7.59L8.83,9L12,5.83Z';
-  const iconPath = collapsing ? unfoldLess : unfoldMore;
+  /* [ZeroLabs] 2026-11-04 12:08 PM - edited: triangle in rounded box icon (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
+  const triangleUp = 'M7,14H17L12,8Z';
+  const triangleDown = 'M7,10H17L12,16Z';
+  const iconPath = collapsing ? triangleUp : triangleDown;
 
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'bmz-expand-all-btn';
   button.title = label;
   button.setAttribute('aria-label', label);
-  setSafeHTML(button, `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="${iconPath}"/></svg>`);
+  setSafeHTML(button, `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="${iconPath}"/></svg>`);
   button.addEventListener('click', toggleAllFolders);
   return button;
 }
