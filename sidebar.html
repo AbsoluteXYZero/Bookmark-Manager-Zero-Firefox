@@ -876,15 +876,18 @@
       margin-bottom: 8px;
     }
 
-    /* Both headers share one row, each taking half of it. A single visible
-       section takes the whole row instead. */
+    /* Both headers share one row. A single visible section takes the whole row
+       instead. */
     .bmz-section-tabs {
       display: flex;
       gap: 4px;
     }
 
+    /* [ZeroLabs] 2026-11-04 12:12 PM - edited: equal label-to-count gap in both tabs (see also: Chrome sidepanel.html, Website index.html, css/themes.css) */
+    /* Each tab sizes to its content and takes an equal share of the free space,
+       so a shorter title does not push its count farther away. */
     .bmz-section-tabs.split > .bmz-section-header {
-      flex: 1 1 50%;
+      flex: 1 1 auto;
       min-width: 0;
     }
 
@@ -893,14 +896,20 @@
       min-width: 0;
     }
 
-    /* [ZeroLabs] 2026-11-04 11:54 AM - added: Expand All button (see also: Chrome sidepanel.html, Website index.html, css/themes.css) */
-    /* margin-left:auto holds it at the right end when the row has no tabs */
+    /* [ZeroLabs] 2026-11-04 12:13 PM - edited: icon centered over folder menu dots (see also: Chrome sidepanel.html, Website index.html, css/themes.css) */
+    /* margin-left:auto holds it at the right end when the row has no tabs.
+       The folder menu is a text glyph, so its width depends on the font. The
+       hidden copy of that glyph gives this button the same width in any font.
+       Right offset: margin 1 + border 1 + padding 8 equals the folder row's
+       header padding 4 + menu padding 6. */
     .bmz-expand-all-btn {
+      position: relative;
       flex: 0 0 auto;
       display: flex;
       align-items: center;
       justify-content: center;
       margin-left: auto;
+      margin-right: 1px;
       padding: 6px 8px;
       cursor: pointer;
       background: transparent;
@@ -908,6 +917,21 @@
       border: 1px solid transparent;
       color: var(--md-sys-color-primary);
       transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .bmz-expand-all-btn::before {
+      content: '\22EE';
+      display: block;
+      visibility: hidden;
+      font-size: 16px;
+      line-height: 16px;
+    }
+
+    .bmz-expand-all-btn svg {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
     }
 
     .bmz-expand-all-btn:hover {
