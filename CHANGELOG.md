@@ -1,6 +1,11 @@
 ## Changelog
 
-### v6.4 (Current)
+### v6.5 (Current)
+
+**Changes:**
+- **Sort has its own row in the Filter bar** - The single Sort chip that you tapped through is now a Sort row with separate chips: Off, A-Z, Z-A, Newest, and Oldest. One chip is active at a time, and Off is the default.
+
+### v6.4
 
 **Changes:**
 - **Sort your bookmarks by title or date** - A new Sort chip in the Filter bar changes the order inside your folders. Each tap moves through A-Z, Z-A, Newest, Oldest, and off. Folders stay ahead of bookmarks. The sort is view only, so your real bookmark order does not change. While a sort is on, dropping an item onto another folder still moves it, and any drop that would change an item's position shows a message instead.

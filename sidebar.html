@@ -3753,12 +3753,23 @@
       </svg>
       <span>Trusted</span>
     </button>
-    <!-- [ZeroLabs] 2026-11-04 12:44 PM - added: view-only sort chip (see also: Chrome sidepanel.html, Website index.html) -->
-    <button type="button" id="sortChip" class="filter-chip" title="Change the display order. This does not change your real bookmark order.">
-      <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M3,13H15V11H3M3,6V8H21V6M3,18H9V16H3V18Z"/>
-      </svg>
-      <span>Sort</span>
+    <!-- [ZeroLabs] 2026-11-04 1:30 PM - edited: sort is its own row of chips (see also: Chrome sidepanel.html, Website index.html) -->
+    <div style="flex-basis: 100%; height: 0;" aria-hidden="true"></div>
+    <div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); font-weight: 500; white-space: nowrap;">Sort:</div>
+    <button type="button" class="filter-chip sort-chip active" data-sort="off" aria-pressed="true" title="Show your real bookmark order">
+      <span>Off</span>
+    </button>
+    <button type="button" class="filter-chip sort-chip" data-sort="title-asc" aria-pressed="false" title="Sort folder contents by title, A to Z. This is view only.">
+      <span>A-Z</span>
+    </button>
+    <button type="button" class="filter-chip sort-chip" data-sort="title-desc" aria-pressed="false" title="Sort folder contents by title, Z to A. This is view only.">
+      <span>Z-A</span>
+    </button>
+    <button type="button" class="filter-chip sort-chip" data-sort="date-new" aria-pressed="false" title="Sort folder contents newest first. This is view only. Dates show when a bookmark was added to this device.">
+      <span>Newest</span>
+    </button>
+    <button type="button" class="filter-chip sort-chip" data-sort="date-old" aria-pressed="false" title="Sort folder contents oldest first. This is view only. Dates show when a bookmark was added to this device.">
+      <span>Oldest</span>
     </button>
   </div>
 
