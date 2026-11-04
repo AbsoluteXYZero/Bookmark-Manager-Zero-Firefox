@@ -893,6 +893,32 @@
       min-width: 0;
     }
 
+    /* [ZeroLabs] 2026-11-04 11:54 AM - added: Expand All button (see also: Chrome sidepanel.html, Website index.html, css/themes.css) */
+    /* margin-left:auto holds it at the right end when the row has no tabs */
+    .bmz-expand-all-btn {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+      padding: 6px 8px;
+      cursor: pointer;
+      background: transparent;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      color: var(--md-sys-color-primary);
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .bmz-expand-all-btn:hover {
+      background: rgba(127, 127, 127, 0.12);
+    }
+
+    .bmz-expand-all-btn:focus-visible {
+      outline: 2px solid var(--md-sys-color-primary);
+      outline-offset: -2px;
+    }
+
     .bmz-section-header {
       display: flex;
       align-items: center;
@@ -3743,6 +3769,15 @@
     <label class="display-toggle" title="Show/hide the Recently Opened section">
       <input type="checkbox" id="displayRecent" checked>
       <span>Recently Opened</span>
+    </label>
+    <!-- [ZeroLabs] 2026-11-04 11:54 AM - added: expand setting toggles (see also: Chrome sidepanel.html, Website index.html) -->
+    <label class="display-toggle" title="Show/hide the Expand All button">
+      <input type="checkbox" id="displayExpandAll" checked>
+      <span>Expand All</span>
+    </label>
+    <label class="display-toggle" title="Open folders automatically for search and filter results">
+      <input type="checkbox" id="displayExpandResults" checked>
+      <span>Expand Results</span>
     </label>
   </div>
 
