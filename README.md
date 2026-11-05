@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
     <!-- [ZeroLabs] 2026-08-19 7:12 PM - edited: version badge to 5.2 -->
-    <img src="https://img.shields.io/badge/version-6.5-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-6.6-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -121,7 +121,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 
 ### Organization & Search
 
-- **Advanced Search** - Real-time search across titles and URLs
+- **Advanced Search** - Real-time search across titles, URLs, and folder names
 - **Folder Management** - Create, edit, move, and organize folders
 -  **Smart Filters** - Filter by link status and safety with multi-select support
 - **Expand Results** - Search and filter results open their folders automatically, and clearing them restores your folders
@@ -172,7 +172,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 - **Website Previews** - Screenshot thumbnails of bookmarks with hover preview popup
 - **High-Quality Preview Popups** - Hover over thumbnails to see 800x600 high-resolution preview
 - **Smart Popup Positioning** - Preview popups appear above/below bookmarks to avoid covering content
-- **URL Tooltips** - Hover over bookmark title/URL to see full URL in tooltip
+- **URL Tooltips** - Hover over bookmark title/URL to see the full URL and the bookmark's folder path in the tooltip
 - **Improved Status Bar** - Enhanced discoverability with visible "Scan All Bookmarks" label and centered status messages
 - **Text-Only View** - View bookmark pages in text-only mode
 - **Bulk Operations** - Multi-select mode for batch editing/deletion

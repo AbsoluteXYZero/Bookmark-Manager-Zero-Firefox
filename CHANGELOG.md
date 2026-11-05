@@ -1,6 +1,12 @@
 ## Changelog
 
-### v6.5 (Current)
+### v6.6 (Current)
+
+**Changes:**
+- **Search finds folders** - Search now matches the names of folders and child folders. A folder that matches shows everything inside it, and active filters still apply to those contents. Root folders such as Bookmarks Toolbar do not match by name.
+- **Bookmark tooltips show the folder path** - Hover over a bookmark to see its link, with its folder path on the next line. Turn this off with Tooltip Path in Display Options.
+
+### v6.5
 
 **Changes:**
 - **Sort has its own row in the Filter bar** - The single Sort chip that you tapped through is now a Sort row with separate chips: Off, A-Z, Z-A, Newest, and Oldest. One chip is active at a time, and Off is the default.

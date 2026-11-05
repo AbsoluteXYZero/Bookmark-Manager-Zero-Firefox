@@ -3314,8 +3314,45 @@ let displayOptions = {
   recent: true,
   expandAll: true,
   expandResults: true,
-  sortMode: 'off'
+  sortMode: 'off',
+  tooltipPath: true
 };
+
+/* [ZeroLabs] 2026-11-05 6:29 PM - added: folder path in bookmark tooltips (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
+// One lookup of bookmark id to folder path, built once per render on first use.
+// A walk of the real tree per row would repeat for every bookmark on screen.
+// It reads bookmarkTree, not the filtered copy, so a search never shortens a path.
+let bookmarkPathLookup = null;
+
+function buildBookmarkPathLookup() {
+  const lookup = new Map();
+
+  const walk = (nodes, parentFolders) => {
+    nodes.forEach(node => {
+      if (node.children) {
+        const folderName = node.title || node.name || 'Unnamed Folder';
+        walk(node.children, parentFolders.concat(folderName));
+      } else if (node.url) {
+        lookup.set(String(node.id), parentFolders.join(' > '));
+      }
+    });
+  };
+
+  walk(bookmarkTree, []);
+  return lookup;
+}
+
+function getBookmarkTooltip(bookmark) {
+  if (!displayOptions.tooltipPath) return bookmark.url;
+
+  if (!bookmarkPathLookup) {
+    bookmarkPathLookup = buildBookmarkPathLookup();
+  }
+
+  const path = bookmarkPathLookup.get(String(bookmark.id));
+  if (!path) return bookmark.url;
+  return `${bookmark.url}\n${path}`;
+}
 
 /* [ZeroLabs] 2026-11-04 12:44 PM - added: view-only title and date sort (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
 // ============================================================================
@@ -3635,6 +3672,8 @@ async function loadDisplaySections() {
       /* [ZeroLabs] 2026-11-04 11:54 AM - added: restore the expand settings (see also: Chrome sidepanel.js) */
       displayOptions.expandAll = stored.expandAll !== false;
       displayOptions.expandResults = stored.expandResults !== false;
+      /* [ZeroLabs] 2026-11-05 6:29 PM - added: restore the tooltip path setting (see also: Chrome sidepanel.js) */
+      displayOptions.tooltipPath = stored.tooltipPath !== false;
       /* [ZeroLabs] 2026-11-04 12:44 PM - added: restore the sort mode (see also: Chrome sidepanel.js) */
       if (SORT_MODES.includes(stored.sortMode)) displayOptions.sortMode = stored.sortMode;
     }
@@ -3652,6 +3691,8 @@ async function saveDisplaySections() {
         /* [ZeroLabs] 2026-11-04 11:54 AM - added: save the expand settings (see also: Chrome sidepanel.js) */
         expandAll: displayOptions.expandAll,
         expandResults: displayOptions.expandResults,
+        /* [ZeroLabs] 2026-11-05 6:29 PM - added: save the tooltip path setting (see also: Chrome sidepanel.js) */
+        tooltipPath: displayOptions.tooltipPath,
         /* [ZeroLabs] 2026-11-04 12:44 PM - added: save the sort mode (see also: Chrome sidepanel.js) */
         sortMode: displayOptions.sortMode
       }
@@ -5858,6 +5899,9 @@ function renderBookmarks() {
   /* [ZeroLabs] 2026-11-04 11:54 AM - added: apply expansion to new results (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
   syncSearchFolderView();
 
+  /* [ZeroLabs] 2026-11-05 6:29 PM - added: rebuild the path lookup each render (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
+  bookmarkPathLookup = null;
+
   const filtered = filterAndSearchBookmarks(bookmarkTree);
 
   if (filtered.length === 0) {
@@ -7069,10 +7113,12 @@ function createBookmarkElement(bookmark, options = {}) {
   // Build bookmark info HTML based on display options
   let bookmarkInfoHtml = '';
   if (displayOptions.title) {
-    bookmarkInfoHtml += `<div class="bookmark-title" title="${escapeHtml(bookmark.url)}">${escapeHtml(bookmark.title || bookmark.url)}</div>`;
+    /* [ZeroLabs] 2026-11-05 6:29 PM - edited: tooltip adds the folder path (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
+    bookmarkInfoHtml += `<div class="bookmark-title" title="${escapeHtml(getBookmarkTooltip(bookmark))}">${escapeHtml(bookmark.title || bookmark.url)}</div>`;
   }
   if (displayOptions.url) {
-    bookmarkInfoHtml += `<div class="bookmark-url" title="${escapeHtml(bookmark.url)}">${escapeHtml(new URL(bookmark.url).hostname)}</div>`;
+    /* [ZeroLabs] 2026-11-05 6:29 PM - edited: tooltip adds the folder path (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
+    bookmarkInfoHtml += `<div class="bookmark-url" title="${escapeHtml(getBookmarkTooltip(bookmark))}">${escapeHtml(new URL(bookmark.url).hostname)}</div>`;
   }
 
   const bookmarkTitle = bookmark.title || bookmark.url;
@@ -10462,7 +10508,11 @@ async function createNewFolder() {
 }
 
 // Filter and search bookmarks
-function filterAndSearchBookmarks(nodes) {
+/* [ZeroLabs] 2026-11-05 6:26 PM - edited: search matches folder names (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
+// A folder can match by its own name, and everything inside a matched folder
+// counts as a match. Filters still apply to those contents. Root folders never
+// match by name, because "book" would match "Bookmarks Toolbar" and open the library.
+function filterAndSearchBookmarks(nodes, insideMatchedFolder = false, isRootLevel = true) {
   return nodes.reduce((acc, node) => {
     // Skip separators (Firefox toolbar separators have type: 'separator')
     if (node.type === 'separator') {
@@ -10470,8 +10520,12 @@ function filterAndSearchBookmarks(nodes) {
     }
 
     if (node.type === 'folder') {
-      const filteredChildren = filterAndSearchBookmarks(node.children || []);
-      if (filteredChildren.length > 0 || (!searchTerm && activeFilters.length === 0)) {
+      const nameMatches = !isRootLevel && folderNameMatches(node);
+      const folderMatched = insideMatchedFolder || nameMatches;
+      const filteredChildren = filterAndSearchBookmarks(node.children || [], folderMatched, false);
+      const noFilters = activeFilters.length === 0;
+      const keepWhenEmpty = noFilters && (!searchTerm || folderMatched);
+      if (filteredChildren.length > 0 || keepWhenEmpty) {
         /* [ZeroLabs] 2026-11-04 12:44 PM - edited: apply the view-only sort (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
         acc.push({
           ...node,
@@ -10479,12 +10533,21 @@ function filterAndSearchBookmarks(nodes) {
         });
       }
     } else if (node.url) {
-      if (matchesSearch(node) && matchesFilter(node)) {
+      const searchMatched = insideMatchedFolder || matchesSearch(node);
+      if (searchMatched && matchesFilter(node)) {
         acc.push(node);
       }
     }
     return acc;
   }, []);
+}
+
+/* [ZeroLabs] 2026-11-05 6:26 PM - added: folder name search check (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
+function folderNameMatches(folder) {
+  if (!searchTerm) return false;
+
+  const name = folder.title || folder.name || '';
+  return name.toLowerCase().includes(searchTerm.toLowerCase());
 }
 
 // Check if bookmark matches search
@@ -12402,6 +12465,18 @@ function setupEventListeners() {
       await saveDisplaySections();
       // Clearing the key makes the next render apply the new setting
       searchFolderViewKey = '';
+      renderBookmarks();
+    });
+  }
+
+  /* [ZeroLabs] 2026-11-05 6:29 PM - added: tooltip path toggle (see also: Chrome sidepanel.js, Website sidebar-adapted.js) */
+  const displayTooltipPath = document.getElementById('displayTooltipPath');
+
+  if (displayTooltipPath) {
+    displayTooltipPath.checked = displayOptions.tooltipPath;
+    displayTooltipPath.addEventListener('change', async (e) => {
+      displayOptions.tooltipPath = e.target.checked;
+      await saveDisplaySections();
       renderBookmarks();
     });
   }
