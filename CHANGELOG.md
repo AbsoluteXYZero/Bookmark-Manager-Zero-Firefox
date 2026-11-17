@@ -1,6 +1,15 @@
 ## Changelog
 
-### v6.6 (Current)
+### v6.7 (Current)
+
+**Changes:**
+- **Search for a folder in every folder picker** - The add bookmark, add folder, move, and bulk move dialogs, and the dialog for bookmarks that could not be placed, have a search button next to the folder label. In search mode, type to find any folder or child folder by its name. Each result shows the full folder path. BMZ remembers whether you used the tree or the search last.
+- **Find a folder by the bookmarks inside it** - Turn on the Titles or URLs chip to also search bookmark titles or addresses. Each folder with a match shows open, and it lists only the matching bookmarks. BMZ remembers the chips you used last.
+- **Look inside a folder result** - The arrow on a folder result lists the bookmarks directly inside it. An Expand All / Collapse All button opens or closes every result at once. Long result lists show 200 rows at a time, with a Show more button at the end.
+- **Save waits for a folder** - The save button stays greyed out until a folder is picked. In search mode, no folder is picked until you choose a result.
+- **The folder box keeps its height** - A switch between the tree and the search never moves the save button.
+
+### v6.6
 
 **Changes:**
 - **Search finds folders** - Search now matches the names of folders and child folders. A folder that matches shows everything inside it, and active filters still apply to those contents. Root folders such as Bookmarks Toolbar do not match by name.

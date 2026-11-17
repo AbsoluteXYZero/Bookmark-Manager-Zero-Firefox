@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://gitlab.com/AbsoluteXYZero/BMZ-Firefox">
     <!-- [ZeroLabs] 2026-08-19 7:12 PM - edited: version badge to 5.2 -->
-    <img src="https://img.shields.io/badge/version-6.6-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-6.7-blue" alt="Version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -123,6 +123,7 @@ Stop blindly clicking old bookmarks. Know which links are dead, parked, or poten
 
 - **Advanced Search** - Real-time search across titles, URLs, and folder names
 - **Folder Management** - Create, edit, move, and organize folders
+- **Folder Search in Pickers** - Find the destination folder by its name, or by the title or URL of a bookmark inside it, in every add and move dialog
 -  **Smart Filters** - Filter by link status and safety with multi-select support
 - **Expand Results** - Search and filter results open their folders automatically, and clearing them restores your folders
 - **Expand All / Collapse All** - One button opens or closes every folder, or only the results during a search or filter

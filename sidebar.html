@@ -1676,8 +1676,10 @@
     }
 
     /* [ZeroLabs] 2026-09-23 12:43 AM - added: the move dialog's folder tree */
+    /* [ZeroLabs] 2026-11-17 5:24 PM - edited: fixed height, so search never moves Save */
     .folder-tree-picker {
-      max-height: 260px;
+      height: 260px;
+      box-sizing: border-box;
       overflow-y: auto;
       border: 1px solid var(--md-sys-color-outline-variant);
       border-radius: 8px;
@@ -1762,6 +1764,152 @@
       font-size: 6px;
       letter-spacing: -0.8px;
     }
+
+    /* [ZeroLabs] 2026-11-17 5:24 PM - added: folder search inside the picker box */
+    /* The label row holds the label and the search toggle. The toggle uses a
+       negative margin so the row is no taller than the label alone. */
+    .folder-picker-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .form-group .folder-picker-label-row label {
+      margin-bottom: 0;
+    }
+
+    /* [ZeroLabs] 2026-11-17 5:24 PM - edited: a raised button, so the toggle is easy to see */
+    .folder-search-toggle {
+      width: 30px;
+      height: 26px;
+      margin: -5px 0;
+      padding: 0;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 6px;
+      background: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface);
+      box-shadow: var(--md-elevation-2);
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .folder-search-toggle:hover {
+      box-shadow: var(--md-elevation-3);
+      transform: translateY(-1px);
+    }
+
+    .folder-search-toggle[aria-pressed="true"] {
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      border-color: var(--md-sys-color-primary);
+    }
+
+    /* [ZeroLabs] 2026-11-17 5:24 PM - added: a dialog cannot save until a folder is picked */
+    .folder-picker-save:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    /* In search mode the box keeps its height. The input and the chips stay
+       put, and only the result list scrolls. */
+    .folder-tree-picker.searching {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow: hidden;
+    }
+
+    .folder-search-input.form-input {
+      flex-shrink: 0;
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+
+    .folder-search-chips {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    /* The filter bar's chip, at a size that reads inside a dialog */
+    .filter-chip.folder-search-chip {
+      font-size: 12px;
+      padding: 3px 10px;
+    }
+
+    .folder-search-results {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .folder-search-text {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* One line each, never wrapped and never cut. A line that is too wide is
+       scaled down by fitFolderSearchLines. */
+    .folder-search-line {
+      display: block;
+      white-space: nowrap;
+    }
+
+    .folder-search-note {
+      padding: 8px 6px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .folder-tree-icon.folder-search-bookmark-icon {
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    /* [ZeroLabs] 2026-11-17 5:24 PM - added: a folder result's bookmarks, indented under it */
+    /* 6px padding + 16px twisty + 6px gap: the icon sits under the folder's
+       icon, one step in from the folder row. */
+    .folder-tree-row.folder-search-child {
+      padding-left: 28px;
+    }
+
+    /* [ZeroLabs] 2026-11-17 5:24 PM - added: Show more, a full-width chip after the last row */
+    .filter-chip.folder-search-chip.folder-search-more {
+      width: calc(100% - 8px);
+      margin: 6px 4px;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    /* [ZeroLabs] 2026-11-17 5:24 PM - added: the main Expand All button, sized for the chip row */
+    .folder-search-chips .bmz-expand-all-btn {
+      padding: 2px 8px;
+    }
+
+    .folder-search-chips .bmz-expand-all-btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    /* The label fills the button, so a narrow panel scales it down to fit */
+    .folder-search-more .folder-search-line {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+    }
+
 
     .folder-tree-icon .folder-count[data-digits="6"],
     .folder-tree-icon .folder-count[data-digits="7"],
@@ -3947,11 +4095,15 @@
         </div>
         <div class="form-group">
           <!-- [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list -->
-          <label id="newBookmarkFolderLabel">Add to folder:</label>
+          <!-- [ZeroLabs] 2026-11-17 5:24 PM - added: the folder search toggle (see also: sidebar.js) -->
+          <div class="folder-picker-label-row">
+            <label id="newBookmarkFolderLabel">Add to folder:</label>
+            <button type="button" id="newBookmarkFolderSearchToggle" class="folder-search-toggle"></button>
+          </div>
           <select id="newBookmarkFolder" class="form-input" style="display: none;" aria-hidden="true">
             <option value="">Root</option>
           </select>
-          <div id="newBookmarkFolderTree" class="folder-tree-picker" role="tree" aria-labelledby="newBookmarkFolderLabel"></div>
+          <div id="newBookmarkFolderTree" class="folder-tree-picker" role="tree" aria-labelledby="newBookmarkFolderLabel" data-search-toggle="newBookmarkFolderSearchToggle" data-save-button="addBookmarkModalSave"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -3976,11 +4128,15 @@
         </div>
         <div class="form-group">
           <!-- [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list -->
-          <label id="newFolderParentLabel">Create in:</label>
+          <!-- [ZeroLabs] 2026-11-17 5:24 PM - added: the folder search toggle (see also: sidebar.js) -->
+          <div class="folder-picker-label-row">
+            <label id="newFolderParentLabel">Create in:</label>
+            <button type="button" id="newFolderParentSearchToggle" class="folder-search-toggle"></button>
+          </div>
           <select id="newFolderParent" class="form-input" style="display: none;" aria-hidden="true">
             <option value="">Root</option>
           </select>
-          <div id="newFolderParentTree" class="folder-tree-picker" role="tree" aria-labelledby="newFolderParentLabel"></div>
+          <div id="newFolderParentTree" class="folder-tree-picker" role="tree" aria-labelledby="newFolderParentLabel" data-search-toggle="newFolderParentSearchToggle" data-save-button="addFolderModalSave"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -4005,10 +4161,14 @@
         </div>
         <div class="form-group">
           <!-- [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list -->
-          <label id="moveToFolderLabel">Destination folder:</label>
+          <!-- [ZeroLabs] 2026-11-17 5:24 PM - added: the folder search toggle (see also: sidebar.js) -->
+          <div class="folder-picker-label-row">
+            <label id="moveToFolderLabel">Destination folder:</label>
+            <button type="button" id="moveToFolderSearchToggle" class="folder-search-toggle"></button>
+          </div>
           <select id="moveToFolder" class="form-input" style="display: none;" aria-hidden="true">
           </select>
-          <div id="moveToFolderTree" class="folder-tree-picker" role="tree" aria-labelledby="moveToFolderLabel"></div>
+          <div id="moveToFolderTree" class="folder-tree-picker" role="tree" aria-labelledby="moveToFolderLabel" data-search-toggle="moveToFolderSearchToggle" data-save-button="moveToModalSave"></div>
         </div>
       </div>
       <div class="modal-footer">

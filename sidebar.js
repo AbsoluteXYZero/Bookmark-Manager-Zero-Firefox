@@ -7617,15 +7617,13 @@ document.addEventListener('dragover', (e) => {
 
 
 /* [ZeroLabs] 2026-09-22 8:20 PM - edited: one speed, one band, and nothing outside the list */
-// Rewritten to Zero's description after two wrong attempts.
-//
 // The speed was a curve, so it changed with every pixel of pointer movement and
-// full speed existed only in a narrow strip he had to hunt for. It is now ONE
+// full speed existed only in a narrow strip that was hard to find. It is now ONE
 // speed: anywhere in the band scrolls at exactly that rate. Nothing ramps,
 // nothing accelerates, and there is no dependence on the list's length.
 //
-// The pointer leaving the list vertically stops the scroll. Scrolling while
-// over the toolbar was my own idea and he did not want it.
+// The pointer leaving the list vertically stops the scroll. The scroll does not
+// continue while the pointer is over the toolbar.
 /* [ZeroLabs] 2026-09-22 8:26 PM - edited: the band is a third of the list, not 90 pixels */
 // 90 pixels is a sliver on a tall panel, so the full speed was only reachable
 // by putting the cursor on the very edge and hunting for it. The band is now a
@@ -7653,7 +7651,7 @@ const DRAG_SCROLL_STEP_2_AT = 0.5;
 // speed. Within a step nothing changes, so the list travels at a rate the user
 // chose rather than one that drifts with every pixel of pointer movement.
 //
-/* [ZeroLabs] 2026-09-22 9:20 PM - edited: Zero's speeds, and the top one is an edge strip */
+/* [ZeroLabs] 2026-09-22 9:20 PM - edited: set speeds, and the top one is an edge strip */
 // The top speed is no longer a share of the band. It is the outermost 5 percent
 // of the list, measured from the edge, so it is reached only by pushing right
 // to the end rather than by being deep in the band.
@@ -7706,7 +7704,7 @@ function updateDragScrollFromPointer(clientX, clientY) {
 }
 
 /* [ZeroLabs] 2026-09-22 8:38 PM - edited: a timer, because rAF is starved during a drag */
-// Measured from Zero's console: with the speed correctly set to 45 pixels per
+// Measured in the console: with the speed correctly set to 45 pixels per
 // frame, scrollTop moved 9 pixels in 200 milliseconds. Sixty frames a second
 // would have moved about 540. Chromium throttles requestAnimationFrame while a
 // native drag is in progress, so the loop ran roughly once per 200ms.
@@ -7772,7 +7770,7 @@ function stopDragScroll() {
 //
 // The native dragstart/dragover/drop listeners on rows, headers and zones are
 // now inert, because nothing sets draggable any more. They are left in place
-// for this round and come out once Zero confirms the engine.
+// for this round and come out once the engine is confirmed.
 // ============================================================================
 
 const BMZ_DRAG_THRESHOLD_PX = 5;
@@ -9886,8 +9884,140 @@ function setPickedFolder(selectElement, folderId) {
   selectElement.value = id;
 }
 
+/* [ZeroLabs] 2026-11-17 5:24 PM - added: folder search inside every folder picker (see also: sidebar.html) */
+// Every picker box shows either the folder tree or a search. The search uses
+// the same fixed-height box, so a switch between the two never moves the Save
+// button. The state is kept per box. Each dialog calls renderFolderTree when
+// it opens, and that starts the box on the tree again.
+const folderPickerState = new WeakMap();
+
+// More rows than this make the list slow to draw and too long to read
+const FOLDER_SEARCH_ROW_LIMIT = 200;
+
+const FOLDER_SEARCH_ICON_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>';
+const FOLDER_TREE_ICON_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 11V3h-7v3H9V3H2v8h7V8h2v10h4v3h7v-8h-7v3h-2V8h2v3z"/></svg>';
+const FOLDER_SEARCH_LINK_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>';
+
+// [ZeroLabs] 2026-11-17 5:24 PM - edited: opens in the mode used last, and keeps the tree's pick aside
 function renderFolderTree(selectElement, panel, options = {}) {
   if (!panel || !selectElement) return;
+
+  folderPickerState.set(panel, {
+    selectElement,
+    options,
+    mode: 'tree',
+    query: '',
+    // [ZeroLabs] 2026-11-17 5:24 PM - edited: the chips start as the user last left them
+    includeTitles: readFolderSearchChip('includeTitles'),
+    includeUrls: readFolderSearchChip('includeUrls'),
+    // [ZeroLabs] 2026-11-17 5:24 PM - added: folder results opened to show their bookmarks
+    expandedResults: new Set(),
+    // [ZeroLabs] 2026-11-17 5:24 PM - added: folders with matching bookmarks that the user closed
+    collapsedHits: new Set(),
+    // [ZeroLabs] 2026-11-17 5:24 PM - added: how many rows to draw, raised by Show more
+    rowLimit: FOLDER_SEARCH_ROW_LIMIT,
+    // [ZeroLabs] 2026-11-17 5:24 PM - added: every folder the search found, for Expand All
+    lastShown: [],
+    expandAllButton: null,
+    entries: null,
+    inputTimer: null,
+    // The tree's pick, kept while search mode runs with no pick of its own
+    treePick: ''
+  });
+
+  setupFolderSearchToggle(panel);
+
+  const toggle = getFolderSearchToggle(panel);
+  if (toggle && readFolderPickerMode() === 'search') {
+    enterFolderSearchMode(panel, toggle);
+    return;
+  }
+
+  drawFolderTree(selectElement, panel, options);
+  updateFolderPickerSaveButton(panel);
+}
+
+/* [ZeroLabs] 2026-11-17 5:24 PM - added: remember tree or search mode, and grey out Save with no pick */
+// One setting for every folder picker. A user who prefers search gets search
+// in all of them.
+const FOLDER_PICKER_MODE_KEY = 'folderPickerMode';
+
+function readFolderPickerMode() {
+  try {
+    return localStorage.getItem(FOLDER_PICKER_MODE_KEY) === 'search' ? 'search' : 'tree';
+  } catch (error) {
+    return 'tree';
+  }
+}
+
+function writeFolderPickerMode(mode) {
+  try {
+    localStorage.setItem(FOLDER_PICKER_MODE_KEY, mode);
+  } catch (error) {
+    // Storage blocked: the mode is simply not remembered
+  }
+}
+
+/* [ZeroLabs] 2026-11-17 5:24 PM - added: remember the Titles and URLs chips */
+// Shared by every folder picker, like the mode. Off unless the user turned
+// the chip on.
+const FOLDER_SEARCH_CHIP_KEYS = {
+  includeTitles: 'folderSearchTitles',
+  includeUrls: 'folderSearchUrls'
+};
+
+function readFolderSearchChip(stateKey) {
+  try {
+    return localStorage.getItem(FOLDER_SEARCH_CHIP_KEYS[stateKey]) === 'true';
+  } catch (error) {
+    return false;
+  }
+}
+
+function writeFolderSearchChip(stateKey, isOn) {
+  try {
+    localStorage.setItem(FOLDER_SEARCH_CHIP_KEYS[stateKey], String(isOn));
+  } catch (error) {
+    // Storage blocked: the chip is simply not remembered
+  }
+}
+
+// The box names its dialog's save button with data-save-button. That button
+// is disabled while no folder is picked, so nothing can be saved to a folder
+// the user never chose.
+function updateFolderPickerSaveButton(panel) {
+  const saveId = panel.dataset.saveButton;
+  if (!saveId) return;
+
+  const button = document.getElementById(saveId);
+  const state = folderPickerState.get(panel);
+  if (!button || !state) return;
+
+  button.classList.add('folder-picker-save');
+  button.disabled = !state.selectElement.value;
+}
+
+// Search mode starts with no pick: the user decides there. The tree's pick
+// is kept aside and comes back if the user returns to the tree without one.
+function enterFolderSearchMode(panel, toggle) {
+  const state = folderPickerState.get(panel);
+  if (!state) return;
+
+  state.mode = 'search';
+  state.treePick = state.selectElement.value;
+  setPickedFolder(state.selectElement, '');
+
+  showFolderSearchToggleState(toggle, 'search');
+  drawFolderSearch(panel);
+  updateFolderPickerSaveButton(panel);
+}
+
+// The tree itself. The twisties redraw through this, not renderFolderTree,
+// so opening a branch does not reset the search state.
+function drawFolderTree(selectElement, panel, options = {}) {
+  if (!panel || !selectElement) return;
+
+  panel.classList.remove('searching');
 
   /* [ZeroLabs] 2026-09-23 1:12 AM - removed: the alphabetical sort option */
   // The tree shows the real hierarchy in the real order, so re-sorting it was
@@ -9927,7 +10057,8 @@ function renderFolderTree(selectElement, panel, options = {}) {
           } else {
             moveFolderTree.expanded.add(folder.id);
           }
-          renderFolderTree(selectElement, panel, options);
+          // [ZeroLabs] 2026-11-17 5:24 PM - edited: redraw the tree only, the search state stays
+          drawFolderTree(selectElement, panel, options);
         });
       }
 
@@ -9937,17 +10068,8 @@ function renderFolderTree(selectElement, panel, options = {}) {
       // own counter, so the two can never disagree: it counts bookmarks all the
       // way down, subfolders included. The icon is smaller here because these
       // rows are compact, and .folder-tree-icon scales the digits to match.
-      const icon = document.createElement('span');
-      icon.className = 'folder-tree-icon';
-      icon.setAttribute('aria-hidden', 'true');
-      const folderCount = countBookmarks(folder);
-      // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
-      setSafeHTML(icon, `
-        <svg class="folder-icon-outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M3 7C3 5.89543 3.89543 5 5 5H9L11 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z"/>
-        </svg>
-        <span class="folder-count" data-digits="${folderCount.toString().length}">${folderCount}</span>
-      `);
+      // [ZeroLabs] 2026-11-17 5:24 PM - edited: the icon comes from a helper the search also uses
+      const icon = createFolderIconElement(folder);
 
       const name = document.createElement('span');
       name.className = 'folder-tree-name';
@@ -9962,6 +10084,8 @@ function renderFolderTree(selectElement, panel, options = {}) {
         panel.querySelectorAll('.folder-tree-row').forEach(other => {
           other.classList.toggle('selected', other.dataset.folderId === folder.id);
         });
+        // [ZeroLabs] 2026-11-17 5:24 PM - added: a pick turns the save button on
+        updateFolderPickerSaveButton(panel);
       });
 
       panel.appendChild(row);
@@ -9972,6 +10096,599 @@ function renderFolderTree(selectElement, panel, options = {}) {
 
   // bookmarkTree is the array of root containers, which are folders themselves
   addRows(bookmarkTree, 0);
+}
+
+/* [ZeroLabs] 2026-11-17 5:24 PM - added: the folder icon, shared by the tree and the search */
+// The same outline and count the sidebar draws, so a folder looks the same in
+// the tree rows and in the search rows.
+function createFolderIconElement(folderNode) {
+  const icon = document.createElement('span');
+  icon.className = 'folder-tree-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  const folderCount = countBookmarks(folderNode);
+  setSafeHTML(icon, `
+    <svg class="folder-icon-outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M3 7C3 5.89543 3.89543 5 5 5H9L11 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z"/>
+    </svg>
+    <span class="folder-count" data-digits="${folderCount.toString().length}">${folderCount}</span>
+  `);
+  return icon;
+}
+
+/* [ZeroLabs] 2026-11-17 5:24 PM - added: the folder search toggle and search mode */
+// The dialogs save on Enter. On a button inside the picker, Enter must press
+// that button and must not save the dialog.
+function stopEnterFromSaving(event) {
+  if (event.key === 'Enter') {
+    event.stopPropagation();
+  }
+}
+
+// The box names its toggle button with data-search-toggle
+function getFolderSearchToggle(panel) {
+  const toggleId = panel.dataset.searchToggle;
+  if (!toggleId) return null;
+  return document.getElementById(toggleId);
+}
+
+function showFolderSearchToggleState(toggle, mode) {
+  if (mode === 'search') {
+    setSafeHTML(toggle, FOLDER_TREE_ICON_SVG);
+    toggle.title = 'Show the folder tree';
+    toggle.setAttribute('aria-label', 'Show the folder tree');
+    toggle.setAttribute('aria-pressed', 'true');
+  } else {
+    setSafeHTML(toggle, FOLDER_SEARCH_ICON_SVG);
+    toggle.title = 'Search for a folder';
+    toggle.setAttribute('aria-label', 'Search for a folder');
+    toggle.setAttribute('aria-pressed', 'false');
+  }
+}
+
+function setupFolderSearchToggle(panel) {
+  const toggle = getFolderSearchToggle(panel);
+  if (!toggle) return;
+
+  showFolderSearchToggleState(toggle, 'tree');
+
+  // The modal dialogs keep their button for the life of the panel, so the
+  // listeners go on once. The state is read at click time.
+  if (toggle.dataset.bound) return;
+  toggle.dataset.bound = 'true';
+
+  toggle.addEventListener('keydown', stopEnterFromSaving);
+  // [ZeroLabs] 2026-11-17 5:24 PM - edited: remember the mode, and restore the tree's pick
+  toggle.addEventListener('click', async () => {
+    const state = folderPickerState.get(panel);
+    if (!state) return;
+
+    if (state.mode === 'tree') {
+      writeFolderPickerMode('search');
+      enterFolderSearchMode(panel, toggle);
+      return;
+    }
+
+    writeFolderPickerMode('tree');
+    state.mode = 'tree';
+    showFolderSearchToggleState(toggle, 'tree');
+
+    if (!state.selectElement.value && state.treePick) {
+      setPickedFolder(state.selectElement, state.treePick);
+    }
+    updateFolderPickerSaveButton(panel);
+
+    // Open the path to the picked folder, so the pick is on screen
+    const pickedId = state.selectElement.value;
+    if (pickedId) {
+      await expandMoveTreeTo(pickedId);
+    }
+
+    // The user may have switched again, or the dialog reopened, while the
+    // path was opening. Draw only if this is still the same tree request.
+    const stillCurrent = folderPickerState.get(panel) === state && state.mode === 'tree';
+    if (!stillCurrent) return;
+
+    drawFolderTree(state.selectElement, panel, state.options);
+  });
+}
+
+// Every folder with its full path, and every bookmark with the path of the
+// folder it is in. An excluded folder is skipped with everything inside it,
+// so the move dialogs can never offer a folder inside the item being moved.
+function collectFolderSearchEntries(excluded) {
+  const folders = [];
+  const bookmarks = [];
+
+  const walk = (nodes, parentSegments, parentId) => {
+    if (!Array.isArray(nodes)) return;
+
+    nodes.forEach(node => {
+      if (node.children) {
+        if (excluded.has(node.id)) return;
+
+        const title = node.title || 'Unnamed Folder';
+        const segments = parentSegments.concat(title);
+        folders.push({ node, id: node.id, title, segments });
+        walk(node.children, segments, node.id);
+        return;
+      }
+
+      if (node.url && parentId) {
+        bookmarks.push({
+          title: node.title || node.url,
+          url: node.url,
+          parentId,
+          parentSegments
+        });
+      }
+    });
+  };
+
+  walk(bookmarkTree, [], null);
+  return { folders, bookmarks };
+}
+
+function getFolderSearchPlaceholder(state) {
+  const parts = ['folders'];
+  if (state.includeTitles) parts.push('titles');
+  if (state.includeUrls) parts.push('URLs');
+  return 'Search ' + parts.join(', ');
+}
+
+function drawFolderSearch(panel) {
+  const state = folderPickerState.get(panel);
+  if (!state) return;
+
+  const excluded = state.options.excluded || new Set();
+  state.entries = collectFolderSearchEntries(excluded);
+
+  panel.classList.add('searching');
+  panel.replaceChildren();
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'form-input folder-search-input';
+  input.value = state.query;
+  input.placeholder = getFolderSearchPlaceholder(state);
+  input.setAttribute('aria-label', 'Search for a folder');
+
+  const results = document.createElement('div');
+  results.className = 'folder-search-results';
+  results.setAttribute('role', 'list');
+
+  const chipRow = document.createElement('div');
+  chipRow.className = 'folder-search-chips';
+  const chipLabel = document.createElement('span');
+  chipLabel.textContent = 'Also search:';
+  chipRow.appendChild(chipLabel);
+
+  const addChip = (text, stateKey) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'filter-chip folder-search-chip';
+    chip.textContent = text;
+
+    const showChipState = () => {
+      chip.classList.toggle('active', state[stateKey]);
+      chip.setAttribute('aria-pressed', String(state[stateKey]));
+    };
+    showChipState();
+
+    chip.addEventListener('keydown', stopEnterFromSaving);
+    chip.addEventListener('click', () => {
+      state[stateKey] = !state[stateKey];
+      // [ZeroLabs] 2026-11-17 5:24 PM - added: remember the chip for the next picker
+      writeFolderSearchChip(stateKey, state[stateKey]);
+      showChipState();
+      input.placeholder = getFolderSearchPlaceholder(state);
+      // [ZeroLabs] 2026-11-17 5:24 PM - edited: a new search opens every folder with matches again, from the first 200 rows
+      state.collapsedHits.clear();
+      state.rowLimit = FOLDER_SEARCH_ROW_LIMIT;
+      drawFolderSearchResults(panel, results);
+    });
+
+    chipRow.appendChild(chip);
+  };
+  addChip('Titles', 'includeTitles');
+  addChip('URLs', 'includeUrls');
+
+  /* [ZeroLabs] 2026-11-17 5:24 PM - added: Expand All for the search results */
+  // The main list's button, with its class and icon, at the end of the chip
+  // row. The row already exists, so the box loses no space for results.
+  const expandAll = document.createElement('button');
+  expandAll.type = 'button';
+  expandAll.className = 'bmz-expand-all-btn';
+  expandAll.addEventListener('keydown', stopEnterFromSaving);
+  expandAll.addEventListener('click', () => {
+    toggleAllFolderSearchResults(panel, results);
+  });
+  chipRow.appendChild(expandAll);
+  state.expandAllButton = expandAll;
+
+  input.addEventListener('input', () => {
+    clearTimeout(state.inputTimer);
+    state.inputTimer = setTimeout(() => {
+      state.query = input.value;
+      // [ZeroLabs] 2026-11-17 5:24 PM - edited: a new search opens every folder with matches again, from the first 200 rows
+      state.collapsedHits.clear();
+      state.rowLimit = FOLDER_SEARCH_ROW_LIMIT;
+      drawFolderSearchResults(panel, results);
+    }, 120);
+  });
+
+  // Enter picks the top result and never saves. The dialogs save on Enter,
+  // so the key stops here. Save stays a separate, deliberate click.
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    clearTimeout(state.inputTimer);
+    state.query = input.value;
+    drawFolderSearchResults(panel, results);
+
+    // [ZeroLabs] 2026-11-17 5:24 PM - edited: no pinned row any more
+    const topRow = results.querySelector('.folder-search-row');
+    if (topRow) {
+      pickFolderSearchRow(panel, results, topRow.dataset.folderId);
+    }
+  });
+
+  panel.appendChild(input);
+  panel.appendChild(chipRow);
+  panel.appendChild(results);
+
+  drawFolderSearchResults(panel, results);
+  input.focus();
+}
+
+/* [ZeroLabs] 2026-11-17 5:24 PM - added: open a folder result to see its bookmarks */
+// The tree's own arrow. A folder result opens to list the bookmarks directly
+// inside it, so the user can confirm it is the right folder. Subfolders are
+// not listed.
+const FOLDER_SEARCH_TWISTY_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>';
+
+function getDirectBookmarks(folderNode) {
+  const children = (folderNode && folderNode.children) || [];
+  return children.filter(child => child.url);
+}
+
+// A twisty with no arrow keeps rows that cannot open lined up with the rest
+function createLeafTwisty() {
+  const twisty = document.createElement('span');
+  twisty.className = 'folder-tree-twisty leaf';
+  return twisty;
+}
+
+/* [ZeroLabs] 2026-11-17 5:24 PM - edited: a folder with matching bookmarks lists only those */
+// hits is null for a folder found by its name: it starts closed and opens to
+// all its bookmarks. hits is a list for a folder that holds bookmarks the
+// Titles or URLs search matched: it starts open and lists only those.
+function isFolderSearchResultOpen(state, folder, hits) {
+  if (hits) {
+    return !state.collapsedHits.has(folder.id);
+  }
+  return state.expandedResults.has(folder.id);
+}
+
+function setFolderSearchResultOpen(state, folder, hits, isOpen) {
+  if (hits) {
+    if (isOpen) {
+      state.collapsedHits.delete(folder.id);
+    } else {
+      state.collapsedHits.add(folder.id);
+    }
+    return;
+  }
+
+  if (isOpen) {
+    state.expandedResults.add(folder.id);
+  } else {
+    state.expandedResults.delete(folder.id);
+  }
+}
+
+function createFolderSearchTwisty(panel, container, folder, hits = null) {
+  const state = folderPickerState.get(panel);
+  const items = hits || getDirectBookmarks(folder.node);
+  if (!state || items.length === 0) return createLeafTwisty();
+
+  const twisty = document.createElement('span');
+  const isOpen = isFolderSearchResultOpen(state, folder, hits);
+  twisty.className = `folder-tree-twisty${isOpen ? ' expanded' : ''}`;
+  setSafeHTML(twisty, FOLDER_SEARCH_TWISTY_SVG);
+
+  // The arrow opens and closes. It never picks the folder.
+  twisty.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const row = twisty.closest('.folder-search-row');
+    if (!row) return;
+
+    // [ZeroLabs] 2026-11-17 5:24 PM - edited: one arrow can change what Expand All should say
+    if (isFolderSearchResultOpen(state, folder, hits)) {
+      setFolderSearchResultOpen(state, folder, hits, false);
+      twisty.classList.remove('expanded');
+      container.querySelectorAll('.folder-search-child').forEach(child => {
+        if (child.dataset.childOf === folder.id) child.remove();
+      });
+      updateFolderSearchExpandButton(panel);
+      return;
+    }
+
+    setFolderSearchResultOpen(state, folder, hits, true);
+    twisty.classList.add('expanded');
+    insertFolderSearchChildren(panel, container, row, folder, items);
+    fitFolderSearchLines(container);
+    updateFolderSearchExpandButton(panel);
+  });
+
+  return twisty;
+}
+
+// The bookmarks go directly under the folder row, in the folder's own order.
+// A click on one picks the folder.
+// [ZeroLabs] 2026-11-17 5:24 PM - edited: the caller passes the bookmarks to list
+function insertFolderSearchChildren(panel, container, row, folder, items) {
+  let anchor = row;
+
+  items.forEach(bookmark => {
+    const child = document.createElement('div');
+    child.className = 'folder-tree-row folder-search-child';
+    child.dataset.childOf = folder.id;
+    child.title = bookmark.url;
+
+    const icon = document.createElement('span');
+    icon.className = 'folder-tree-icon folder-search-bookmark-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    setSafeHTML(icon, FOLDER_SEARCH_LINK_SVG);
+
+    const text = document.createElement('div');
+    text.className = 'folder-search-text';
+    const line = document.createElement('span');
+    line.className = 'folder-search-line';
+    line.textContent = bookmark.title || bookmark.url;
+    text.appendChild(line);
+
+    child.appendChild(icon);
+    child.appendChild(text);
+    child.addEventListener('click', () => {
+      pickFolderSearchRow(panel, container, folder.id);
+    });
+
+    anchor.after(child);
+    anchor = child;
+  });
+}
+
+// One result row. folderId is the folder a click picks: the folder itself
+// for a folder row, the folder the bookmark is in for a bookmark row.
+// [ZeroLabs] 2026-11-17 5:24 PM - edited: every row starts with a twisty, open or leaf
+function buildFolderSearchRow(panel, container, folderId, icon, lines, twisty = null) {
+  const state = folderPickerState.get(panel);
+
+  const row = document.createElement('div');
+  row.className = 'folder-tree-row folder-search-row';
+  row.setAttribute('role', 'listitem');
+  row.dataset.folderId = folderId;
+  if (state && state.selectElement.value === folderId) {
+    row.classList.add('selected');
+  }
+
+  const text = document.createElement('div');
+  text.className = 'folder-search-text';
+  lines.forEach(line => {
+    const lineElement = document.createElement('span');
+    lineElement.className = `folder-search-line${line.className ? ' ' + line.className : ''}`;
+    lineElement.textContent = line.text;
+    text.appendChild(lineElement);
+  });
+
+  row.appendChild(twisty || createLeafTwisty());
+  row.appendChild(icon);
+  row.appendChild(text);
+  row.addEventListener('click', () => {
+    pickFolderSearchRow(panel, container, folderId);
+  });
+
+  return row;
+}
+
+// [ZeroLabs] 2026-11-17 5:24 PM - removed: the pinned "Picked folder" row
+function buildFolderSearchNote(text) {
+  const note = document.createElement('div');
+  note.className = 'folder-search-note folder-search-line';
+  note.textContent = text;
+  return note;
+}
+
+function drawFolderSearchResults(panel, container) {
+  const state = folderPickerState.get(panel);
+  if (!state || !state.entries) return;
+
+  container.replaceChildren();
+
+  // [ZeroLabs] 2026-11-17 5:24 PM - added: Expand All acts on the folders of THIS search
+  state.lastShown = [];
+
+  const query = state.query.trim().toLowerCase();
+  if (!query) {
+    container.appendChild(buildFolderSearchNote('Type to search.'));
+    fitFolderSearchLines(container);
+    updateFolderSearchExpandButton(panel);
+    return;
+  }
+
+  /* [ZeroLabs] 2026-11-17 5:24 PM - edited: matching bookmarks show inside their open folder */
+  // Bookmark titles and URLs only when their chips are on. The matches are
+  // grouped by the folder they are in.
+  const hitsByFolder = new Map();
+  if (state.includeTitles || state.includeUrls) {
+    state.entries.bookmarks.forEach(bookmark => {
+      const titleHit = state.includeTitles && bookmark.title.toLowerCase().includes(query);
+      const urlHit = state.includeUrls && bookmark.url.toLowerCase().includes(query);
+      if (!titleHit && !urlHit) return;
+
+      if (!hitsByFolder.has(bookmark.parentId)) {
+        hitsByFolder.set(bookmark.parentId, []);
+      }
+      hitsByFolder.get(bookmark.parentId).push(bookmark);
+    });
+  }
+
+  // One row per folder, in tree order: a folder shows when its name matches,
+  // when it holds matching bookmarks, or both.
+  const shownFolders = state.entries.folders.filter(folder => {
+    const nameHit = folder.title.toLowerCase().includes(query);
+    return nameHit || hitsByFolder.has(folder.id);
+  });
+
+  // [ZeroLabs] 2026-11-17 5:24 PM - added: what each folder would list when open
+  state.lastShown = shownFolders.map(folder => {
+    const hits = hitsByFolder.get(folder.id) || null;
+    const items = hits || getDirectBookmarks(folder.node);
+    return { folder, hits, items };
+  });
+
+  if (shownFolders.length === 0) {
+    container.appendChild(buildFolderSearchNote('No matches.'));
+    fitFolderSearchLines(container);
+    updateFolderSearchExpandButton(panel);
+    return;
+  }
+
+  // The limit counts every row drawn, the bookmarks under a folder included
+  let drawnRows = 0;
+  let drawnFolders = 0;
+
+  for (const folder of shownFolders) {
+    // [ZeroLabs] 2026-11-17 5:24 PM - edited: the limit Show more raises
+    if (drawnRows >= state.rowLimit) break;
+
+    const hits = hitsByFolder.get(folder.id) || null;
+    const twisty = createFolderSearchTwisty(panel, container, folder, hits);
+    const row = buildFolderSearchRow(panel, container, folder.id, createFolderIconElement(folder.node), [
+      { text: folder.segments.join(' / ') }
+    ], twisty);
+    container.appendChild(row);
+    drawnRows++;
+    drawnFolders++;
+
+    if (isFolderSearchResultOpen(state, folder, hits)) {
+      const items = hits || getDirectBookmarks(folder.node);
+      insertFolderSearchChildren(panel, container, row, folder, items);
+      drawnRows += items.length;
+    }
+  }
+
+  /* [ZeroLabs] 2026-11-17 5:24 PM - edited: a Show more button at the end of a cut list */
+  // It sits after the last row, so the user reaches it by scrolling to the
+  // bottom. Each click draws the next 200 rows. The list is drawn again from
+  // the top, so the scroll position is put back afterwards.
+  if (shownFolders.length > drawnFolders) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'filter-chip folder-search-chip folder-search-more';
+    const label = document.createElement('span');
+    label.className = 'folder-search-line';
+    label.textContent = `Show more (${drawnFolders} of ${shownFolders.length} folders shown)`;
+    more.appendChild(label);
+
+    more.addEventListener('keydown', stopEnterFromSaving);
+    more.addEventListener('click', () => {
+      const scrollTop = container.scrollTop;
+      state.rowLimit += FOLDER_SEARCH_ROW_LIMIT;
+      drawFolderSearchResults(panel, container);
+      container.scrollTop = scrollTop;
+    });
+
+    container.appendChild(more);
+  }
+
+  fitFolderSearchLines(container);
+  // [ZeroLabs] 2026-11-17 5:24 PM - added: the button shows expand or collapse for this list
+  updateFolderSearchExpandButton(panel);
+}
+
+/* [ZeroLabs] 2026-11-17 5:24 PM - added: Expand All / Collapse All for the search results */
+// It acts on every folder this search found, the ones past Show more too, in
+// the same way each folder's own arrow does: a folder with matching bookmarks
+// lists only those matches, and a folder found by its name lists all of its
+// bookmarks. A folder with nothing to list has no arrow and is left alone.
+function getExpandableFolderSearchResults(state) {
+  return state.lastShown.filter(result => result.items.length > 0);
+}
+
+function areAllFolderSearchResultsOpen(state) {
+  const expandable = getExpandableFolderSearchResults(state);
+  if (expandable.length === 0) return false;
+  return expandable.every(result => isFolderSearchResultOpen(state, result.folder, result.hits));
+}
+
+// Same icon and labels as the main list's button
+function updateFolderSearchExpandButton(panel) {
+  const state = folderPickerState.get(panel);
+  if (!state || !state.expandAllButton) return;
+
+  const button = state.expandAllButton;
+  const collapsing = areAllFolderSearchResultsOpen(state);
+  const label = collapsing ? 'Collapse All Folders' : 'Expand All Folders';
+  const triangleUp = 'M7,14H17L12,8Z';
+  const triangleDown = 'M7,10H17L12,16Z';
+  const iconPath = collapsing ? triangleUp : triangleDown;
+
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  setSafeHTML(button, `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="${iconPath}"/></svg>`);
+  button.disabled = getExpandableFolderSearchResults(state).length === 0;
+}
+
+function toggleAllFolderSearchResults(panel, container) {
+  const state = folderPickerState.get(panel);
+  if (!state) return;
+
+  const collapsing = areAllFolderSearchResultsOpen(state);
+  getExpandableFolderSearchResults(state).forEach(result => {
+    setFolderSearchResultOpen(state, result.folder, result.hits, !collapsing);
+  });
+
+  const scrollTop = container.scrollTop;
+  drawFolderSearchResults(panel, container);
+  container.scrollTop = scrollTop;
+}
+
+// [ZeroLabs] 2026-11-17 5:24 PM - edited: no pinned row; the pick turns the save button on
+// Pick a folder from the results. The list is not redrawn, so it does not
+// jump: only the highlight changes.
+function pickFolderSearchRow(panel, container, folderId) {
+  const state = folderPickerState.get(panel);
+  if (!state || !folderId) return;
+
+  setPickedFolder(state.selectElement, folderId);
+
+  container.querySelectorAll('.folder-search-row').forEach(row => {
+    row.classList.toggle('selected', row.dataset.folderId === folderId);
+  });
+
+  updateFolderPickerSaveButton(panel);
+}
+
+// Paths can be long. A line that does not fit is scaled down until it does,
+// so it stays on one line, complete, with nothing cut off.
+function fitFolderSearchLines(container) {
+  requestAnimationFrame(() => {
+    container.querySelectorAll('.folder-search-line').forEach(line => {
+      line.style.fontSize = '';
+
+      const available = line.clientWidth;
+      const needed = line.scrollWidth;
+      if (available <= 0 || needed <= available) return;
+
+      const current = parseFloat(getComputedStyle(line).fontSize);
+      const fitted = current * (available / needed) * 0.98;
+      line.style.fontSize = fitted.toFixed(2) + 'px';
+    });
+  });
 }
 
 /* [ZeroLabs] 2026-09-23 1:02 AM - added: a folder tree for callers with no dialog of their own */
@@ -9989,9 +10706,13 @@ function pickFolderWithTree({ heading, excluded = new Set(), initialId = '' } = 
 
     // [ZeroLabs] 2026-09-23 11:25 PM - edited: setSafeHTML in place of innerHTML (Mozilla lint)
     setSafeHTML(dialog, `
-      <h2 style="margin: 0 0 14px 0; font-size: 17px;">${escapeHtml(heading || 'Choose a folder')}</h2>
+      <!-- [ZeroLabs] 2026-11-17 5:24 PM - edited: the heading row holds the folder search toggle -->
+      <div class="folder-picker-label-row" style="margin-bottom: 14px;">
+        <h2 id="bmzPickFolderHeading" style="margin: 0; font-size: 17px;">${escapeHtml(heading || 'Choose a folder')}</h2>
+        <button type="button" id="bmzPickFolderSearchToggle" class="folder-search-toggle"></button>
+      </div>
       <select id="bmzPickFolderValue" style="display: none;" aria-hidden="true"></select>
-      <div id="bmzPickFolderTree" class="folder-tree-picker" role="tree" aria-label="Destination folder"></div>
+      <div id="bmzPickFolderTree" class="folder-tree-picker" role="tree" aria-labelledby="bmzPickFolderHeading" data-search-toggle="bmzPickFolderSearchToggle" data-save-button="bmzPickFolderConfirm"></div>
       <div style="display: flex; gap: 10px; margin-top: 16px;">
         <button id="bmzPickFolderCancel" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--md-sys-color-surface-variant, #2a2a2a); color: var(--md-sys-color-on-surface-variant, #aaa); cursor: pointer; font-size: 14px;">Cancel</button>
         <button id="bmzPickFolderConfirm" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px; font-weight: 600;">Move here</button>
@@ -13504,6 +14225,8 @@ function setupEventListeners() {
   addBookmarkModal.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // [ZeroLabs] 2026-11-17 5:24 PM - added: Enter cannot save while Save is greyed out
+      if (addBookmarkModalSave.disabled) return;
       saveNewBookmark();
     } else if (e.key === 'Escape') {
       closeAddBookmarkModal();
@@ -13525,6 +14248,8 @@ function setupEventListeners() {
   addFolderModal.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // [ZeroLabs] 2026-11-17 5:24 PM - added: Enter cannot save while Save is greyed out
+      if (addFolderModalSave.disabled) return;
       saveNewFolder();
     } else if (e.key === 'Escape') {
       closeAddFolderModal();
@@ -13546,6 +14271,8 @@ function setupEventListeners() {
   moveToModal.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // [ZeroLabs] 2026-11-17 5:24 PM - added: Enter cannot save while Save is greyed out
+      if (moveToModalSave.disabled) return;
       saveMoveToModal();
     } else if (e.key === 'Escape') {
       closeMoveToModal();
@@ -17071,12 +17798,16 @@ function setupEventListeners() {
         They are still in the cloud and on your other devices, so nothing has been lost.
       </p>
       <div style="margin-bottom: 20px;">${list}</div>
-      <label style="display: block; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #aaa); margin-bottom: 6px;">
-        Save them to this folder instead:
-      </label>
+      <!-- [ZeroLabs] 2026-11-17 5:24 PM - edited: the label row holds the folder search toggle -->
+      <div class="folder-picker-label-row" style="margin-bottom: 6px;">
+        <label id="unplaceableFolderLabel" style="display: block; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #aaa);">
+          Save them to this folder instead:
+        </label>
+        <button type="button" id="unplaceableFolderSearchToggle" class="folder-search-toggle"></button>
+      </div>
       <!-- [ZeroLabs] 2026-09-23 1:30 AM - edited: the shared folder tree, not a flat list -->
       <select id="unplaceableFolder" style="display: none;" aria-hidden="true"></select>
-      <div id="unplaceableFolderTree" class="folder-tree-picker" role="tree" aria-label="Destination folder" style="margin-bottom: 12px;"></div>
+      <div id="unplaceableFolderTree" class="folder-tree-picker" role="tree" aria-labelledby="unplaceableFolderLabel" data-search-toggle="unplaceableFolderSearchToggle" data-save-button="unplaceableSave" style="margin-bottom: 12px;"></div>
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <button id="unplaceableSave" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--md-sys-color-primary, #90caf9); color: var(--md-sys-color-on-primary, #000); cursor: pointer; font-size: 14px; font-weight: 500;">
           Save them there and sync
