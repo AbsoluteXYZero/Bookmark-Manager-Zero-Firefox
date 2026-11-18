@@ -10436,7 +10436,8 @@ function insertFolderSearchChildren(panel, container, row, folder, items) {
     const child = document.createElement('div');
     child.className = 'folder-tree-row folder-search-child';
     child.dataset.childOf = folder.id;
-    child.title = bookmark.url;
+    // [ZeroLabs] 2026-11-17 7:29 PM - edited: tooltip shows the full title, then the URL
+    child.title = `${bookmark.title || bookmark.url}\n${bookmark.url}`;
 
     const icon = document.createElement('span');
     icon.className = 'folder-tree-icon folder-search-bookmark-icon';
@@ -10483,6 +10484,10 @@ function buildFolderSearchRow(panel, container, folderId, icon, lines, twisty = 
     lineElement.textContent = line.text;
     text.appendChild(lineElement);
   });
+
+  // [ZeroLabs] 2026-11-17 7:29 PM - added: tooltip with the row's full text at normal size
+  // A long path is scaled down to fit its line and can get hard to read.
+  row.title = lines.map(line => line.text).join('\n');
 
   row.appendChild(twisty || createLeafTwisty());
   row.appendChild(icon);
@@ -10673,20 +10678,64 @@ function pickFolderSearchRow(panel, container, folderId) {
   updateFolderPickerSaveButton(panel);
 }
 
+// [ZeroLabs] 2026-11-17 7:41 PM - edited: a very long line loops one way when hovered or picked (see also: sidebar.html)
 // Paths can be long. A line that does not fit is scaled down until it does,
-// so it stays on one line, complete, with nothing cut off.
+// so it stays on one line, complete, with nothing cut off. Below
+// FOLDER_SEARCH_SCROLL_MIN_SCALE the scaled text is too small to read: at
+// rest it is still scaled, and while the pointer is on its row, or the row
+// is picked, the CSS shows it at full size in a one-way loop. A copy of the
+// text (data-loop-text, drawn by ::after) follows it after the gap, so the
+// loop has no visible jump.
+const FOLDER_SEARCH_SCROLL_MIN_SCALE = 0.8;
+const FOLDER_SEARCH_SCROLL_PX_PER_SECOND = 30;
+const FOLDER_SEARCH_LOOP_GAP_PX = 32;
+
 function fitFolderSearchLines(container) {
   requestAnimationFrame(() => {
     container.querySelectorAll('.folder-search-line').forEach(line => {
       line.style.fontSize = '';
+      line.classList.remove('folder-search-long');
+      delete line.dataset.loopText;
+      line.style.removeProperty('--fit-size');
+      line.style.removeProperty('--loop-gap');
+      line.style.removeProperty('--loop-distance-normal');
+      line.style.removeProperty('--loop-distance-bold');
+      line.style.removeProperty('--loop-duration');
 
       const available = line.clientWidth;
       const needed = line.scrollWidth;
       if (available <= 0 || needed <= available) return;
 
       const current = parseFloat(getComputedStyle(line).fontSize);
-      const fitted = current * (available / needed) * 0.98;
-      line.style.fontSize = fitted.toFixed(2) + 'px';
+      const scale = available / needed;
+      const fitted = (current * scale * 0.98).toFixed(2) + 'px';
+
+      // Notes and the Show more label are not rows: they only scale
+      const row = line.closest('.folder-search-row, .folder-search-child');
+      if (scale >= FOLDER_SEARCH_SCROLL_MIN_SCALE || !row) {
+        line.style.fontSize = fitted;
+        return;
+      }
+
+      // A picked row is bold, and bold text is wider. The loop must move by
+      // exactly one text width plus the gap, or it jumps at the seam, so the
+      // width is measured in both weights.
+      const widthNormal = needed;
+      line.style.fontWeight = '600';
+      const widthBold = line.scrollWidth;
+      line.style.fontWeight = '';
+
+      const loopNormal = widthNormal + FOLDER_SEARCH_LOOP_GAP_PX;
+      const loopBold = widthBold + FOLDER_SEARCH_LOOP_GAP_PX;
+      const seconds = loopBold / FOLDER_SEARCH_SCROLL_PX_PER_SECOND;
+
+      line.classList.add('folder-search-long');
+      line.dataset.loopText = line.textContent;
+      line.style.setProperty('--fit-size', fitted);
+      line.style.setProperty('--loop-gap', `${FOLDER_SEARCH_LOOP_GAP_PX}px`);
+      line.style.setProperty('--loop-distance-normal', `-${loopNormal}px`);
+      line.style.setProperty('--loop-distance-bold', `-${loopBold}px`);
+      line.style.setProperty('--loop-duration', `${seconds.toFixed(2)}s`);
     });
   });
 }

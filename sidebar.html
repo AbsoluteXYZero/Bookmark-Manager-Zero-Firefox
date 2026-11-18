@@ -1910,6 +1910,68 @@
       text-align: center;
     }
 
+    /* [ZeroLabs] 2026-11-17 7:41 PM - edited: a very long line loops one way when hovered or picked */
+    /* fitFolderSearchLines marks a line that would need less than 80 percent
+       of its size as .folder-search-long and sets the variables. At rest it
+       keeps the scaled size. While its row is hovered or picked, ::after
+       draws a copy of the text after the gap, and the line moves left by one
+       text width plus the gap: the copy then sits where the text started, so
+       each cycle ends where the next begins and the loop never jumps. */
+    .folder-search-line.folder-search-long {
+      font-size: var(--fit-size);
+    }
+
+    .folder-search-row:hover .folder-search-text,
+    .folder-search-row.selected .folder-search-text,
+    .folder-search-child:hover .folder-search-text {
+      overflow: hidden;
+    }
+
+    .folder-search-row:hover .folder-search-long,
+    .folder-search-row.selected .folder-search-long,
+    .folder-search-child:hover .folder-search-long {
+      font-size: inherit;
+      --loop-distance: var(--loop-distance-normal);
+      animation: folderSearchScroll var(--loop-duration) linear 0.2s infinite;
+    }
+
+    /* A picked row is bold, so it moves by the bold width. This rule must stay
+       after the one above: same specificity, so the later one wins. */
+    .folder-search-row.selected .folder-search-long {
+      --loop-distance: var(--loop-distance-bold);
+    }
+
+    .folder-search-row:hover .folder-search-long::after,
+    .folder-search-row.selected .folder-search-long::after,
+    .folder-search-child:hover .folder-search-long::after {
+      content: attr(data-loop-text);
+      padding-left: var(--loop-gap);
+    }
+
+    @keyframes folderSearchScroll {
+      from {
+        transform: translateX(0);
+      }
+      to {
+        transform: translateX(var(--loop-distance));
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .folder-search-row:hover .folder-search-long,
+      .folder-search-row.selected .folder-search-long,
+      .folder-search-child:hover .folder-search-long {
+        font-size: var(--fit-size);
+        animation: none;
+      }
+
+      .folder-search-row:hover .folder-search-long::after,
+      .folder-search-row.selected .folder-search-long::after,
+      .folder-search-child:hover .folder-search-long::after {
+        content: none;
+      }
+    }
+
 
     .folder-tree-icon .folder-count[data-digits="6"],
     .folder-tree-icon .folder-count[data-digits="7"],

@@ -1,6 +1,12 @@
 ## Changelog
 
-### v6.7 (Current)
+### v6.8 (Current)
+
+**Changes:**
+- **Long folder paths are easier to read** - In the folder search results, a path that only fits at a very small size now shows at full size and scrolls in a loop while you hover over its row, and while its row is picked. At rest it still fits on its line.
+- **Tooltips in the folder search results** - Hover over a folder result to see its full path at normal size. Hover over a bookmark under an open folder to see its full title and its URL.
+
+### v6.7
 
 **Changes:**
 - **Search for a folder in every folder picker** - The add bookmark, add folder, move, and bulk move dialogs, and the dialog for bookmarks that could not be placed, have a search button next to the folder label. In search mode, type to find any folder or child folder by its name. Each result shows the full folder path. BMZ remembers whether you used the tree or the search last.
